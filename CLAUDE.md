@@ -9,7 +9,7 @@ This repo **is** a Claude Code plugin. It ships skills + agents that run in *oth
 | `.claude-plugin/plugin.json` | Plugin manifest (name, version). Bump `version` on every behavioural change. |
 | `.claude-plugin/marketplace.json` | Marketplace entry so the plugin is installable via `/plugin`. Keep `version` in sync with `plugin.json`. |
 | `skills/` | `supera-init`, `ship`, `pr-watch`, `refine-ticket` — each a `SKILL.md`. |
-| `agents/` | `supera-engineer` (the implementer), `supera-supply-chain-auditor`, `supera-nplus1-auditor`. |
+| `agents/` | `supera-engineer` (the implementer), `supera-supply-chain-auditor`. |
 | `schema/supera.schema.json` | The per-repo `.claude/supera.json` contract. **Source of truth** — update it before changing what skills read. |
 | `examples/` | Sample `.claude/supera.json` files per stack. |
 | `docs/specs/` | Design records. |

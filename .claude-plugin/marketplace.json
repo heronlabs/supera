@@ -7,8 +7,8 @@
   "plugins": [
     {
       "name": "supera",
-      "description": "Repo-agnostic ticket-shipping superagent: ship, pr-watch, refine-ticket, and supply-chain / N+1 auditors, driven by a per-repo .claude/supera.json config.",
-      "version": "0.1.0",
+      "description": "Repo-agnostic ticket-shipping superagent: ship, pr-watch, refine-ticket, and a supply-chain auditor, driven by a per-repo .claude/supera.json config.",
+      "version": "0.1.1",
       "author": { "name": "Lucas Lacerda" },
       "source": "./",
       "license": "MIT",

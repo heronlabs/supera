@@ -62,7 +62,7 @@ Show the proposed config and ask the user to confirm or tweak the commands (use 
   "clickup": { "listId": "<id>" },   // or null
   "pr": { "base": "<default branch>", "remote": "origin" },
   "tags": { "<glob>": "<tag>" },
-  "audits": { "supplyChain": false, "nplus1": false }
+  "audits": { "supplyChain": false }
 }
 ```
 
@@ -71,7 +71,7 @@ Detect the default branch instead of assuming `main`:
 git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
 
-Enable `audits.nplus1` only if the repo uses TypeScript + an ORM. Enable `audits.supplyChain` if it has a lockfile.
+Enable `audits.supplyChain` if the repo has a lockfile.
 
 ## 5 — Report
 

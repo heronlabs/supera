@@ -60,8 +60,7 @@
       "description": "Optional audit agents ship/CI can run.",
       "additionalProperties": false,
       "properties": {
-        "supplyChain": { "type": "boolean", "default": false, "description": "Enable supera-supply-chain-auditor (works on npm/pnpm/yarn/cargo)." },
-        "nplus1": { "type": "boolean", "default": false, "description": "Enable supera-nplus1-auditor (TypeScript + TypeORM repos only)." }
+        "supplyChain": { "type": "boolean", "default": false, "description": "Enable supera-supply-chain-auditor (works on npm/pnpm/yarn/cargo)." }
       }
     }
   }

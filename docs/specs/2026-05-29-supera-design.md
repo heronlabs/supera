@@ -29,7 +29,6 @@ supera/                              (git repo + Claude Code plugin)
   agents/
     supera-engineer.md               THE implementer (code + tests)
     supera-supply-chain-auditor.md   npm/pnpm/yarn/cargo audit
-    supera-nplus1-auditor.md         ORM N+1 (TS+TypeORM tuned)
   schema/supera.schema.json          per-repo config contract (source of truth)
   examples/                          sample configs (workloads, terminal-cli, server-cms)
   docs/specs/                        this record

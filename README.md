@@ -17,7 +17,6 @@ The orchestration lives here. Anything repo-specific (build/test/lint commands, 
 |---|---|
 | `supera-engineer` | **The problem-solver.** One strong agent that implements code **and** tests in the worktree, adapts to the repo's own conventions, and self-verifies before returning. Uses superpowers (TDD, systematic-debugging, verification). Replaces all per-stack scribes. |
 | `supera-supply-chain-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo): CVEs, freshness, drift, typo-squats, leaked secrets. Report-only + safe CVE overrides. |
-| `supera-nplus1-auditor` | N+1 query static analysis for ORM repos (TS + TypeORM tuned). Report-only. |
 
 For genuinely multi-component tickets, `/ship` escalates to **`nelson`** for parallel fan-out; solo `supera-engineer` is the default.
 
@@ -58,7 +57,7 @@ Commit `.claude/supera.json` so the config travels with the repo.
   "clickup": { "listId": "901415284967" },   // null → run ticket-less (git + GitHub only)
   "pr": { "base": "main", "remote": "origin" },
   "tags": { "crates/cli/**": "cli" },
-  "audits": { "supplyChain": true, "nplus1": false }
+  "audits": { "supplyChain": true }
 }
 ```
 

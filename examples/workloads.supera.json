@@ -17,5 +17,5 @@
     "apps/consumer-thp/**": "thp",
     "packages/qa-automation/**": "testing"
   },
-  "audits": { "supplyChain": true, "nplus1": true }
+  "audits": { "supplyChain": true }
 }
