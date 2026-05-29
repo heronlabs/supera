@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+
+# editor
+.idea/
+.vscode/
+
+# transient worktrees if anyone tests inside this repo
+.worktrees/
+
+# node, in case tooling is ever added here
+node_modules/

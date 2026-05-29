@@ -1,0 +1,19 @@
+{
+  "name": "supera-marketplace",
+  "owner": { "name": "Lucas Lacerda" },
+  "metadata": {
+    "description": "Heron Labs superagent for shipping tickets across any repository with one consistent pattern"
+  },
+  "plugins": [
+    {
+      "name": "supera",
+      "description": "Repo-agnostic ticket-shipping superagent: ship, pr-watch, refine-ticket, and supply-chain / N+1 auditors, driven by a per-repo .claude/supera.json config.",
+      "version": "0.1.0",
+      "author": { "name": "Lucas Lacerda" },
+      "source": "./",
+      "license": "MIT",
+      "keywords": ["workflow", "agents", "clickup", "shipping", "ci", "heronlabs"],
+      "category": "workflow"
+    }
+  ]
+}

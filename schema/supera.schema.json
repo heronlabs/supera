@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/heronlabs/supera/schema/supera.schema.json",
+  "title": "supera per-repo config",
+  "description": "Lives at <repo>/.claude/supera.json. Tells supera's ship/pr-watch/auditors how to operate in THIS repo. Written by /supera-init; safe to hand-edit.",
+  "type": "object",
+  "required": ["stack", "verify"],
+  "additionalProperties": false,
+  "properties": {
+    "stack": {
+      "type": "string",
+      "description": "Primary toolchain, used to pick audit/verify behaviour.",
+      "examples": ["pnpm", "npm", "yarn", "cargo", "strapi", "go", "python", "mixed"]
+    },
+    "verify": {
+      "type": "object",
+      "description": "Commands the engineer runs to self-verify before returning, and pr-watch uses to reproduce CI failures. Any field may be omitted if the stack has no such step.",
+      "additionalProperties": false,
+      "properties": {
+        "install": { "type": "string", "description": "Dependency install, e.g. 'pnpm install --frozen-lockfile'." },
+        "build": { "type": "string", "description": "Build / typecheck, e.g. 'pnpm turbo run build'." },
+        "test": { "type": "string", "description": "Unit tests, e.g. 'pnpm turbo run test:unit'." },
+        "lint": { "type": "string", "description": "Lint, e.g. 'pnpm lint:check'." }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "description": "How ship creates its isolated workspace.",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "default": ".worktrees", "description": "Directory (relative to repo root) holding feature worktrees." },
+        "base": { "type": "string", "default": "main", "description": "Branch new work is cut from." },
+        "postCreate": { "type": "string", "description": "Command run inside a fresh worktree, usually the install step. Defaults to verify.install if omitted." }
+      }
+    },
+    "clickup": {
+      "type": ["object", "null"],
+      "description": "ClickUp wiring. Set to null (or omit) to run ticket-less: ship/pr-watch skip all ClickUp + time-tracking steps and operate purely on git + GitHub.",
+      "additionalProperties": false,
+      "properties": {
+        "listId": { "type": ["string", "null"], "description": "List that holds this repo's backlog. Required for ticket creation." }
+      }
+    },
+    "pr": {
+      "type": "object",
+      "description": "Pull-request defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "base": { "type": "string", "default": "main", "description": "PR target branch." },
+        "remote": { "type": "string", "default": "origin", "description": "Git remote to push to." }
+      }
+    },
+    "tags": {
+      "type": "object",
+      "description": "Map of path glob -> tag. Each glob that matches a changed file contributes its tag, used as BOTH the GitHub label and the ClickUp tag. Use lowercase labels; ClickUp tags must pre-exist in the space (tagging is best-effort).",
+      "additionalProperties": { "type": "string" }
+    },
+    "audits": {
+      "type": "object",
+      "description": "Optional audit agents ship/CI can run.",
+      "additionalProperties": false,
+      "properties": {
+        "supplyChain": { "type": "boolean", "default": false, "description": "Enable supera-supply-chain-auditor (works on npm/pnpm/yarn/cargo)." },
+        "nplus1": { "type": "boolean", "default": false, "description": "Enable supera-nplus1-auditor (TypeScript + TypeORM repos only)." }
+      }
+    }
+  }
+}
