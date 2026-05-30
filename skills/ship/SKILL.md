@@ -4,7 +4,7 @@ description: "Repo-agnostic task lifecycle orchestrator: ClickUp ticket → work
 allowed-tools: Bash, Read, Glob, Grep, Agent
 ---
 
-Orchestrate a task from zero to an open PR with a passing quality gate, in **any** repo. Read this repo's `.claude/supera.json` for stack commands, ClickUp list, worktree base, and the tag table. Delegate the actual code + tests to the `supera-engineer` agent. After the PR is open, hand off to `/pr-watch`.
+Orchestrate a task from zero to an open PR with a passing quality gate, in **any** repo. Read this repo's `.claude/supera.json` for stack commands, ClickUp list, worktree base, and the tag table. Delegate the actual code + tests to the `supera-engineer` agent. After the PR is open, hand off to `/pr-watch`; the ticket is closed out by `/finish` once merged. `/ship` is one stage of a longer loop — `/pause`, `/resume`, `/pr-watch`, and `/finish` own the rest (see **Lifecycle controls** below). It is **idempotent**: re-running on existing work continues from the detected phase instead of restarting (step 1.5).
 
 ## 0 — Load config
 
@@ -27,6 +27,26 @@ When ClickUp is configured, this skill tracks time on the ticket between steps v
 If empty, ask for a task description.
 
 Derive a branch slug: lowercase, kebab-case, ≤50 chars, special chars stripped, prefixed by type (`feat/`, `fix/`, `docs/`, `refactor/`, `chore/`). Example: `"add payment retry on timeout"` → `feat/add-payment-retry-on-timeout`.
+
+## 1.5 — Resume check (idempotency)
+
+Before creating anything, check whether work for this task already exists — `/ship` must **never** double-create a worktree or duplicate an engineer's work. Detect the branch (the derived slug, or a branch name passed directly in `$ARGUMENTS`) and its state:
+```bash
+git worktree list | grep <slug>                              # worktree already present?
+git ls-remote --heads <remote> <slug>                        # branch already pushed?
+gh pr list --head <slug> --state all --json number,state     # PR? merged?
+```
+Route by phase (the shared lifecycle ladder):
+
+| Phase | Signal | Action |
+|---|---|---|
+| `fresh` | no branch, no worktree | Fall through to step 2 (normal pipeline). |
+| `scaffolded` / `building` | worktree/branch exists, no PR (incl. a `wip:` HEAD checkpoint) | Hand to `/resume <slug>` — it continues the implementation, then bounces back here for the PR. Stop. |
+| `built` | commits, no `wip:` HEAD, no PR | Skip steps 2–4; jump straight to **step 5** (open the PR). |
+| `pr-open` | PR exists, not merged | Invoke `/pr-watch <N>` (+ `--clickup-ticket` if a ticket is linked). Stop. |
+| `merged` | PR merged | Suggest `/finish <slug>`. Stop. |
+
+Fresh tasks fall straight through — this guard only fires when prior work is detected.
 
 ## 2 — ClickUp ticket  *(skip entirely if ticket-less)*
 
@@ -162,7 +182,22 @@ clickup_stop_time_tracking()
 
 Invoke `/pr-watch <PR-number>` — append `--clickup-ticket=<ticket-id>` only when a ticket exists.
 
-Announce: *"PR #<N> is open. <Ticket `completed` (CI running). >Handing off to `/pr-watch <PR-number>`."*
+Announce: *"PR #<N> is open. <Ticket `completed` (CI running). >Handing off to `/pr-watch <PR-number>`. Once it reports the PR merged, run `/finish` to close the ticket and clean up."*
+
+---
+
+## Lifecycle controls
+
+`/ship` is the forward pipeline, but a ticket lives through more than one run. These companion skills own the rest of the loop — `/ship` routes to them, never duplicates them:
+
+| Skill | When | Owns |
+|---|---|---|
+| `/pause <ticket\|branch>` | Need to stop mid-ticket | Commits + pushes a `wip:` checkpoint, comments the ticket, stops the timer, **keeps** the worktree. |
+| `/resume <ticket\|branch>` | A ship didn't finish (after `/pause`, or any interruption) | Detects the phase, undoes a `wip:` checkpoint, re-delegates the remainder to `supera-engineer`, then hands back here for the PR. |
+| `/pr-watch <N>` | PR is open | Drives CI green + review threads to resolution. Hands to `/finish` on merge (it no longer closes the ticket itself). |
+| `/finish <ticket\|branch>` | PR is merged | Posts the summary (goal · time · files), sets the ticket `complete`, removes the worktree + local branch. The terminal step. |
+
+The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → building → built → pr-open → merged`. Every skill detects it the same way (git + ClickUp, no state file).
 
 ---
 
@@ -211,7 +246,8 @@ Announce: *"PR #<N> is open. <Ticket `completed` (CI running). >Handing off to `
 | Branch pushed, CI running | `completed` | `ship: pr open` | step 5 |
 | Handoff | `completed` | (timer stopped) | step 6 |
 | CI passing, ready to review | `in review` | — | /pr-watch |
-| PR accepted → merge | `complete` | — | /pr-watch |
+| Paused mid-ticket | `in progress` (unchanged) | (timer stopped) | /pause |
+| PR merged → closed out | `complete` | (timer stopped) | /finish |
 | Unexpected blocker | `blocked` | — | /pr-watch |
 
 ## Rules
@@ -219,6 +255,7 @@ Announce: *"PR #<N> is open. <Ticket `completed` (CI running). >Handing off to `
 - Read `.claude/supera.json` first — never hardcode commands, list IDs, branches, or tags.
 - Ticket-less mode (no `clickup.listId`) is first-class: skip all ClickUp + timer steps, ship purely on git + GitHub.
 - Never commit directly to the base branch.
+- **Idempotent:** run the step 1.5 resume check first — never double-create a worktree or duplicate work; continue from the detected phase. Route the rest of the lifecycle to `/pause`, `/resume`, `/pr-watch`, `/finish`; never duplicate them.
 - Always delegate code + tests to `supera-engineer` (or `nelson` for genuinely parallel work) — `/ship` orchestrates, it does not implement.
 - The engineer self-verifies as pre-flight; **CI is the quality gate** — do not run a full build/test/lint from the orchestrator before pushing.
 - Always `--assignee @me`, never `--reviewer`.

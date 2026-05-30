@@ -33,7 +33,7 @@ BASE=${CONFIG.pr.base:-$(gh pr view $PR --json baseRefName -q .baseRefName)}
 gh pr view $PR --json number,title,state,mergeable,reviewThreads,statusCheckRollup,headRefName,baseRefName
 ```
 Parse `state`:
-- `MERGED` → if `CLICKUP_TICKET` set, move ticket to `complete`; announce; exit.
+- `MERGED` → **do not set the ticket status here** — `/finish` owns the `complete` close + teardown + summary. Announce: *"PR #<N> is merged — run `/finish`<` <ticket-id>` if `CLICKUP_TICKET` set> to close the ticket, summarise, and clean up the worktree."* Exit.
 - `CLOSED` (not merged) → if `CLICKUP_TICKET` set, surface it; announce; exit.
 - Otherwise continue with `statusCheckRollup` (step 3) and `reviewThreads` (step 4).
 
@@ -135,6 +135,7 @@ ScheduleWakeup(delaySeconds=120, reason="CI after code-review fixes on PR #<N>",
 - Read `.claude/supera.json` for the commands used to reproduce failures — don't assume pnpm/npm.
 - Delegate every fix to `supera-engineer` — pr-watch orchestrates, it doesn't implement.
 - Exit and announce when done — merging is the user's decision.
+- On `MERGED`, defer the close to `/finish` — never set the ticket `complete` or remove the worktree here; `/finish` owns the terminal step.
 - Run the code review exactly once per invocation — `--reviewed` prevents repeats.
 - Never push `--force` (only `--force-with-lease` after a rebase).
 - Never implement review comments that are questions / design discussions — surface them.
