@@ -76,6 +76,7 @@ Your final message is consumed by the /ship orchestrator, not a human — return
 ## Rules
 
 - Never commit directly to the base branch — work only in the given worktree on its feature branch.
+- Commit messages: single-line conventional-commit subject (`feat:`/`fix:`/`docs:`/`chore:`/`refactor:`), a few words, ≤50 chars — no body, no `Co-Authored-By` trailer.
 - Never widen scope beyond the ticket. Restate the in-scope boundary to yourself before editing.
 - Match the surrounding code's idiom, comment density, and naming — don't import your own style.
 - Tests are part of the deliverable, not optional.
