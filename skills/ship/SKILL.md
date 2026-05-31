@@ -26,7 +26,7 @@ When ClickUp is configured, this skill tracks time on the ticket between steps v
 
 If empty, ask for a task description.
 
-Derive a branch slug: lowercase, kebab-case, ≤50 chars, special chars stripped, prefixed by type (`feat/`, `fix/`, `docs/`, `refactor/`, `chore/`). Example: `"add payment retry on timeout"` → `feat/add-payment-retry-on-timeout`.
+Derive a branch slug: lowercase, kebab-case, ≤50 chars, special chars stripped, prefixed by type with a **dash, never a slash** (`feat-`, `fix-`, `docs-`, `refactor-`, `chore-`). Example: `"add payment retry on timeout"` → `feat-add-payment-retry-on-timeout`. The slug is used verbatim as both the branch name **and** the worktree folder name, so it must be a single path segment — no `/`. This guarantees one flat folder per worktree (`<WT_DIR>/feat-add-payment-retry-on-timeout`), never a nested `<WT_DIR>/feat/…` subtree.
 
 ## 1.5 — Resume check (idempotency)
 
