@@ -35,10 +35,23 @@
     },
     "clickup": {
       "type": ["object", "null"],
-      "description": "ClickUp wiring. Set to null (or omit) to run ticket-less: ship/pr-watch skip all ClickUp + time-tracking steps and operate purely on git + GitHub.",
+      "description": "ClickUp wiring. Set to null (or omit) to run ticket-less: ship/pr-watch skip all ClickUp steps and operate purely on git + GitHub.",
       "additionalProperties": false,
       "properties": {
-        "listId": { "type": ["string", "null"], "description": "List that holds this repo's backlog. Required for ticket creation." }
+        "listId": { "type": ["string", "null"], "description": "List that holds this repo's backlog. Required for ticket creation." },
+        "statuses": {
+          "type": "object",
+          "description": "Maps supera lifecycle phases to THIS repo's ClickUp status names (statuses are space-specific). Each skill reads CONFIG.clickup.statuses.<key>; omit a key to keep its default. Used only when clickup.listId is set. The human-only verdicts (completed/accepted) are intentionally absent — supera never sets them.",
+          "additionalProperties": false,
+          "properties": {
+            "ready":    { "type": "string", "default": "pending",     "description": "Refined and ready to ship. Set by /refine-ticket." },
+            "building": { "type": "string", "default": "in progress", "description": "Engineer implementing. Set by /ship." },
+            "review":   { "type": "string", "default": "in review",   "description": "PR open: CI + human review. Set by /ship at PR push." },
+            "blocked":  { "type": "string", "default": "blocked",     "description": "Stuck: repeated CI failure or unresolved blocker. Set by /pr-watch." },
+            "rejected": { "type": "string", "default": "rejected",    "description": "PR closed without merge. Terminal. Set by /pr-watch." },
+            "closed":   { "type": "string", "default": "closed",      "description": "Merged, done, archived. Set by /ship on merge." }
+          }
+        }
       }
     },
     "pr": {
