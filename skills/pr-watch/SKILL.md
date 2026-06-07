@@ -10,6 +10,8 @@ Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failur
 
 Read `.claude/supera.json` into `CONFIG` (for `verify.*` commands and `pr.base`/`pr.remote`). If absent, proceed with sensible git/gh defaults and skip any config-derived command (tell the user once that supera isn't initialised here).
 
+Resolve `STATUS` once from `CONFIG.clickup?.statuses ?? {}` with defaults: `STATUS.review = …?.review ?? "in review"`, `STATUS.blocked = …?.blocked ?? "blocked"`, `STATUS.rejected = …?.rejected ?? "rejected"`. Set ticket status only via `STATUS.<key>`.
+
 ## 1 — Resolve the PR
 
 Parse `$ARGUMENTS` (flags in any order):
@@ -33,8 +35,8 @@ BASE=${CONFIG.pr.base:-$(gh pr view $PR --json baseRefName -q .baseRefName)}
 gh pr view $PR --json number,title,state,mergeable,reviewThreads,statusCheckRollup,headRefName,baseRefName
 ```
 Parse `state`:
-- `MERGED` → **do not set the ticket status here** — `/finish` owns the `complete` close + teardown + summary. Announce: *"PR #<N> is merged — run `/finish`<` <ticket-id>` if `CLICKUP_TICKET` set> to close the ticket, summarise, and clean up the worktree."* Exit.
-- `CLOSED` (not merged) → if `CLICKUP_TICKET` set, surface it; announce; exit.
+- `MERGED` → **do not close here** — `/ship` owns the close + teardown + summary. Announce: *"PR #<N> is merged — run `/ship <branch>` to close the ticket, summarise, and clean up the worktree."* Exit.
+- `CLOSED` (not merged) → if `CLICKUP_TICKET` set, `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.rejected)`; surface it; announce; exit.
 - Otherwise continue with `statusCheckRollup` (step 3) and `reviewThreads` (step 4).
 
 ## 3 — CI gate
@@ -46,7 +48,7 @@ ScheduleWakeup(delaySeconds=90, reason="CI still running on PR #<N>", prompt="/p
 ```
 
 ### Passed
-If `CLICKUP_TICKET` set, move ticket to `in review`. Proceed to step 4.
+If `CLICKUP_TICKET` set, ensure the ticket is at `STATUS.review` (`/ship` already set it at push; assert idempotently — only update if it drifted): `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.review)`. Proceed to step 4.
 
 ### Failed
 Identify and read the failing job:
@@ -65,7 +67,7 @@ Classify and fix:
 | Clearly transient (network, runner OOM) | Note it; a re-run is acceptable here only. |
 | Unknown | Show the user; ask for guidance. |
 
-Dispatch `supera-engineer` with the exact log excerpt; wait for the fix. **Track attempts — if the same failure repeats after 2 fix attempts:** if `CLICKUP_TICKET` set move ticket to `blocked`; stop; show the full log; ask for guidance; exit the turn.
+Dispatch `supera-engineer` with the exact log excerpt; wait for the fix. **Track attempts — if the same failure repeats after 2 fix attempts:** if `CLICKUP_TICKET` set, `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.blocked)`; stop; show the full log; ask for guidance; exit the turn.
 
 After a fix:
 ```bash
@@ -135,11 +137,12 @@ ScheduleWakeup(delaySeconds=120, reason="CI after code-review fixes on PR #<N>",
 - Read `.claude/supera.json` for the commands used to reproduce failures — don't assume pnpm/npm.
 - Delegate every fix to `supera-engineer` — pr-watch orchestrates, it doesn't implement.
 - Exit and announce when done — merging is the user's decision.
-- On `MERGED`, defer the close to `/finish` — never set the ticket `complete` or remove the worktree here; `/finish` owns the terminal step.
+- On `MERGED`, defer the close to `/ship` — never close the ticket or remove the worktree here; `/ship` owns the terminal step.
 - Run the code review exactly once per invocation — `--reviewed` prevents repeats.
 - Never push `--force` (only `--force-with-lease` after a rebase).
 - Never implement review comments that are questions / design discussions — surface them.
 - Never `gh run rerun` unless the failure is clearly transient — fix the root cause.
 - Don't spin-poll — always `ScheduleWakeup` and exit the turn while waiting.
 - Always preserve `--reviewed` and `--clickup-ticket` flags when rescheduling.
-- Same CI failure twice after 2 fix attempts → ticket `blocked` (if linked), stop, show the log, ask.
+- Same CI failure twice after 2 fix attempts → ticket `STATUS.blocked` (if linked), stop, show the log, ask.
+- PR closed without merge → ticket `STATUS.rejected` (if linked).
