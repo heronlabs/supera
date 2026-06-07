@@ -43,7 +43,9 @@ Ask the user for the ClickUp list ID that holds this repo's backlog:
 
 > "ClickUp list ID for this repo's backlog? (paste the numeric list id, or say 'none' to run ticket-less — ship/pr-watch will skip ClickUp entirely.)"
 
-`none` → `"clickup": null`. Otherwise `"clickup": { "listId": "<id>" }`.
+`none` → `"clickup": null`. Otherwise emit the list **and** the status defaults so per-space names are discoverable and editable:
+`"clickup": { "listId": "<id>", "statuses": { "ready": "pending", "building": "in progress", "review": "in review", "blocked": "blocked", "rejected": "rejected", "closed": "closed" } }`.
+These defaults validate against `clickup.statuses` in the schema; the user edits a value only if this ClickUp space renamed a status.
 
 ## 4 — Confirm and write
 
@@ -59,7 +61,15 @@ Show the proposed config and ask the user to confirm or tweak the commands (use 
     "lint": "<lint cmd>"
   },
   "worktree": { "dir": ".worktrees", "base": "<default branch>" },
-  "clickup": { "listId": "<id>" },   // or null
+  "clickup": {                       // or null to run ticket-less
+    "listId": "<id>",
+    // Optional per-space status names; defaults shown. Edit only if this ClickUp
+    // space renamed a status. Omit the whole block to keep these defaults.
+    "statuses": {
+      "ready": "pending", "building": "in progress", "review": "in review",
+      "blocked": "blocked", "rejected": "rejected", "closed": "closed"
+    }
+  },
   "pr": { "base": "<default branch>", "remote": "origin" },
   "tags": { "<glob>": "<tag>" },
   "audits": { "supplyChain": false }
@@ -84,4 +94,5 @@ Print the written path and a compact summary of every field. Tell the user:
 - Prefer the repo's real `package.json` scripts over generic templates.
 - Detect the default branch; don't hardcode `main`.
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
+- When a ClickUp list is set, emit the `clickup.statuses` defaults inline so status names are visible and editable per space; omit the block (or any single key) to fall back to the schema defaults.
 - Output must validate against `schema/supera.schema.json`.
