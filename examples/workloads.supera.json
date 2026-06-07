@@ -7,7 +7,17 @@
     "lint": "pnpm lint:check"
   },
   "worktree": { "dir": ".worktrees", "base": "main" },
-  "clickup": { "listId": "901415284967" },
+  "clickup": {
+    "listId": "901415284967",
+    "statuses": {
+      "ready": "pending",
+      "building": "in progress",
+      "review": "in review",
+      "blocked": "blocked",
+      "rejected": "rejected",
+      "closed": "closed"
+    }
+  },
   "pr": { "base": "main", "remote": "origin" },
   "tags": {
     "apps/api-webhook/**": "api-webhook",
