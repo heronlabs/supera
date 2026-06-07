@@ -1,8 +1,8 @@
 # Supera status lifecycle redesign + solo-dev trim
 
 **Date:** 2026-06-07
-**Status:** Draft — awaiting author review
-**Scope:** `schema/supera.schema.json`, `skills/{ship,pr-watch,refine-ticket,pause}`, deletion of `skills/{resume,finish}`, `examples/*`, new CI consistency gate, version bump.
+**Status:** Approved — all decisions locked (O1/O2 resolved)
+**Scope:** `schema/supera.schema.json`, `skills/{ship,pr-watch,refine-ticket}`, deletion of `skills/{resume,finish,pause}`, `examples/*`, new CI consistency gate, version bump.
 
 ---
 
@@ -37,7 +37,8 @@ Assignee assignment and ClickUp time-tracking both throw API errors and add no v
 | D5 | `REJECTED` is terminal = ticket closed (PR closed without merge). |
 | D6 | **Drop assignee** entirely (errors, no value solo). |
 | D7 | **Drop ClickUp time-tracking API** entirely. Time is derived from git and posted as a **comment**. |
-| D8 | Trim: fold `/resume` and `/finish` into idempotent `/ship`; add a schema↔skill CI gate. (`/pause` — see Open Decision O1.) |
+| D8 | Trim: fold `/resume`, `/finish`, **and `/pause`** into idempotent `/ship` (resolved O1); add a schema↔skill CI gate. |
+| D9 | Close-out tears down worktree + branch **silently**, no confirm (resolved O2). |
 
 ---
 
@@ -129,7 +130,8 @@ Every ClickUp-touching skill loads `STATUS = CONFIG.clickup?.statuses ?? {}` in 
   | `pr-open` | PR exists, not merged | invoke `/pr-watch <N>` |
   | `merged` | PR merged | **run the close-out** (§5.5) |
 - **Step 6 announce:** drop "run `/finish`"; reflect that `/ship` re-run on a merged PR closes out.
-- **Lifecycle-controls table + step-1.5 prose:** remove `/resume` and `/finish` rows; keep `/pr-watch` and `/pause` (per O1).
+- **`pause` sub-command:** `/ship pause [ticket/branch]` runs the checkpoint flow absorbed from `/pause` (§5.4) and stops. This is an explicit verb, not a detected phase — handled before the step-1.5 routing.
+- **Lifecycle-controls table + step-1.5 prose:** remove `/resume`, `/finish`, and `/pause` rows; add the `/ship pause` sub-command; keep `/pr-watch`.
 - **Ticket-lifecycle-reference table (ship:240-251):** rewrite per §3.2; **delete the "Time entry" column.**
 - **Rules:** remove timer/assignee rules; keep "CI is the gate", "never commit to base", idempotency.
 
@@ -140,9 +142,11 @@ Every ClickUp-touching skill loads `STATUS = CONFIG.clickup?.statuses ?? {}` in 
 - 2× same-failure escalation (pr-watch:68) → `STATUS.blocked`.
 - `MERGED` branch (pr-watch:36) → hand to **`/ship <branch>`** (which now closes out), not `/finish`.
 
-### 5.4 `pause` *(kept — see O1)*
-- Load `STATUS`. Drop the timer (`clickup_get_current_time_entry` / `clickup_stop_time_tracking`, pause:64-68). Leave status `in progress` (= `STATUS.building`).
-- Replace "resume with `/resume`" copy → "resume with `/ship`" (resume is folded in).
+### 5.4 `pause` *(folded into `/ship pause` — resolved O1)*
+The checkpoint logic moves into `/ship`'s `pause` sub-command; `skills/pause/SKILL.md` is deleted (§5.6). Behaviour absorbed:
+- Stage WIP as a `wip:` commit (body = `nextUp` for resume recovery). Push so the checkpoint survives a machine switch.
+- Drop the timer (`clickup_get_current_time_entry` / `clickup_stop_time_tracking`, pause:64-68). Leave status `in progress` (= `STATUS.building`).
+- Resume copy points to `/ship` (resume is folded into the step-1.5 `building` phase).
 - Optional: post elapsed-so-far as a comment instead of stopping a timer (git first-commit → now). Low priority.
 
 ### 5.5 Close-out (absorbed from `finish` into `ship` merged path)
@@ -150,12 +154,13 @@ On `merged`:
 1. Build summary — goal (ticket title / branch intent), files changed + commit count, **time from git** (first commit author-date → `mergedAt`). No `clickup_get_task_time_entries`.
 2. `clickup_create_task_comment` with the summary block (incl. `⏱ ~Xh (sha hh:mm → merged hh:mm)`).
 3. `clickup_update_task(status=STATUS.closed)`.
-4. Tear down: `git worktree remove <WT_PATH>`, `git branch -D <BRANCH>` — **confirm before teardown** (it's destructive and may run unattended). Never touch `BASE`.
+4. Tear down **silently** (resolved O2): `git worktree remove <WT_PATH>`, `git branch -D <BRANCH>` — no confirm, matches old `/finish`. Never touch `BASE`.
 5. Print the summary to the terminal (ticket-less prints only).
 
 ### 5.6 Deletions
-- Delete `skills/resume/SKILL.md` (folded into `/ship` step 1.5).
+- Delete `skills/resume/SKILL.md` (folded into `/ship` step-1.5 `building` phase).
 - Delete `skills/finish/SKILL.md` (folded into `/ship` merged path, §5.5).
+- Delete `skills/pause/SKILL.md` (folded into `/ship pause` sub-command, §5.4).
 - Update CLAUDE.md skill inventory + any cross-references.
 
 ---
@@ -167,7 +172,7 @@ Root cause of the shipped bug: nothing connects schema ↔ board ↔ skills; the
 1. **Version sync:** `plugin.json` version == `marketplace.json` version.
 2. **No raw status literals:** grep skills for the old hardcoded strings (`"in progress"`, `"completed"`, `"in review"`, `"complete"`, `"blocked"`, etc. in `clickup_update_task(... status=...)` position) — fail if any appear outside a `STATUS.` reference.
 3. **Schema keys referenced exist:** every `STATUS.<key>` used in a skill has a matching property in the schema's `clickup.statuses`.
-4. **Dead-skill references:** grep for `/resume`/`/finish` mentions in skills after deletion — fail if any remain.
+4. **Dead-skill references:** grep for `/resume`, `/finish`, `/pause` mentions in skills after deletion — fail if any remain (allow `/ship pause` as the replacement verb).
 
 Bash + `jq` + `grep`; no node toolchain needed.
 
@@ -180,9 +185,9 @@ Bash + `jq` + `grep`; no node toolchain needed.
 
 ---
 
-## 8. Open decisions (resolve at review gate)
-- **O1 — `/pause`:** the chosen option said "fold pause/resume/finish into `/ship`." Recommendation: **keep `/pause` standalone** — it is the one opposite-intent verb ("stop now" vs ship's "go"), and folding it as `/ship pause` muddies the command. Fold only `/resume` + `/finish`. Confirm: keep `/pause`, or fold it too as `/ship pause`?
-- **O2 — teardown confirm:** §5.5 step 4 adds a confirm before worktree/branch deletion. Confirm that's wanted (the old `/finish` deleted without asking).
+## 8. Open decisions — RESOLVED at review gate
+- **O1 — `/pause`:** ✅ Fold all three. `/pause`, `/resume`, `/finish` all collapse into `/ship` (D8). `/ship pause` is the new checkpoint verb.
+- **O2 — teardown confirm:** ✅ Delete silently, no confirm (D9). Matches old `/finish`.
 
 ---
 
