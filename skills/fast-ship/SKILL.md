@@ -4,7 +4,7 @@ description: "The fast path for small changes: ship straight to the base branch 
 allowed-tools: Bash, Read, Glob, Grep, Agent
 ---
 
-The deliberate fast path opposite of `/ship`. For a **small** change that doesn't merit a worktree, a PR, or a ticket — ship it straight to the base branch. No phase ladder, no `/pause` / `/resume` / `/pr-watch` / `/finish`; this skill runs start to finish in one shot.
+The deliberate fast path opposite of `/ship`. For a **small** change that doesn't merit a worktree, a PR, or a ticket — ship it straight to the base branch. No phase ladder, no `/ship` orchestration, no `/pr-watch`; this skill runs start to finish in one shot.
 
 `fast-ship` is the **one** skill allowed to commit directly to the base branch — every other skill is forbidden to. Treat that power with care: there is no PR and no CI gate to catch a mistake, so the guards in step 2 are load-bearing.
 
