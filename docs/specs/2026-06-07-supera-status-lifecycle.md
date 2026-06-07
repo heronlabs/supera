@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-07
 **Status:** Approved — all decisions locked (O1/O2 resolved)
-**Scope:** `schema/supera.schema.json`, `skills/{ship,pr-watch,refine-ticket}`, deletion of `skills/{resume,finish,pause}`, `examples/*`, new CI consistency gate, version bump.
+**Scope:** `schema/supera.schema.json`, `skills/{ship,pr-watch,refine-ticket,supera-init}`, deletion of `skills/{resume,finish,pause}`, `examples/*`, new CI consistency gate, version bump.
 
 ---
 
@@ -150,12 +150,15 @@ The checkpoint logic moves into `/ship`'s `pause` sub-command; `skills/pause/SKI
 - Optional: post elapsed-so-far as a comment instead of stopping a timer (git first-commit → now). Low priority.
 
 ### 5.5 Close-out (absorbed from `finish` into `ship` merged path)
-On `merged`:
-1. Build summary — goal (ticket title / branch intent), files changed + commit count, **time from git** (first commit author-date → `mergedAt`). No `clickup_get_task_time_entries`.
-2. `clickup_create_task_comment` with the summary block (incl. `⏱ ~Xh (sha hh:mm → merged hh:mm)`).
+The worktree **may already be gone** (close-out partially ran, or it was paused/removed on another machine), so the close-out must not depend on a live worktree. Phase routing (step 1.5) probes the PR state **first** — `pr-open`/`merged` route off `gh pr list` from the repo root, so a removed worktree never blocks close-out. On `merged`:
+1. Build summary entirely from the merged PR (no `git -C <WT_PATH>`): goal (ticket title / branch intent); files + commit count + first-commit time + merge time from `gh pr view <N> --json files,commits,mergedAt`. **Time from git** = first-commit `committedDate` → `mergedAt`. No `clickup_get_task_time_entries`.
+2. `clickup_create_task_comment` with the summary block (incl. `⏱ ~T (first hh:mm → merged hh:mm)`).
 3. `clickup_update_task(status=STATUS.closed)`.
-4. Tear down **silently** (resolved O2): `git worktree remove <WT_PATH>`, `git branch -D <BRANCH>` — no confirm, matches old `/finish`. Never touch `BASE`.
+4. Tear down **silently** (resolved O2), each step existence-guarded so a missing worktree/branch is a no-op, not an error: `git worktree list | grep -q <path> && git worktree remove <WT_PATH>`, `git rev-parse --verify --quiet <BRANCH> && git branch -D <BRANCH>` — no confirm, matches old `/finish`. Never touch `BASE`.
 5. Print the summary to the terminal (ticket-less prints only).
+
+### 5.7 `supera-init` (emit `statuses` defaults)
+Defaults cover behaviour, but a freshly-initialised repo never surfaces the status map — it's only discoverable by reading the schema. When a ClickUp list is resolved, `supera-init` writes the `clickup.statuses` defaults inline (commented) so the names are visible and editable per space. Omitting the block (or any key) falls back to the schema defaults. Gate-safe: the emitted JSON uses `"statuses": {...}`, not a `status="..."` literal, and contains no `STATUS.` token.
 
 ### 5.6 Deletions
 - Delete `skills/resume/SKILL.md` (folded into `/ship` step-1.5 `building` phase).
@@ -167,21 +170,23 @@ On `merged`:
 
 ## 6. CI consistency gate (new)
 
-Root cause of the shipped bug: nothing connects schema ↔ board ↔ skills; the invariant "schema and skills stay in sync" is enforced by discipline, not tooling. Add `scripts/check-consistency.sh` run by `.github/workflows/consistency.yml` on PRs to this repo:
+Root cause of the shipped bug: nothing connects schema ↔ board ↔ skills; the invariant "schema and skills stay in sync" is enforced by discipline, not tooling. Add `scripts/check-consistency.sh` run by `.github/workflows/consistency.yml` on PRs to this repo. It scans **both `skills/` and `agents/`** (every `*.md`) so a status literal or dead reference can't hide in an agent body or in supera-init's emitted config:
 
 1. **Version sync:** `plugin.json` version == `marketplace.json` version.
-2. **No raw status literals:** grep skills for the old hardcoded strings (`"in progress"`, `"completed"`, `"in review"`, `"complete"`, `"blocked"`, etc. in `clickup_update_task(... status=...)` position) — fail if any appear outside a `STATUS.` reference.
-3. **Schema keys referenced exist:** every `STATUS.<key>` used in a skill has a matching property in the schema's `clickup.statuses`.
-4. **Dead-skill references:** grep for `/resume`, `/finish`, `/pause` mentions in skills after deletion — fail if any remain (allow `/ship pause` as the replacement verb).
+2. **No raw status literals:** grep for `status="..."` in `clickup_update_task(... status=...)` position across `skills/` + `agents/` — fail if any appear outside a `STATUS.` reference.
+3. **Schema keys referenced exist:** every `STATUS.<key>` used has a matching property in the schema's `clickup.statuses`.
+4. **Dead-skill references:** grep for `/resume`, `/finish`, `/pause` mentions across `skills/` + `agents/` after deletion — fail if any remain (allow `/ship pause` as the replacement verb).
 
 Bash + `jq` + `grep`; no node toolchain needed.
 
 ---
 
-## 7. Out of scope
+## 7. Out of scope / accepted non-goals
 - Reducing the 9 ClickUp board statuses to 4 (board stays; automation just drives a subset). Revisit if the board proves noisy.
-- `fast-ship`, `supera-init`, `supera-engineer`, the supply-chain auditor — untouched.
-- Any ClickUp automation rules (auto-close triggers) — supera does the closing.
+- `fast-ship`, `supera-engineer`, the supply-chain auditor — untouched. (`supera-init` **is** touched, §5.7.)
+- **`COMPLETED` / `ACCEPTED` stay human-only.** No skill ever sets them — they sit in the board's Done group for a person to mark. Automating them would be theater: supera can't judge whether work is genuinely accepted. Deliberately absent from `clickup.statuses`.
+- **No ClickUp-side auto-close.** Closing is driven by `/ship` on a merged PR; there is no ClickUp automation/webhook that closes a ticket when a PR merges out-of-band. If a PR merges without `/ship`, re-run `/ship <branch>` (merged-phase close-out) or set `closed` by hand. A webhook is a separate infra-level project.
+- **Meta-over-product:** this improves the *plugin's* status discipline, not the products it ships — intrinsic to a tooling repo.
 
 ---
 
