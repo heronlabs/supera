@@ -1,6 +1,6 @@
 ---
 name: refine-ticket
-description: "Refine a draft ClickUp ticket: rename to a friendly human title, enforce the concise template, fold subtasks, fill tags / assignee / priority / due date from .claude/supera.json, mirror the title onto any open PR, and start time tracking so /ship can pick it up clean."
+description: "Refine a draft ClickUp ticket: rename to a friendly human title, enforce the concise template, fold subtasks, fill tags / priority / due date from .claude/supera.json, mirror the title onto any open PR, and move it to the 'ready' status so /ship can pick it up clean."
 allowed-tools: Bash, Read  # also requires gh CLI and clickup_* MCP tools
 ---
 
@@ -9,6 +9,8 @@ Refine a draft ClickUp ticket so it matches the concise template and carries eve
 ## 0 — Load config
 
 Read `.claude/supera.json` into `CONFIG` for the `tags` taxonomy. If absent, skip tag derivation (still refine title/body/fields).
+
+Resolve `STATUS` once from `CONFIG.clickup?.statuses ?? {}` with defaults: `STATUS.ready = …?.ready ?? "pending"` (the only status this skill sets).
 
 ## 1 — Resolve the ticket
 
@@ -64,15 +66,14 @@ If the body already follows the template and there are no subtasks, skip this st
 
 | Field | How to derive |
 |---|---|
-| `assignees` | `me` unless the text names someone else |
 | `tags` | Match path hints in the body against `CONFIG.tags`; apply every match |
 | `priority` | `urgent` if incident/outage/blocking · `high` if release blocker · `low` if cleanup/nice-to-have · else `normal` |
 | `due_date` | Only if the body has an explicit date or "by <day>"; convert relative → absolute `YYYY-MM-DD` using today. Never guess |
-| `status` | `open` if absent |
+| `status` | `STATUS.ready` — refining is what makes a ticket ready to ship |
 
 Apply non-tag fields in one call:
 ```
-clickup_update_task(task_id="<id>", status="open", assignees=["me"], priority="<priority>", due_date="<YYYY-MM-DD>")
+clickup_update_task(task_id="<id>", status=STATUS.ready, priority="<priority>", due_date="<YYYY-MM-DD>")
 ```
 Tags need one call each:
 ```
@@ -80,21 +81,9 @@ clickup_add_tag_to_task(task_id="<id>", tag_name="<tag>")
 ```
 If a tag call fails (`The tag "X" does not exist in the space.` or any error), capture it in `missing_tags` and continue — never abort the loop. Emit them under `tags-missing:` in the report (user creates them in the ClickUp UI).
 
-## 5 — Start time tracking
+## 5 — Report
 
-```
-clickup_get_current_time_entry()
-clickup_stop_time_tracking()                                                # only if a timer runs on a different task
-clickup_start_time_tracking(task_id="<id>", description="refine: ticket prep")
-```
-
-## 6 — Report
-
-One line per applied change (skip non-applicable lines): `title`, `body`, `subtasks-folded`, `assignees`, `tags`, `tags-missing`, `priority`, `due_date`, `pr-title-mirror`, `pr-title-mismatch`, `timer`. Then stop the timer (`/ship` starts its own):
-```
-clickup_stop_time_tracking()
-```
-End — the user invokes `/ship <id>` next.
+One line per applied change (skip non-applicable lines): `title`, `body`, `subtasks-folded`, `tags`, `tags-missing`, `priority`, `due_date`, `status`, `pr-title-mirror`, `pr-title-mismatch`. End — the user invokes `/ship <id>` next.
 
 ## Rules
 
@@ -103,4 +92,4 @@ End — the user invokes `/ship <id>` next.
 - **Subtasks:** fold every subtask's `## Outcome` into the parent and delete them — never leave a parent/subtask tree.
 - **Missing tags:** never swallow tag errors silently — emit under `tags-missing:`.
 - **Single unit:** one ticket → one branch → one PR. Leave the ticket self-contained.
-- Never invent dates. One timer per ticket — stop any prior timer first. This skill never moves status past `open` — `/ship` owns the lifecycle.
+- Never invent dates. This skill moves a refined draft to `STATUS.ready` (`pending`); `/ship` owns the rest of the lifecycle. No assignee, no time-tracking.
