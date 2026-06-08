@@ -232,8 +232,8 @@ clickup_update_task(task_id="<TICKET>", status=STATUS.closed)
 ```
 3. **Tear down the workspace** (silently — no confirm; each step is guarded so a missing worktree/branch is a no-op, not an error):
 ```bash
-git worktree list | grep -q "<WT_DIR>/<slug>" && git worktree remove <WT_PATH>   # --force only if it refuses on an unclean tree
-git rev-parse --verify --quiet <BRANCH> >/dev/null && git branch -D <BRANCH>      # delete local branch if present
+[ "<BRANCH>" != "<BASE>" ] && git worktree list | grep -q "<WT_DIR>/<slug>" && git worktree remove <WT_PATH>   # --force only if it refuses on an unclean tree
+[ "<BRANCH>" != "<BASE>" ] && git rev-parse --verify --quiet <BRANCH> >/dev/null && git branch -D <BRANCH>      # never delete BASE; delete the feature branch if present
 ```
    Leave the remote branch alone (GitHub deletes it on merge if configured). **Never** remove `BASE` or its worktree.
 4. **Report:** print the summary to the terminal (ticket-less prints only) and confirm: *"Ticket closed, worktree removed, branch `<BRANCH>` deleted locally."* The lifecycle is closed.

@@ -9,8 +9,9 @@ The orchestration lives here. Anything repo-specific (build/test/lint commands, 
 | Skill | What it does |
 |---|---|
 | `/supera-init` | Detect a repo's stack and write its `.claude/supera.json`. Run once per repo. |
-| `/ship [task or ticket ID]` | Full lifecycle: ClickUp ticket → worktree → delegate to `supera-engineer` → PR → ticket completed → hand off to `/pr-watch`. Time-tracked per phase. |
-| `/refine-ticket [ticket ID]` | Reformat a draft ClickUp ticket to the concise template; fill tags/assignee/priority/due date; start the timer. |
+| `/ship [task or ticket ID]` | Full lifecycle: ClickUp ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. |
+| `/fast-ship [description]` | The fast path: ship a small change straight to base — no worktree, no PR, no ticket. The one skill allowed to commit to base. |
+| `/refine-ticket [ticket ID]` | Reformat a draft ClickUp ticket to the concise template; fill tags/priority/due date and set it `ready`. |
 | `/pr-watch [PR#]` | Babysit a PR: monitor CI, fix failures, resolve review threads, one code-review cycle — exit when green, synced, resolved. |
 
 | Agent | Role |
@@ -61,7 +62,7 @@ Commit `.claude/supera.json` so the config travels with the repo.
 }
 ```
 
-Set `clickup` to `null` to run **ticket-less** — `/ship` and `/pr-watch` then skip all ClickUp + time-tracking and operate purely on git + GitHub.
+Set `clickup` to `null` to run **ticket-less** — `/ship` and `/pr-watch` then skip all ClickUp status updates and operate purely on git + GitHub. Time spent is derived from git (first commit → merge), not a time-tracking API.
 
 ## Prerequisites
 
