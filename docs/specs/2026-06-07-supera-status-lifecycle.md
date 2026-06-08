@@ -1,7 +1,7 @@
 # Supera status lifecycle redesign + solo-dev trim
 
 **Date:** 2026-06-07
-**Status:** Approved — all decisions locked (O1/O2 resolved)
+**Status:** ✅ IMPLEMENTED in v0.4.0 (commits `c7e5e21`→`36f1876`; all 13 plan tasks shipped). All decisions locked (O1/O2 resolved). Plan: [`../plans/2026-06-07-supera-status-lifecycle.md`](../plans/2026-06-07-supera-status-lifecycle.md).
 **Scope:** `schema/supera.schema.json`, `skills/{ship,pr-watch,refine-ticket,supera-init}`, deletion of `skills/{resume,finish,pause}`, `examples/*`, new CI consistency gate, version bump.
 
 ---

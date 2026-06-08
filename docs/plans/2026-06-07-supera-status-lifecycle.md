@@ -1,5 +1,7 @@
 # Supera Status Lifecycle + Solo-Dev Trim Implementation Plan
 
+**Status:** ✅ DONE — all 13 tasks shipped in v0.4.0 (commits `c7e5e21`→`36f1876`). Retained as an execution record; do not re-run. Spec: [`../specs/2026-06-07-supera-status-lifecycle.md`](../specs/2026-06-07-supera-status-lifecycle.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix the broken ClickUp status order in supera's ship lifecycle, make status names config-driven, fold `/resume` + `/finish` + `/pause` into an idempotent `/ship`, drop assignee + ClickUp time-tracking, and add a CI gate that keeps schema↔skills↔manifest in sync.

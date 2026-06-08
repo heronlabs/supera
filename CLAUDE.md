@@ -12,7 +12,7 @@ This repo **is** a Claude Code plugin. It ships skills + agents that run in *oth
 | `agents/` | `supera-engineer` (the implementer), `supera-supply-chain-auditor`. |
 | `schema/supera.schema.json` | The per-repo `.claude/supera.json` contract. **Source of truth** — update it before changing what skills read. |
 | `examples/` | Sample `.claude/supera.json` files per stack. |
-| `docs/specs/` | Design records. |
+| `docs/` | **[`docs/README.md`](docs/README.md) is the index + single source of truth** for plan/spec status — read it first. `docs/specs/` = design records (what/why); `docs/plans/` = implementation plans (how). A feature pairs one spec + one plan; the index maps them and marks shipped/superseded/deferred. |
 
 ## Core invariants — do not break
 

@@ -1,7 +1,7 @@
 # Supera — lifecycle skills: pause / resume / finish
 
 **Date:** 2026-05-30
-**Status:** Proposed (design record; no code change in this revision)
+**Status:** ⚠️ SUPERSEDED by [`2026-06-07-supera-status-lifecycle.md`](2026-06-07-supera-status-lifecycle.md). This record proposed `/pause`, `/resume`, `/finish` as three separate skills. The redesign folded all three into an idempotent `/ship` (+ `/ship pause`) and **deleted** the standalone skills (shipped v0.4.0, commit `603d924`). Kept for design-history only — do not implement from this doc.
 
 ## Problem
 
