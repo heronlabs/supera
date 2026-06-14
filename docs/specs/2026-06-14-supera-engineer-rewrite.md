@@ -1,7 +1,7 @@
 # supera-engineer rewrite + host guardrails
 
 **Date:** 2026-06-14
-**Status:** 🔲 Proposed — awaiting review. Plan: _(none yet)_.
+**Status:** ✅ Shipped v0.5.0 (commits `e3c5c7e`→`2a7c5e4`). Plan: [`../plans/2026-06-14-supera-engineer-rewrite.md`](../plans/2026-06-14-supera-engineer-rewrite.md).
 **Scope:**
 - **In repo (the PR):** `agents/supera-engineer.md` (rewrite), `skills/supera-init/SKILL.md` (write a guardrail block into the target repo's `CLAUDE.md`), new `docs/recommended-host-config.md`, `docs/README.md` (index row), `version` bump in `plugin.json` + `marketplace.json`.
 - **Out of repo (personal recipes the user applies on his machine, documented in the new docs page):** global `~/.claude/CLAUDE.md` guardrail block; a `PostToolUse` auto-format hook in `.claude/settings.json`; optional Context7 MCP install.
