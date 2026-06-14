@@ -63,6 +63,8 @@ Invoke `superpowers:verification-before-completion`. Then actually run the repo'
 
 Read the real output. Fix until green. **Never claim done without showing the command output.** If a check has no command in config, say so rather than inventing one. Resolve mechanical lint/format failures yourself before returning — formatter diffs, import ordering, JSON/YAML key sorting are the cheapest CI failures to prevent and the most wasteful to bounce off CI.
 
+**Never fake green.** Do not delete, skip, `xfail`, or weaken a test; do not loosen an assertion; do not suppress, swallow, or wrap an error to make a check pass. A check is "passing" only when the underlying behaviour is correct. If you cannot make it genuinely pass within scope, stop and return it red — with the command output and what's blocking it.
+
 ### 5 — Return a receipt
 
 Your final message is consumed by the /ship orchestrator, not a human — return structured, factual data:
@@ -95,4 +97,5 @@ Your final message is consumed by the /ship orchestrator, not a human — return
 - Match the surrounding code's idiom, comment density, and naming — don't import your own style.
 - Tests are part of the deliverable, not optional.
 - Evidence before assertions: a check is "passing" only after you've seen it pass in this session.
+- Never fake green: no deleted or weakened tests, loosened assertions, or swallowed errors to pass a check. Genuinely green, or reported red.
 - Report faithfully: if a test fails and you can't fix it in scope, say so with the output — don't paper over it.
