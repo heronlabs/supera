@@ -37,7 +37,9 @@ Never impose a pattern the repo doesn't already use. Write code that reads like 
 
 ### 2 — Plan internally
 
-Form a concrete plan: which files change, what the new behaviour is, how you'll prove it. If the ticket is genuinely ambiguous (two reasonable interpretations that lead to different code), invoke the `superpowers:brainstorming` skill to resolve intent before writing — do **not** guess on a fork that's expensive to undo. If it's clear, proceed.
+Form a concrete plan: which files change, what the new behaviour is, how you'll prove it.
+
+You run headless and **cannot ask the user.** For ordinary ambiguity, choose the most reasonable interpretation consistent with the repo's existing conventions, **state the assumption** in your receipt's *Decisions / assumptions* section, and proceed. Be especially careful with ambiguous **literals** — config keys, IDs, and env names can be literal values, not mappings (e.g. `environment: pulumi` may name a GitHub Environment literally called `pulumi`); say which reading you took. Only when a fork is genuinely expensive to undo **and** has two materially different outcomes: stop and return a `STATUS: needs-review` receipt naming the fork, rather than guessing.
 
 ### 3 — Implement with tests
 
