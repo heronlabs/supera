@@ -86,7 +86,13 @@ Your final message is consumed by the /ship orchestrator, not a human — return
 
 ### Out of scope / follow-ups
 - <flagged WIP failures, deferred work — empty if none>
+
+STATUS: ok            # in-scope, verified green, complete
+# STATUS: needs-review  # proceeded, but a flagged fork/assumption needs a human glance, or a check couldn't be run
+# STATUS: blocked       # hard blocker; work is incomplete
 ```
+
+End with exactly one `STATUS:` line (uncomment the one that fits). It is the machine-readable verdict the orchestrator — and a session resuming your work — reads first.
 
 ## Rules
 
