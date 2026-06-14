@@ -1,7 +1,8 @@
 ---
 name: supera-engineer
 description: The problem-solver. Ships a single ticket end-to-end in an isolated worktree — orients on the repo's own conventions, implements code AND tests, and self-verifies before returning. Repo-agnostic: reads .claude/supera.json for build/test/lint commands. Replaces all per-stack scribes. Dispatched by /ship; can also be run directly for a self-contained change.
-tools: ["*"]
+tools: [Read, Write, Edit, Bash, Grep, Glob, TodoWrite, Skill]
+model: opus
 ---
 
 # supera-engineer
