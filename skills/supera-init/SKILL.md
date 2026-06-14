@@ -43,7 +43,7 @@ Ask the user for the ClickUp list ID that holds this repo's backlog:
 
 > "ClickUp list ID for this repo's backlog? (paste the numeric list id, or say 'none' to run ticket-less — ship/pr-watch will skip ClickUp entirely.)"
 
-The list id is the number inside the list URL's `.../l/<view>-<listId>-<n>` (or `.../li/<listId>`) segment — **not** the workspace/team id in the URL prefix. Pasting the team id yields a "Team not authorized" failure on the first ticket call; if the user pastes a workspace-length id by mistake, ask them to open the list and copy the id from its own URL.
+The list id is the number inside the list URL's `.../l/<view>-<listId>-<n>` (or `.../li/<listId>`) segment — **not** the workspace/team id in the URL prefix. The team id instead yields a "Team not authorized" failure on the first ticket call; if that happens, have the user reopen the list and copy the id from its own URL.
 
 `none` → `"clickup": null`. Otherwise emit the list **and** the status defaults so per-space names are discoverable and editable:
 `"clickup": { "listId": "<id>", "statuses": { "ready": "pending", "building": "in progress", "review": "in review", "blocked": "blocked", "rejected": "rejected", "closed": "closed" } }`.
@@ -83,7 +83,7 @@ Detect the default branch instead of assuming `main`:
 git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
 
-Enable `audits.supplyChain` if the repo has a lockfile.
+Set `audits.supplyChain` to `true` if the repo has a lockfile, else `false`.
 
 ## 5 — Report
 

@@ -28,7 +28,7 @@ For JS workspaces, also read the monorepo config: `pnpm-workspace.yaml` (catalog
 Run the manager's audit. For each vulnerability:
 
 - Check whether a matching override/resolution already exists.
-- If not, and the patched range is real (not `<0.0.0`): add an override (pnpm/npm: `overrides`; yarn: `resolutions`; cargo: bump the dependency). Then re-install and re-run the audit to confirm the fix landed.
+- If not, and a patched range exists (not `<0.0.0`): add an override (pnpm/npm: `overrides`; yarn: `resolutions`; cargo: bump the dependency). Then re-install and re-run the audit to confirm the fix landed.
 - If the patched range is `<0.0.0` or none exists: document as **UNFIXABLE** and skip.
 - **Respect load-bearing pins.** Before changing any version, check the repo's CLAUDE.md / `.guides/` for documented "do not bump" pins and leave those alone — flag them instead.
 
@@ -51,4 +51,4 @@ Produce a prioritized, file:line-accurate report. Order: **CVEs applied → CVEs
 - Report-only except safe CVE overrides for the detected manager — never bump majors or refactor deps autonomously.
 - Never change a version the repo documents as a load-bearing pin — flag it.
 - Never print a full secret value — file:line + pattern name only.
-- If a tool or network probe fails, degrade gracefully: note the gap, continue the rest of the audit.
+- If a tool or network probe fails, degrade gracefully: note the gap, continue the audit.

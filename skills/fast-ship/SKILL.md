@@ -61,7 +61,7 @@ git add -A
 git commit -m "<type>: <short summary, few words, ≤50 chars>"
 ```
 
-`<type>` is the conventional-commit prefix matching the change (`fix`, `docs`, `chore`, `feat`, `refactor`). Subject only — no body, no `Co-Authored-By`.
+`<type>` is the conventional-commit prefix matching the change (`fix`, `docs`, `chore`, `feat`, `refactor`).
 
 ## 5 — Push to base
 

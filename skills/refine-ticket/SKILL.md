@@ -4,7 +4,7 @@ description: "Refine a draft ClickUp ticket: rename to a friendly human title, e
 allowed-tools: Bash, Read  # also requires gh CLI and clickup_* MCP tools
 ---
 
-Refine a draft ClickUp ticket so it matches the concise template and carries every field `/ship` needs to start work without further input. Repo-agnostic: the tag taxonomy comes from this repo's `.claude/supera.json`.
+Refine a draft ClickUp ticket so it matches the concise template and carries every field `/ship` needs to start work. Repo-agnostic: the tag taxonomy comes from this repo's `.claude/supera.json`.
 
 ## 0 — Load config
 
@@ -30,7 +30,7 @@ Reject and rewrite any title with: a conventional-commit prefix (`feat(api): …
 Good: `Add invoices and transfers to the domain model` · `Adopt k6 for load testing`.
 
 Mirror the new title onto any open PR linked to this ticket:
-1. `gh pr list --search "<ticket-id>" --state open --json number,title,body`; also scan PR bodies for `https://app.clickup.com/t/<id>`.
+1. `gh pr list --search "<ticket-id>" --state open --json number,title,body`; also scan PR bodies for `https://app.clickup.com/t/<id>`. Dedupe both result sets by PR number — the same PR often matches both.
 2. Exactly one match → `gh pr edit <num> --title "<new title>"`.
 3. Zero → skip silently (`/ship` opens the PR later with the ticket title).
 4. Multiple → list under `pr-title-mismatch:` in the report, leave untouched.

@@ -1,7 +1,7 @@
 ---
 name: pr-watch
 description: "Repo-agnostic PR babysitter: monitors CI, fixes failures via supera-engineer, addresses review comments, runs one code-review cycle, and exits when the branch is green, synced with the base, and all threads resolved. Keeps the ClickUp ticket in sync when one is linked."
-allowed-tools: Bash, Read, Glob, Grep, Agent
+allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI and clickup_* MCP tools
 ---
 
 Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failures, address review comments, run one code review — exit when everything is green and resolved. Reads `.claude/supera.json` for the install/build/test/lint commands used to reproduce failures. Keeps the ClickUp ticket in sync when `--clickup-ticket` is supplied.
@@ -48,7 +48,7 @@ ScheduleWakeup(delaySeconds=90, reason="CI still running on PR #<N>", prompt="/p
 ```
 
 ### Passed
-If `CLICKUP_TICKET` set, ensure the ticket is at `STATUS.review` (`/ship` already set it at push; assert idempotently — only update if it drifted): `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.review)`. Proceed to step 4.
+If `CLICKUP_TICKET` set, assert the ticket is at `STATUS.review` — `/ship` already set it at push, so only update if it drifted: `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.review)`. Proceed to step 4.
 
 ### Failed
 Identify and read the failing job:
@@ -88,14 +88,12 @@ For each unresolved thread:
 2. Classify:
    - **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` with the file + the request.
    - **Question / design discussion** → do NOT implement; surface to the user.
-3. After implementing, push and reply:
-```bash
-gh pr review $PR --comment --body "Addressed in <commit-sha>: <one-line summary>"
-```
-Then push, reschedule (preserve flags), exit:
+3. After implementing, push first, then reply referencing the pushed commit:
 ```bash
 git push <remote> $BRANCH
+gh pr review $PR --comment --body "Addressed in <commit-sha>: <one-line summary>"
 ```
+Reschedule (preserve flags) and exit:
 ```
 ScheduleWakeup(delaySeconds=120, reason="CI after addressing review on PR #<N>", prompt="/pr-watch <N> [flags]")
 ```

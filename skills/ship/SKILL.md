@@ -1,7 +1,7 @@
 ---
 name: ship
 description: "Repo-agnostic full-lifecycle orchestrator: ClickUp ticket → worktree → plan → delegate to supera-engineer (code + tests) → self-verified → PR → ticket 'in review' → /pr-watch, and on a merged PR closes the ticket + tears down. Idempotent: re-run to resume interrupted work or close out; `/ship pause` checkpoints mid-flight. Driven by .claude/supera.json so it works in any repo."
-allowed-tools: Bash, Read, Glob, Grep, Agent
+allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI and clickup_* MCP tools
 ---
 
 Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands, ClickUp list, worktree base, status names, and the tag table. Delegate the actual code + tests to the `supera-engineer` agent. `/ship` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/ship pause` checkpoints work mid-flight. After the PR is open it hands off to `/pr-watch`.
@@ -36,7 +36,7 @@ Derive a branch slug: lowercase, kebab-case, ≤50 chars, special chars stripped
 
 ## 1.5 — Phase routing (idempotency + lifecycle)
 
-Before creating anything, detect whether work for this task already exists — `/ship` must **never** double-create a worktree or duplicate an engineer's work, and a re-run drives the next phase. Detect the branch (the derived slug, or a branch name passed directly) and its state. The PR probe runs from the repo root (no worktree needed); the two `git -C <WT_DIR>/<slug>` probes run **only when the worktree is present**:
+Before creating anything, detect whether work for this task already exists — `/ship` must **never** double-create a worktree or duplicate work, and a re-run drives the next phase. Detect the branch (the derived slug, or a branch name passed directly) and its state. The PR probe runs from the repo root (no worktree needed); the two `git -C <WT_DIR>/<slug>` probes run **only when the worktree is present**:
 ```bash
 gh pr list --head <slug> --state all --json number,state     # PR? merged? (repo-root, always safe)
 git worktree list | grep <slug>                              # worktree present? gates the next two:
@@ -53,8 +53,6 @@ If a PR exists, route by the PR state **first** (`pr-open` / `merged`) — those
 | `built` | commits, HEAD not `wip:`, no PR | Skip steps 2–4; jump straight to **step 5** (open the PR). |
 | `pr-open` | PR exists, not merged | Invoke `/pr-watch <N>` (+ `--clickup-ticket=<id>` if a ticket is linked). Stop. |
 | `merged` | PR merged | Run **Closing out a merged PR** below. Stop. |
-
-Fresh tasks fall straight through — this guard only fires when prior work is detected.
 
 ## 2 — ClickUp ticket  *(skip entirely if ticket-less)*
 
@@ -141,7 +139,7 @@ EOF
 ```
 Save the PR number. Link it on the ticket *(skip if ticket-less)*:
 ```
-clickup_create_task_comment(task_id="<id>", comment_text="PR #<N> opened: <PR URL>")
+clickup_create_comment(entity_id="<id>", comment_text="PR #<N> opened: <PR URL>")
 ```
 
 ## 6 — Hand off to /pr-watch
@@ -197,7 +195,7 @@ git -C <WT_PATH> status --porcelain      # anything staged?
 4. **Push so the work survives:** `git -C <WT_PATH> push -u <REMOTE> <BRANCH>` (`--force-with-lease` only if it rewrote history).
 5. **Sync the ticket** *(skip if ticket-less)* — comment the pause; leave the status `STATUS.building` (pause is not a blocker):
 ```
-clickup_create_task_comment(task_id="<TICKET>", comment_text="⏸ Paused. Done: <…>. Next: <nextUp>. Branch `<BRANCH>` pushed — resume with /ship <BRANCH>.")
+clickup_create_comment(entity_id="<TICKET>", comment_text="⏸ Paused. Done: <…>. Next: <nextUp>. Branch `<BRANCH>` pushed — resume with /ship <BRANCH>.")
 ```
 6. **Report:** *"Paused `<BRANCH>`. WIP committed + pushed, worktree kept. Resume with `/ship <BRANCH>`."* List `wip-commit` (sha or "tree clean"), `pushed`, `ticket-comment` (ticket mode only). Stop.
 
@@ -227,7 +225,7 @@ gh pr view <N> --json mergedAt -q .mergedAt                   # merge time
 ```
 2. **Close the ticket** *(skip if ticket-less)* — post the summary as a comment, then set closed:
 ```
-clickup_create_task_comment(task_id="<TICKET>", comment_text="<summary block>")
+clickup_create_comment(entity_id="<TICKET>", comment_text="<summary block>")
 clickup_update_task(task_id="<TICKET>", status=STATUS.closed)
 ```
 3. **Tear down the workspace** (silently — no confirm; each step is guarded so a missing worktree/branch is a no-op, not an error):
