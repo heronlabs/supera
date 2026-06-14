@@ -85,7 +85,30 @@ git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/#
 
 Set `audits.supplyChain` to `true` if the repo has a lockfile, else `false`.
 
-## 5 — Report
+## 5 — Write the guardrails into the repo's CLAUDE.md
+
+Insert a small, repo-agnostic guardrail block into the target repo's root `CLAUDE.md` so the main thread here follows the same discipline `supera-engineer` carries. The block is marker-delimited so it is idempotent and never clobbers existing content:
+
+````md
+<!-- supera:guardrails -->
+## Working with this repo (managed by /supera-init — edits between these markers are overwritten on re-init)
+
+- **Edit, don't rewrite.** Change only the needed entry in a config/generated file (`package.json`, lockfiles, manifests, CI yaml); preserve the rest. Never regenerate a whole file to add one line.
+- **No scope creep.** Build only what was asked; no speculative abstractions, layers, or options. Prefer the simplest working solution.
+- **Ambiguous literals: flag, don't guess.** Config keys, IDs, and env names can be literal values, not mappings (e.g. `environment: pulumi` may name a GitHub Environment literally called `pulumi`). State which reading you took.
+- **Cross-repo changes: update all related repos** unless told otherwise.
+- **CI/infra settings live outside code** — GitHub Environment and branch-protection rules are in repo settings, not the yaml.
+- **ClickUp list IDs come from the hierarchy** (workspace → space → folder → list); never the team/workspace ID.
+<!-- /supera:guardrails -->
+````
+
+Apply it like this:
+- **No `CLAUDE.md`** → create it containing the block.
+- **`CLAUDE.md` exists without the markers** → show the block and confirm (same courtesy as overwriting `supera.json`), then **append** it after the existing content — never modify what is already there.
+- **Markers already present** → replace only the text between `<!-- supera:guardrails -->` and `<!-- /supera:guardrails -->`; leave everything else untouched (idempotent re-init).
+- **Drop the ClickUp line entirely when `clickup` is `null`** (ticket-less repos) — that gotcha only applies when this repo uses ClickUp.
+
+## 6 — Report
 
 Print the written path and a compact summary of every field. Tell the user:
 > "`.claude/supera.json` written. Commit it so the config travels with the repo. Run `/ship <task or ticket>` to ship."
@@ -98,3 +121,4 @@ Print the written path and a compact summary of every field. Tell the user:
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
 - When a ClickUp list is set, emit the `clickup.statuses` defaults inline so status names are visible and editable per space; omit the block (or any single key) to fall back to the schema defaults.
 - Output must validate against `schema/supera.schema.json`.
+- The CLAUDE.md guardrail block is marker-delimited and idempotent: create or refresh only between the `<!-- supera:guardrails -->` markers, never touch content outside them, and drop the ClickUp line when `clickup` is null.
