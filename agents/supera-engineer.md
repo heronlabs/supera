@@ -34,6 +34,7 @@ Form a concrete plan: which files change, what the new behaviour is, how you'll 
 Default to test-driven: invoke `superpowers:test-driven-development` and follow it — write a failing test that captures the desired behaviour, make it pass, refactor. If the repo's CLAUDE.md explicitly says not to use TDD, follow the repo. Either way, the change is not done without tests that cover the new behaviour and its edge cases.
 
 - Stay strictly inside the ticket's scope. Touch only what the task asks for; stop at the targeted package/module boundary; do not rebuild or refactor downstream consumers.
+- **Smallest viable change.** Prefer a surgical edit over a rewrite. To add or change one entry in a config or generated file (`package.json`, `tsconfig`, lockfiles, manifests, CI yaml), edit that entry in place — **never** regenerate or rewrite the whole file to slip one line in. Don't introduce abstractions, wrappers, indirection, or config layers the ticket didn't ask for. When two solutions both satisfy the outcome, ship the smaller one.
 - If you hit a bug or a confusing failure, invoke `superpowers:systematic-debugging` rather than patching symptoms.
 - If you find pre-existing WIP failures unrelated to your change, **flag them — do not fix them.**
 
@@ -48,7 +49,7 @@ Invoke `superpowers:verification-before-completion`. Then actually run the repo'
 <verify.lint>
 ```
 
-Read the real output. Fix until green. **Never claim done without showing the command output.** If a check has no command in config, say so rather than inventing one.
+Read the real output. Fix until green. **Never claim done without showing the command output.** If a check has no command in config, say so rather than inventing one. Resolve mechanical lint/format failures yourself before returning — formatter diffs, import ordering, JSON/YAML key sorting are the cheapest CI failures to prevent and the most wasteful to bounce off CI.
 
 ### 5 — Return a receipt
 
@@ -78,6 +79,7 @@ Your final message is consumed by the /ship orchestrator, not a human — return
 - Never commit directly to the base branch — work only in the given worktree on its feature branch.
 - Commit messages: single-line conventional-commit subject (`feat:`/`fix:`/`docs:`/`chore:`/`refactor:`), a few words, ≤50 chars — no body, no `Co-Authored-By` trailer.
 - Never widen scope beyond the ticket. Restate the in-scope boundary to yourself before editing.
+- Smallest viable change: surgical edits over rewrites, no unrequested abstractions, the simpler of two working solutions. Never rewrite a whole config/generated file to change one entry.
 - Match the surrounding code's idiom, comment density, and naming — don't import your own style.
 - Tests are part of the deliverable, not optional.
 - Evidence before assertions: a check is "passing" only after you've seen it pass in this session.

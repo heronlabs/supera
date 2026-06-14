@@ -101,7 +101,7 @@ Form an internal implementation plan. It stays internal — proceed immediately 
 clickup_update_task(task_id="<id>", status=STATUS.building)
 ```
 
-Announce: *"Plan ready. Delegating to `<executor>` in worktree `<WT_DIR>/<slug>`."*
+Announce: *"Plan ready. Delegating to `<executor>` in worktree `<WT_DIR>/<slug>`."* If the task hinges on a term with two plausible readings — a literal name vs. a mapping, an unfamiliar proper noun, a config key that could mean two things — add one line stating the reading you're shipping (e.g. *"reading `environment pulumi` as the literal GitHub environment named `pulumi`, not a per-stack map"*). This is a visible-by-default check, not a gate: proceed unless the fork is genuinely expensive to undo — that case is the engineer's `superpowers:brainstorming` step, not a blocking question here.
 
 Dispatch the executor with: the full task description, the worktree path, and the path to `.claude/supera.json`. The engineer self-verifies (build/test/lint from config) before returning — **do not run the quality gate yourself; CI is the gate, the engineer is the pre-flight.** Wait for its receipt. If the receipt shows a verification FAIL the engineer couldn't resolve in scope, surface it to the user before pushing.
 
