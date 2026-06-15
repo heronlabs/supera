@@ -74,7 +74,12 @@ Show the proposed config and ask the user to confirm or tweak the commands (use 
   },
   "pr": { "base": "<default branch>", "remote": "origin" },
   "tags": { "<glob>": "<tag>" },
-  "audits": { "supplyChain": false }
+  "audits": { "supplyChain": false },
+  // Emit the ci + automation blocks ONLY when audits.supplyChain is true (below).
+  // ci.audit carries the native audit command per detected manager; automation.audit
+  // turns on the cron / dispatch / label triggers the audit workflow (step 6) reads.
+  "ci": { "provider": "github", "audit": { "<manager>": "<audit cmd>" } },
+  "automation": { "audit": { "schedule": true, "dispatch": true, "label": false } }
 }
 ```
 
@@ -83,7 +88,7 @@ Detect the default branch instead of assuming `main`:
 git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
 
-Set `audits.supplyChain` to `true` if the repo has a lockfile, else `false`.
+Set `audits.supplyChain` to `true` if the repo has a lockfile, else `false`. When it's `true`, also emit the `ci` + `automation` blocks so step 6 can build the workflow from config: include in `ci.audit` only the manager(s) the repo actually uses (the schema's default command per manager — e.g. `pnpm` → `pnpm audit --json`), and default `automation.audit` to weekly `schedule` + `dispatch` on, `label` off (the cheap, predictable cadence — the user flips `label` on to allow `supera:audit`-labelled runs). When `supplyChain` is `false`, omit both blocks.
 
 ## 5 — Write the guardrails into the repo's CLAUDE.md
 
@@ -108,7 +113,62 @@ Apply it like this:
 - **Markers already present** → replace only the text between `<!-- supera:guardrails -->` and `<!-- /supera:guardrails -->`; leave everything else untouched (idempotent re-init).
 - **Drop the ClickUp line entirely when `clickup` is `null`** (ticket-less repos) — that gotcha only applies when this repo uses ClickUp.
 
-## 6 — Report
+## 6 — Emit the supply-chain audit workflow (only when `audits.supplyChain` is true)
+
+Skip this whole step when `CONFIG.audits.supplyChain` is `false` — no workflow, the capability stays off until the repo opts in. It also only applies to GitHub: skip (and tell the user once) if `CONFIG.ci.provider` is set to anything other than `github` — currently the only supported provider.
+
+When enabled, write `.github/workflows/supera-audit.yml` so the `supera-supply-chain-auditor` runs off-laptop on a schedule (the first off-laptop pilot). The job is **agentic** — Claude runs the auditor headless via the official `anthropics/claude-code-action`, which detects the manager, runs the native audit, applies safe CVE overrides on a branch, and opens a PR plus a prioritized issue. Cost is bounded to `schedule` / label / `workflow_dispatch` only — **never** a per-PR hot path.
+
+Build the file from `CONFIG`, hardcoding nothing repo-specific:
+- **Triggers** come from `CONFIG.automation.audit` — emit a `schedule:` block (`cron: "0 6 * * 1"`, weekly Monday 06:00 UTC) only when `…schedule` is true; emit `workflow_dispatch:` only when `…dispatch` is true; emit the `pull_request: { types: [labeled] }` trigger only when `…label` is true. If a flag is false, omit that trigger entirely. When `label` is on, guard the job with `if: github.event_name != 'pull_request' || github.event.label.name == 'supera:audit'` so only the `supera:audit` label fires it.
+- **Native audit command**: the auditor detects the manager itself, but pass `CONFIG.ci.audit` through to the prompt so CI uses the repo's configured command for the detected stack (e.g. `CONFIG.ci.audit.pnpm`). Include only the managers present in `CONFIG.ci.audit`.
+- The workflow declares the `ANTHROPIC_API_KEY` secret and `contents: write`, `pull-requests: write`, `issues: write` permissions (the auditor needs to push a branch, open a PR, and file the prioritized issue).
+
+This repo stays git/GitHub-native and **ticket-less**: the ClickUp MCP is claude.ai-authenticated and absent in CI, so the workflow opens a PR + issue and never touches ClickUp.
+
+Emit this template, substituting the trigger blocks and audit command per the flags above (the example shows all three triggers + the `supera:audit` label guard; drop whichever the config disables):
+
+````yaml
+name: supera supply-chain audit
+
+# Agentic supply-chain audit — runs supera-supply-chain-auditor headless.
+# Cron / manual / label only; never a per-PR hot path (cost discipline).
+on:
+  schedule:
+    - cron: "0 6 * * 1"        # weekly, Mondays 06:00 UTC — only if automation.audit.schedule
+  workflow_dispatch:            # only if automation.audit.dispatch
+  pull_request:                 # only if automation.audit.label
+    types: [labeled]
+
+permissions:
+  contents: write               # push the override branch
+  pull-requests: write          # open the remediation PR
+  issues: write                 # file the prioritized issue
+
+jobs:
+  audit:
+    # label guard — drop this `if` when automation.audit.label is false
+    if: github.event_name != 'pull_request' || github.event.label.name == 'supera:audit'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Run the supera-supply-chain-auditor on this repository.
+            Detect the package manager and run its native audit
+            (configured command: <CONFIG.ci.audit for the detected stack>).
+            Apply only safe, mechanical CVE overrides on a new branch,
+            open a pull request with those overrides, and open a single
+            prioritized issue summarizing every remaining finding
+            (unfixable CVEs, leaked secrets, drift, freshness, typo-squats).
+            Stay git/GitHub-native — do not touch ClickUp.
+````
+
+Write it only if the path is absent; if `.github/workflows/supera-audit.yml` already exists, show the proposed content and confirm before overwriting (same courtesy as `supera.json`). Don't touch any other workflow in `.github/workflows/`.
+
+## 7 — Report
 
 Print the written path and a compact summary of every field. Tell the user:
 > "`.claude/supera.json` written. Commit it so the config travels with the repo. Run `/ship <task or ticket>` to ship."
@@ -122,3 +182,4 @@ Print the written path and a compact summary of every field. Tell the user:
 - When a ClickUp list is set, emit the `clickup.statuses` defaults inline so status names are visible and editable per space; omit the block (or any single key) to fall back to the schema defaults.
 - Output must validate against `schema/supera.schema.json`.
 - The CLAUDE.md guardrail block is marker-delimited and idempotent: create or refresh only between the `<!-- supera:guardrails -->` markers, never touch content outside them, and drop the ClickUp line when `clickup` is null.
+- Emit `.github/workflows/supera-audit.yml` only when `audits.supplyChain` is true and `ci.provider` is `github`; build its triggers from `automation.audit` and its audit command from `ci.audit` — hardcode nothing. The job is agentic (cron / dispatch / label only, never per-PR), declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write`, and stays ticket-less. Don't overwrite an existing workflow without confirming; never touch other workflow files.
