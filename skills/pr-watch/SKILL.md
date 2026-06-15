@@ -52,10 +52,11 @@ Parse `$ARGUMENTS` (flags in any order):
 - A number → the PR number.
 - `--reviewed` → `REVIEWED=true` (code review already done this cycle).
 - `--clickup-ticket=<id>` → `CLICKUP_TICKET=<id>`.
+- `--non-interactive` → `NONINTERACTIVE=true` (headless CI run with no human to answer prompts — see **Non-interactive mode**).
 - Empty → detect from branch: `gh pr view --json number -q .number`.
-- Neither works → ask the user.
+- Neither works → ask the user (in `NONINTERACTIVE` mode there's no PR to act on — exit `blocked`, see **Non-interactive mode**).
 
-`REVIEWED` defaults `false`; `CLICKUP_TICKET` defaults empty (ticket updates skipped when absent).
+`REVIEWED` defaults `false`; `NONINTERACTIVE` defaults `false`; `CLICKUP_TICKET` defaults empty (ticket updates skipped when absent). **Preserve `--non-interactive` on every `ScheduleWakeup` reschedule**, alongside `--reviewed` / `--clickup-ticket`.
 
 ```bash
 PR=<number>
@@ -78,7 +79,7 @@ Parse `state`:
 ### Running or queued
 Don't wait inline. Reschedule preserving flags, then exit the turn:
 ```
-ScheduleWakeup(delaySeconds=90, reason="CI still running on PR #<N>", prompt="/pr-watch <N> [--reviewed if true] [--clickup-ticket=<id> if set]")
+ScheduleWakeup(delaySeconds=90, reason="CI still running on PR #<N>", prompt="/pr-watch <N> [--reviewed if true] [--clickup-ticket=<id> if set] [--non-interactive if set]")
 ```
 
 ### Passed
@@ -99,9 +100,9 @@ Classify and fix:
 | Install / lockfile drift | Run `CONFIG.verify.install` in the worktree, commit the updated lockfile. |
 | Migration / runtime error | Delegate to `supera-engineer` with the full stack trace. |
 | Clearly transient (network, runner OOM) | Note it; a re-run is acceptable here only. |
-| Unknown | Show the user; ask for guidance. |
+| Unknown | Show the user; ask for guidance (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**). |
 
-Compute the failure signature `SIG` (failing job name + first error line). Dispatch `supera-engineer` with the exact log excerpt; wait for its JSON receipt (`schema/receipt.schema.json`) and branch on `receipt.status` — `ok` → record the attempt (`STATE.attempts += 1`, `STATE.lastFailure = SIG`), persist the marker (step 0a), push the fix; `needs-review`/`blocked` → surface `receipt.implemented` and any FAIL in `receipt.verification`, don't push a red fix. **Track attempts via the persisted marker so a fresh CI invocation resumes the count:** if this `SIG` equals `STATE.lastFailure` and `STATE.attempts >= 2` (the same failure has already survived 2 fix attempts): if `CLICKUP_TICKET` set, `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.blocked)`; stop; show the full log; ask for guidance; exit the turn.
+Compute the failure signature `SIG` (failing job name + first error line). Dispatch `supera-engineer` with the exact log excerpt; wait for its JSON receipt (`schema/receipt.schema.json`) and branch on `receipt.status` — `ok` → record the attempt (`STATE.attempts += 1`, `STATE.lastFailure = SIG`), persist the marker (step 0a), push the fix; `needs-review`/`blocked` → surface `receipt.implemented` and any FAIL in `receipt.verification`, don't push a red fix (in `NONINTERACTIVE` mode, **block** instead — see **Non-interactive mode**). **Track attempts via the persisted marker so a fresh CI invocation resumes the count:** if this `SIG` equals `STATE.lastFailure` and `STATE.attempts >= 2` (the same failure has already survived 2 fix attempts): if `CLICKUP_TICKET` set, `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.blocked)`; stop; show the full log; ask for guidance; exit the turn (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**).
 
 After a fix:
 ```bash
@@ -121,7 +122,7 @@ For each unresolved thread:
 1. Read `path`, `line`, `body`.
 2. Classify:
    - **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` with the file + the request.
-   - **Question / design discussion** → do NOT implement; surface to the user.
+   - **Question / design discussion** → do NOT implement; surface to the user (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**).
 3. After implementing, push first, then reply referencing the pushed commit:
 ```bash
 git push <remote> $BRANCH
@@ -158,7 +159,7 @@ All checks below run exactly once per cycle and are suppressed by `--reviewed` (
 Invoke the `code-review:code-review` skill on PR `#<N>` (one cycle only). For each finding:
 - **Actionable** (bug, missing null check, wrong type, test gap) → delegate to `supera-engineer`; wait.
 - **Trivial nit** → apply directly if it's a one-liner; skip if subjective.
-- **Design concern** → surface to the user; do not implement without confirmation.
+- **Design concern** → surface to the user; do not implement without confirmation (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**).
 
 ### 6b — Test hygiene (one assertion per test)
 
@@ -172,7 +173,7 @@ For any test case carrying **more than one assertion** → delegate to `supera-e
 
 Skip this entire subsection when `AUDIT` is false. When true, dispatch the `supera-supply-chain-auditor` agent on the worktree (one pass). It detects the manager, runs the native audit, and is report-only **except** safe, mechanical CVE overrides it applies autonomously. On return:
 - **Safe CVE overrides applied** (lockfile / `package.json` / `Cargo.toml` changed) → these ride out with the push below; reply on the PR referencing the commit: `gh pr review $PR --comment --body "Supply-chain: applied safe CVE overrides in <commit-sha>: <one-line summary>"`.
-- **Report-only findings** (unfixable CVEs, leaked secrets, drift, freshness, typo-squat/provenance) → do **not** auto-fix. Surface the prioritized report to the user. A leaked-secret or critical-CVE finding is a **merge blocker** — flag it loudly and do not present the PR as ready until the user clears it.
+- **Report-only findings** (unfixable CVEs, leaked secrets, drift, freshness, typo-squat/provenance) → do **not** auto-fix. Surface the prioritized report to the user. A leaked-secret or critical-CVE finding is a **merge blocker** — flag it loudly and do not present the PR as ready until the user clears it (in `NONINTERACTIVE` mode, a merge-blocker finding **blocks** — see **Non-interactive mode**).
 - Never block on a degraded probe (missing `cargo-audit`, network failure) — the auditor notes the gap and continues; relay it.
 
 ### 6d — Secret / deny-path gate
@@ -181,7 +182,7 @@ Skip when `DENY` is empty. Otherwise list the PR's changed files and match each 
 ```bash
 gh pr diff $PR --name-only
 ```
-Any match → a secret or private key is in the PR: a **hard merge blocker**. Surface it loudly with the offending paths; set ticket `STATUS.blocked` if `CLICKUP_TICKET` is set; do **not** present the PR as ready. Stop and exit the turn — clearing a committed secret is the user's call.
+Any match → a secret or private key is in the PR: a **hard merge blocker**. Surface it loudly with the offending paths; set ticket `STATUS.blocked` if `CLICKUP_TICKET` is set; do **not** present the PR as ready. Stop and exit the turn — clearing a committed secret is the user's call (in `NONINTERACTIVE` mode, also post the offending paths as a PR comment before exiting — see **Non-interactive mode**).
 
 ### 6e — Merge-readiness consensus
 
@@ -189,7 +190,7 @@ Skip when `VOTERS <= 1`, **or** when steps 6a–6c delegated any fix this cycle 
 
 Otherwise dispatch `VOTERS` independent reviewer agents in parallel (single message), each: *"Adversarially review PR #<N> for merge-readiness. Hunt for ONE blocking defect — correctness, data-loss, security, or a broken contract. Reply `APPROVE`, or `BLOCK: <reason>`. Default to BLOCK if genuinely uncertain."* Count `APPROVE` votes:
 - **`>= QUORUM`** → consensus clears.
-- **`< QUORUM`** → consensus blocks. Record the attempt against the persisted marker (`STATE.attempts += 1`, `STATE.lastFailure = "consensus:<reason>"`, persist per step 0a) so a fresh invocation resumes the count. Delegate each clearly-actionable `BLOCK` reason to `supera-engineer` (wait); surface design concerns to the user instead of implementing. **Same consensus block (`STATE.lastFailure` unchanged) after 2 fix rounds** → `STATUS.blocked` if linked, stop, show the block reasons, ask, exit.
+- **`< QUORUM`** → consensus blocks. Record the attempt against the persisted marker (`STATE.attempts += 1`, `STATE.lastFailure = "consensus:<reason>"`, persist per step 0a) so a fresh invocation resumes the count. Delegate each clearly-actionable `BLOCK` reason to `supera-engineer` (wait); surface design concerns to the user instead of implementing (in `NONINTERACTIVE` mode, a design concern with no actionable fix **blocks** — see **Non-interactive mode**). **Same consensus block (`STATE.lastFailure` unchanged) after 2 fix rounds** → `STATUS.blocked` if linked, stop, show the block reasons, ask, exit (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**).
 
 ### Close out the cycle
 
@@ -199,12 +200,25 @@ git push <remote> $BRANCH
 ```
 - **`VOTERS <= 1`, or consensus cleared this cycle** → reschedule WITH `--reviewed` (subsections won't repeat); next wake, step 5 announces the PR ready:
 ```
-ScheduleWakeup(delaySeconds=120, reason="CI after review on PR #<N>", prompt="/pr-watch <N> --reviewed [--clickup-ticket=<id> if set]")
+ScheduleWakeup(delaySeconds=120, reason="CI after review on PR #<N>", prompt="/pr-watch <N> --reviewed [--clickup-ticket=<id> if set] [--non-interactive if set]")
 ```
 - **`VOTERS > 1` and the PR changed this cycle** (6a–6c fixes, or consensus blocked) → reschedule WITHOUT `--reviewed`, so the settled PR is re-reviewed and (re-)voted:
 ```
-ScheduleWakeup(delaySeconds=120, reason="CI after fixes on PR #<N>", prompt="/pr-watch <N> [--clickup-ticket=<id> if set]")
+ScheduleWakeup(delaySeconds=120, reason="CI after fixes on PR #<N>", prompt="/pr-watch <N> [--clickup-ticket=<id> if set] [--non-interactive if set]")
 ```
+
+## Non-interactive mode (`--non-interactive`)
+
+For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) where no human is present to answer a prompt. The CI / review / merge-readiness loop runs unchanged; only the points that would stop to ask a human behave differently. Interactive is the default — this mode is opt-in via the flag and applies only when `NONINTERACTIVE` is set.
+
+- **Never prompt.** At every point flagged "see **Non-interactive mode**" above — an unknown CI failure, an unfixable engineer receipt, a question/design-discussion review thread, a code-review or consensus design concern, a repeated failure or block, a merge-blocker audit/secret finding — do not ask the user. Do not call `AskUserQuestion`.
+- **An ambiguous decision blocks.** Instead of asking, post the block as a PR comment and exit `blocked` — a PR always exists here, so there's always somewhere to comment:
+```bash
+gh pr comment $PR --body "🚫 supera /pr-watch blocked (non-interactive): <what's ambiguous / unresolved + the log or finding detail>"
+```
+  Then set ticket `STATUS.blocked` if `CLICKUP_TICKET` is set (guarded — headless runs are ticket-less), and exit the turn. Do **not** `ScheduleWakeup` past a block.
+- **Stay git/GitHub-native.** The ClickUp MCP is claude.ai-authenticated and absent in CI, so a headless run is ticket-less: every ClickUp step is already guarded by `CLICKUP_TICKET`, and blocks surface as PR comments, never ClickUp prompts. `--non-interactive` does **not** depend on a ticket being present.
+- **Clear cases still flow.** Reproducible CI failures, clear code requests, trivial nits, and actionable consensus blocks still delegate to `supera-engineer` and push as normal — only a genuine human-judgment fork blocks. A clean, green, reviewed PR still exits "ready to merge" (merging stays the user's decision).
 
 ## Rules
 
@@ -222,7 +236,8 @@ ScheduleWakeup(delaySeconds=120, reason="CI after fixes on PR #<N>", prompt="/pr
 - Never implement review comments that are questions / design discussions — surface them.
 - Never `gh run rerun` unless the failure is clearly transient — fix the root cause.
 - Don't spin-poll — always `ScheduleWakeup` and exit the turn while waiting.
-- Always preserve `--reviewed` and `--clickup-ticket` flags when rescheduling.
+- Always preserve `--reviewed`, `--clickup-ticket`, and `--non-interactive` flags when rescheduling.
+- `--non-interactive` (headless CI) never prompts: any human-judgment fork becomes a PR comment plus a `blocked` exit (no reschedule past a block), never a question. Interactive is the default; clear CI/code-request fixes still flow.
 - Persist attempt-count + last-failure-signature in the hidden `<!-- supera:pr-watch-state … -->` marker comment on the PR (one per PR, edited in place) — a fresh headless CI invocation reads it and resumes the loop instead of restarting. State is git/GitHub-native (no ClickUp field) and works ticket-less.
 - Same CI failure twice after 2 fix attempts → ticket `STATUS.blocked` (if linked), stop, show the log, ask. Count from the persisted marker, not just the live session.
 - PR closed without merge → ticket `STATUS.rejected` (if linked).
