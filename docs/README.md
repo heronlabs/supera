@@ -39,8 +39,10 @@ a clean resting point.
 
 **Where the leverage actually is — and isn't.** The highest-value idea on the board
 is `autonomy-roadmap`: *move the loop off the laptop* so `/pr-watch` survives a
-closed terminal and the supply-chain auditor (today a **dead capability — nothing
-triggers it**) actually runs. That work is **0% built**. Meanwhile effort has gone
+closed terminal. The supply-chain auditor is **no longer dead** — as of v0.6.0 it's
+dispatched by `/pr-watch` step 6 (gated by `audits.supplyChain`) during the review
+cycle, so it runs whenever a watched PR reaches code review. The off-laptop CI
+trigger (roadmap Phase 1) is still **0% built**. Meanwhile other effort has gone
 into status-naming polish and the ClickUp REST shim — plumbing, not leverage.
 
 **The shim is a part with no socket.** Its spec names headless `/ship` and `/pr-watch`

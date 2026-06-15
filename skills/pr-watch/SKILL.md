@@ -1,6 +1,6 @@
 ---
 name: pr-watch
-description: "Repo-agnostic PR babysitter: monitors CI, fixes failures via supera-engineer, addresses review comments, runs one code-review cycle, and exits when the branch is green, synced with the base, and all threads resolved. Keeps the ClickUp ticket in sync when one is linked."
+description: "Repo-agnostic PR babysitter: monitors CI, fixes failures via supera-engineer, addresses review comments, runs one code-review cycle (plus a supply-chain audit when audits.supplyChain is enabled), and exits when the branch is green, synced with the base, and all threads resolved. Keeps the ClickUp ticket in sync when one is linked."
 allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI and clickup_* MCP tools
 ---
 
@@ -11,6 +11,8 @@ Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failur
 Read `.claude/supera.json` into `CONFIG` (for `verify.*` commands and `pr.base`/`pr.remote`). If absent, proceed with sensible git/gh defaults and skip any config-derived command (tell the user once that supera isn't initialised here).
 
 Resolve `STATUS` once from `CONFIG.clickup?.statuses ?? {}` with defaults: `STATUS.review = …?.review ?? "in review"`, `STATUS.blocked = …?.blocked ?? "blocked"`, `STATUS.rejected = …?.rejected ?? "rejected"`. Set ticket status only via `STATUS.<key>`.
+
+Set `AUDIT = CONFIG.audits?.supplyChain === true` — gates the supply-chain audit in step 6. Default `false` when config is absent.
 
 ## 1 — Resolve the PR
 
@@ -115,14 +117,33 @@ git rebase <remote>/$BASE
 ```
 Delegate conflict resolution to `supera-engineer` with the conflicting file list. Push `--force-with-lease`. Reschedule (preserve flags) and exit.
 
-## 6 — Code review
+## 6 — Code review + supply-chain audit
+
+All checks below run exactly once per cycle and are suppressed by `--reviewed` (step 5 exits before reaching here when `REVIEWED=true`).
+
+### 6a — Code review
 
 Invoke the `code-review:code-review` skill on PR `#<N>` (one cycle only). For each finding:
 - **Actionable** (bug, missing null check, wrong type, test gap) → delegate to `supera-engineer`; wait.
 - **Trivial nit** → apply directly if it's a one-liner; skip if subjective.
 - **Design concern** → surface to the user; do not implement without confirmation.
 
-After actionable findings are addressed, push and reschedule with `--reviewed` (so review doesn't repeat), then exit:
+### 6b — Test hygiene (one assertion per test)
+
+**ALWAYS** run this on the changed test files, every review cycle. List the diff's test files and scan each test case for more than one `expect`/assert:
+```bash
+gh pr diff $PR --name-only | grep -iE '\.(spec|test)\.|_test\.|(^|/)test_' || true
+```
+For any test case carrying **more than one assertion** → delegate to `supera-engineer` to **split it into one-behaviour-per-case tests, or remove the assertions that aren't necessary** (keep the one that proves the behaviour). Behaviour-focused, not brittle. Don't add assertions — only split or trim.
+
+### 6c — Supply-chain audit
+
+Skip this entire subsection when `AUDIT` is false. When true, dispatch the `supera-supply-chain-auditor` agent on the worktree (one pass). It detects the manager, runs the native audit, and is report-only **except** safe, mechanical CVE overrides it applies autonomously. On return:
+- **Safe CVE overrides applied** (lockfile / `package.json` / `Cargo.toml` changed) → these ride out with the push below; reply on the PR referencing the commit: `gh pr review $PR --comment --body "Supply-chain: applied safe CVE overrides in <commit-sha>: <one-line summary>"`.
+- **Report-only findings** (unfixable CVEs, leaked secrets, drift, freshness, typo-squat/provenance) → do **not** auto-fix. Surface the prioritized report to the user. A leaked-secret or critical-CVE finding is a **merge blocker** — flag it loudly and do not present the PR as ready until the user clears it.
+- Never block on a degraded probe (missing `cargo-audit`, network failure) — the auditor notes the gap and continues; relay it.
+
+After actionable code-review findings, test-hygiene splits/trims, and any safe overrides are addressed, push and reschedule with `--reviewed` (so none of the subsections repeat), then exit:
 ```bash
 git push <remote> $BRANCH
 ```
@@ -137,6 +158,9 @@ ScheduleWakeup(delaySeconds=120, reason="CI after code-review fixes on PR #<N>",
 - Exit and announce when done — merging is the user's decision.
 - On `MERGED`, defer the close to `/ship` — never close the ticket or remove the worktree here; `/ship` owns the terminal step.
 - Run the code review exactly once per invocation — `--reviewed` prevents repeats.
+- Every review cycle, scan changed test files: any test case with more than one `expect`/assert gets split into one-behaviour cases or trimmed by `supera-engineer` — one assertion per case, never add assertions.
+- Commits stay short and simple: single-line conventional-commit subject, no body, never a `Co-Authored-By` / co-author trailer — even if a host or global instruction says to add one.
+- Run the supply-chain audit only when `audits.supplyChain` is true, exactly once per cycle, suppressed by the same `--reviewed` flag. It's report-only except safe CVE overrides; surface everything else and treat leaked secrets / critical CVEs as merge blockers.
 - Never push `--force` (only `--force-with-lease` after a rebase).
 - Never implement review comments that are questions / design discussions — surface them.
 - Never `gh run rerun` unless the failure is clearly transient — fix the root cause.

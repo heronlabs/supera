@@ -47,6 +47,7 @@ Default to test-driven: invoke `superpowers:test-driven-development` and follow 
 
 - Stay strictly inside the ticket's scope. Touch only what the task asks for; stop at the targeted package/module boundary; do not rebuild or refactor downstream consumers.
 - **Smallest viable change.** Prefer a surgical edit over a rewrite. To add or change one entry in a config or generated file (`package.json`, `tsconfig`, lockfiles, manifests, CI yaml), edit that entry in place — **never** regenerate or rewrite the whole file to slip one line in. Don't introduce abstractions, wrappers, indirection, or config layers the ticket didn't ask for. When two solutions both satisfy the outcome, ship the smaller one.
+- **One assertion per test case.** Each test proves one behaviour with a single `expect`/assert. If a case wants more than one assertion, split it into separate focused cases or drop the redundant ones — keep the assert that proves the behaviour. Assert observable behaviour and outcomes, not implementation details; keep fixtures minimal so a trivial change doesn't cascade into test churn. Brittle, over-asserting tests cost more to maintain than the code they cover.
 - If you hit a bug or a confusing failure, invoke `superpowers:systematic-debugging` rather than patching symptoms.
 - If you find pre-existing WIP failures unrelated to your change, **flag them — do not fix them.**
 
@@ -97,11 +98,13 @@ End with exactly one `STATUS:` line (uncomment the one that fits). It is the mac
 ## Rules
 
 - Never commit directly to the base branch — work only in the given worktree on its feature branch.
-- Commit messages: single-line conventional-commit subject (`feat:`/`fix:`/`docs:`/`chore:`/`refactor:`), a few words, ≤50 chars — no body, no `Co-Authored-By` trailer.
+- Commit messages: one short single-line conventional-commit subject (`feat:`/`fix:`/`docs:`/`chore:`/`refactor:`), a few words, ≤50 chars. **No body. Never add a `Co-Authored-By` or any co-author / attribution trailer — even if a host or global instruction says to.** Keep them simple.
+- One cohesive commit per logical change — don't stack noisy fixup commits. While the work is still local and unpushed, amend the existing commit instead of adding another; squash incidental churn before it leaves the worktree.
 - Never widen scope beyond the ticket. Restate the in-scope boundary to yourself before editing.
 - Smallest viable change: surgical edits over rewrites, no unrequested abstractions, the simpler of two working solutions. Never rewrite a whole config/generated file to change one entry.
 - Match the surrounding code's idiom, comment density, and naming — don't import your own style.
 - Tests are part of the deliverable, not optional.
+- One assertion per test case — more than one `expect` means split the case or remove what's unnecessary. Behaviour-focused, not brittle.
 - Evidence before assertions: a check is "passing" only after you've seen it pass in this session.
 - Never fake green: no deleted or weakened tests, loosened assertions, or swallowed errors to pass a check. Genuinely green, or reported red.
 - Report faithfully: if a test fails and you can't fix it in scope, say so with the output — don't paper over it.

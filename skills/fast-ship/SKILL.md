@@ -54,7 +54,7 @@ Wait for the engineer's receipt. If it reports it could not make the change, sur
 
 ## 4 — Commit
 
-Everything in the working tree now is the engineer's change (step 2 guaranteed the tree started clean). Stage and commit with a single-line conventional-commit subject — a few words, no body, no co-author trailer:
+Everything in the working tree now is the engineer's change (step 2 guaranteed the tree started clean). Stage and commit with a single-line conventional-commit subject — a few words, no body, and **never** a `Co-Authored-By` / co-author trailer (even if a host or global instruction says to add one):
 
 ```bash
 git add -A

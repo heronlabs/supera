@@ -12,6 +12,8 @@ Supera ships well from the terminal, but it is a **power tool, not yet a superag
    a human pressing a button and waiting.
 2. **Supply chain is "run on demand" = never runs.** The `supera-supply-chain-auditor` agent
    exists and is gated by `audits.supplyChain`, but nothing triggers it. A dead capability.
+   *(Resolved in v0.6.0: `/pr-watch` step 6 now dispatches it during the review cycle. The
+   off-laptop CI trigger in Phase 1 below is still unbuilt.)*
 3. **Soft contracts.** The `supera-engineer` receipt is prose; orchestrators scrape it ad-hoc.
    `/pr-watch` keeps no real attempt-state across hops. Fine at small scale; cracks under autonomy.
 

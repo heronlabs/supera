@@ -1,7 +1,7 @@
 {
   "name": "supera",
   "description": "Repo-agnostic ticket-shipping superagent: ship (full lifecycle — resume, pause, close-out), fast-ship, pr-watch, refine-ticket, and a supply-chain auditor. One strong engineer agent does code + tests; behaviour is driven by a per-repo .claude/supera.json so the same skills work across pnpm, npm, cargo, Strapi, and more.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": { "name": "Lucas Lacerda" },
   "license": "MIT",
   "keywords": ["workflow", "agents", "clickup", "shipping", "ci", "heronlabs"]
