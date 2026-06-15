@@ -76,6 +76,42 @@
         "supplyChain": { "type": "boolean", "default": false, "description": "Enable supera-supply-chain-auditor (works on npm/pnpm/yarn/cargo)." }
       }
     },
+    "ci": {
+      "type": "object",
+      "description": "CI runtime and the native package-manager audit commands the supera audit workflow runs in CI. Schema-first per the roadmap; the Phase 1 audit workflow reads these.",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "default": "github", "description": "CI provider whose workflow files supera emits. Currently only GitHub Actions is supported." },
+        "audit": {
+          "type": "object",
+          "description": "Native audit command per package manager. The audit workflow picks the one matching the detected stack; omit a manager the repo doesn't use.",
+          "additionalProperties": false,
+          "properties": {
+            "npm":   { "type": "string", "default": "npm audit --json",          "description": "npm native vulnerability audit." },
+            "pnpm":  { "type": "string", "default": "pnpm audit --json",         "description": "pnpm native vulnerability audit." },
+            "yarn":  { "type": "string", "default": "yarn npm audit --json",     "description": "yarn (berry) native vulnerability audit." },
+            "cargo": { "type": "string", "default": "cargo audit --json",        "description": "cargo native vulnerability audit (cargo-audit)." }
+          }
+        }
+      }
+    },
+    "automation": {
+      "type": "object",
+      "description": "Which triggers enable supera's CI automation workflows. Schema-first; the Phase 1 audit workflow is emitted/gated from these flags.",
+      "additionalProperties": false,
+      "properties": {
+        "audit": {
+          "type": "object",
+          "description": "Triggers for the supera supply-chain audit workflow. All default off so the workflow is inert until a repo opts in.",
+          "additionalProperties": false,
+          "properties": {
+            "schedule": { "type": "boolean", "default": false, "description": "Run the audit on a weekly cron schedule." },
+            "dispatch": { "type": "boolean", "default": false, "description": "Allow manual runs via workflow_dispatch." },
+            "label":    { "type": "boolean", "default": false, "description": "Run the audit when a PR is labeled 'supera:audit'." }
+          }
+        }
+      }
+    },
     "review": {
       "type": "object",
       "description": "Pre-merge review rigor for /pr-watch. CI remains the quality gate; this only adds review-judgment layers on top.",

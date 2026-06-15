@@ -8,7 +8,7 @@
     {
       "name": "supera",
       "description": "Repo-agnostic ticket-shipping superagent: ship (full lifecycle), fast-ship, pr-watch, refine-ticket, and a supply-chain auditor, driven by a per-repo .claude/supera.json config.",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "author": { "name": "Lucas Lacerda" },
       "source": "./",
       "license": "MIT",

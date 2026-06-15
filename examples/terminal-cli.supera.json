@@ -10,5 +10,7 @@
   "clickup": { "listId": "901415284967" },
   "pr": { "base": "main", "remote": "origin" },
   "tags": { "crates/cli/**": "cli", "crates/core/**": "core" },
-  "audits": { "supplyChain": true }
+  "audits": { "supplyChain": true },
+  "ci": { "provider": "github", "audit": { "cargo": "cargo audit --json" } },
+  "automation": { "audit": { "schedule": true, "dispatch": true } }
 }
