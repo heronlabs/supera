@@ -22,6 +22,8 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 
 ## 1 — Parse arguments
 
+**`--non-interactive` flag:** set `NONINTERACTIVE=true` if `$ARGUMENTS` contains `--non-interactive` (strip it before parsing the rest); else `false`. This is the headless mode for CI runs with no human to answer prompts — see **Non-interactive mode** below. Interactive (`false`) is the default. Preserve the flag when handing off to `/pr-watch` (step 6).
+
 **Pause sub-command:** if `$ARGUMENTS` begins with `pause` (e.g. `pause`, `pause 86abc`), run the **Pause checkpoint** flow at the end of this skill and stop — do not run the pipeline below.
 
 Otherwise `$ARGUMENTS` may be:
@@ -30,7 +32,7 @@ Otherwise `$ARGUMENTS` may be:
 - Just a ClickUp ticket ID — e.g. `"86abc123"`
 - A branch name (resume / close-out an existing ship) — e.g. `"feat-add-payment-retry-on-timeout"`
 
-If empty, ask for a task description.
+If empty, ask for a task description (in `NONINTERACTIVE` mode there's nothing to ship and no PR to comment on — exit `blocked`, see **Non-interactive mode**).
 
 Derive a branch slug: lowercase, kebab-case, ≤50 chars, special chars stripped, prefixed by type with a **dash, never a slash** (`feat-`, `fix-`, `docs-`, `refactor-`, `chore-`). Example: `"add payment retry on timeout"` → `feat-add-payment-retry-on-timeout`. The slug is used verbatim as both the branch name **and** the worktree folder name, so it must be a single path segment — no `/`. This guarantees one flat folder per worktree (`<WT_DIR>/feat-add-payment-retry-on-timeout`), never a nested `<WT_DIR>/feat/…` subtree.
 
@@ -101,7 +103,7 @@ clickup_update_task(task_id="<id>", status=STATUS.building)
 
 Announce: *"Plan ready. Delegating to `<executor>` in worktree `<WT_DIR>/<slug>`."* If the task hinges on a term with two plausible readings — a literal name vs. a mapping, an unfamiliar proper noun, a config key that could mean two things — add one line stating the reading you're shipping (e.g. *"reading `environment pulumi` as the literal GitHub environment named `pulumi`, not a per-stack map"*). This is a visible-by-default check, not a gate: proceed unless the fork is genuinely expensive to undo — that case is the engineer's `superpowers:brainstorming` step, not a blocking question here.
 
-Dispatch the executor with: the full task description, the worktree path, and the path to `.claude/supera.json`. The engineer self-verifies (build/test/lint from config) before returning — **do not run the quality gate yourself; CI is the gate, the engineer is the pre-flight.** Wait for its receipt — a JSON object matching `schema/receipt.schema.json`. Parse it and branch on `receipt.status`: `ok` → continue to step 5; `needs-review` or `blocked` → surface `receipt.implemented`, any FAIL in `receipt.verification`, and `receipt.outOfScope` to the user before pushing.
+Dispatch the executor with: the full task description, the worktree path, and the path to `.claude/supera.json`. The engineer self-verifies (build/test/lint from config) before returning — **do not run the quality gate yourself; CI is the gate, the engineer is the pre-flight.** Wait for its receipt — a JSON object matching `schema/receipt.schema.json`. Parse it and branch on `receipt.status`: `ok` → continue to step 5; `needs-review` or `blocked` → surface `receipt.implemented`, any FAIL in `receipt.verification`, and `receipt.outOfScope` to the user before pushing (in `NONINTERACTIVE` mode no PR exists yet to comment on — print the receipt detail and exit `blocked`, see **Non-interactive mode**).
 
 ## 5 — Create the PR
 
@@ -144,9 +146,22 @@ clickup_create_comment(entity_id="<id>", comment_text="PR #<N> opened: <PR URL>"
 
 ## 6 — Hand off to /pr-watch
 
-Invoke `/pr-watch <PR-number>` — append `--clickup-ticket=<ticket-id>` only when a ticket exists.
+Invoke `/pr-watch <PR-number>` — append `--clickup-ticket=<ticket-id>` only when a ticket exists, and `--non-interactive` when `NONINTERACTIVE` is set (so the headless run stays prompt-free through the PR cycle).
 
 Announce: *"PR #<N> is open. <Ticket in review (CI running). >Handing off to `/pr-watch <PR-number>`. Once it reports the PR merged, re-run `/ship <slug>` to close the ticket and clean up."*
+
+---
+
+## Non-interactive mode (`--non-interactive`)
+
+For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) where no human is present to answer a prompt. The whole pipeline runs unchanged; only the prompt points behave differently. Interactive is the default — this mode is opt-in via the flag and applies only when `NONINTERACTIVE` is set.
+
+- **Never prompt.** Skip every step that would ask the user a question or wait for a decision (the points flagged "see **Non-interactive mode**" above). Do not call `AskUserQuestion`.
+- **An ambiguous decision blocks.** When the interactive flow would stop to ask, instead surface the block as a comment and exit `blocked` — don't guess past a genuine fork:
+  - If a PR already exists for this work (phase `pr-open`/`built`-then-pushed), post the block as a PR comment: `gh pr comment <N> --body "🚫 supera /ship blocked (non-interactive): <what's ambiguous + the receipt/verification detail>"`.
+  - Before any PR exists, print the block detail to the run output (there's nothing to comment on yet).
+- **Stay git/GitHub-native.** The ClickUp MCP is claude.ai-authenticated and absent in CI, so a headless run is ticket-less: every ClickUp step is already guarded by `CLICKUP`, and blocks surface as PR/issue comments, never ClickUp prompts. `--non-interactive` does **not** depend on a ticket being present.
+- The non-prompt steps (phase routing, worktree, delegate, push, PR, hand-off) are unchanged — a clean run still opens the PR and hands off to `/pr-watch --non-interactive`.
 
 ---
 
@@ -172,7 +187,7 @@ Also read the latest `⏸ Paused` ClickUp comment *(ticket mode)* for `nextUp`.
 ```
 clickup_update_task(task_id="<id>", status=STATUS.building)
 ```
-Dispatch `supera-engineer` with: the task description (ticket title + recovered `nextUp`), the worktree path, and the path to `.claude/supera.json`. For `building`, lead with `nextUp` so the engineer continues exactly where pause stopped — don't redo finished work. The engineer self-verifies before returning (**CI is the gate; don't run the full build/test/lint here**). Wait for its JSON receipt (`schema/receipt.schema.json`); branch on `receipt.status` — `ok` continues, `needs-review`/`blocked` surfaces `receipt.implemented` and any FAIL in `receipt.verification` to the user before continuing.
+Dispatch `supera-engineer` with: the task description (ticket title + recovered `nextUp`), the worktree path, and the path to `.claude/supera.json`. For `building`, lead with `nextUp` so the engineer continues exactly where pause stopped — don't redo finished work. The engineer self-verifies before returning (**CI is the gate; don't run the full build/test/lint here**). Wait for its JSON receipt (`schema/receipt.schema.json`); branch on `receipt.status` — `ok` continues, `needs-review`/`blocked` surfaces `receipt.implemented` and any FAIL in `receipt.verification` to the user before continuing (in `NONINTERACTIVE` mode, exit `blocked` instead — see **Non-interactive mode**).
 
 Then fall through to **step 5** to open the PR. If a soft-reset rewrote an already-pushed `wip:` commit, push with `--force-with-lease` (never `--force`).
 
@@ -182,7 +197,7 @@ Then fall through to **step 5** to open the PR. If a soft-reset rewrote an alrea
 
 Reached from step 1 when `$ARGUMENTS` begins with `pause`. Stop work cleanly so a later `/ship <slug>` resumes without guessing. No state file — git carries the work; the ticket comment is the human mirror.
 
-1. **Resolve the WIP.** Parse the rest of `$ARGUMENTS` (ticket id, branch, or empty). Empty → the current branch or the single worktree under `WT_DIR` (ambiguous → list and ask). Resolve `WT_PATH`, `BRANCH`, and (ticket mode) `TICKET`.
+1. **Resolve the WIP.** Parse the rest of `$ARGUMENTS` (ticket id, branch, or empty). Empty → the current branch or the single worktree under `WT_DIR` (ambiguous → list and ask; in `NONINTERACTIVE` mode there's no PR for a checkpoint to comment on — print the candidate worktrees and exit `blocked`, see **Non-interactive mode**). Resolve `WT_PATH`, `BRANCH`, and (ticket mode) `TICKET`.
 2. **Capture `nextUp`.** In one or two concrete lines, what is done and what remains — name the next file/step, not "continue work". This becomes the `wip:` commit subject + body and the payload a resume reads back.
 3. **Commit the checkpoint:**
 ```bash
@@ -305,6 +320,7 @@ Human-only verdicts `completed` / `accepted` are never set by a skill — mark t
 
 - Read `.claude/supera.json` first — never hardcode commands, list IDs, branches, tags, or **status names** (always `STATUS.<key>`).
 - Ticket-less mode (no `clickup.listId`) is first-class: skip all ClickUp steps, ship purely on git + GitHub. Derive close-out time from git commit timestamps.
+- `--non-interactive` (headless CI) never prompts: an ambiguous decision becomes a PR/issue comment plus a `blocked` exit, never a question. Interactive is the default; the flag is preserved when handing off to `/pr-watch`.
 - Never commit directly to the base branch. Never remove `BASE` or its worktree.
 - **Idempotent + full-lifecycle:** run the step 1.5 phase routing first — never double-create a worktree or duplicate work; continue from the detected phase (resume / open PR / close out). Only `/pr-watch` lives outside `/ship`; never duplicate it.
 - Always delegate code + tests to `supera-engineer` (or `nelson` for genuinely parallel work) — `/ship` orchestrates, it does not implement.
