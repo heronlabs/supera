@@ -28,6 +28,8 @@
     "packages/qa-automation/**": "testing"
   },
   "audits": { "supplyChain": true },
+  "ci": { "provider": "github", "audit": { "pnpm": "pnpm audit --json" } },
+  "automation": { "audit": { "schedule": true, "dispatch": true, "label": true } },
   "review": { "consensus": { "voters": 2 } },
   "security": { "denyPaths": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key"] }
 }
