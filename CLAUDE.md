@@ -35,3 +35,14 @@ This repo **is** a Claude Code plugin. It ships skills + agents that run in *oth
 1. Edit the skill/agent/schema.
 2. Bump `version` in both `plugin.json` and `marketplace.json`.
 3. Commit. Consumers pick it up on next `/plugin update`.
+
+<!-- supera:guardrails -->
+## Working with this repo (managed by /supera-init — edits between these markers are overwritten on re-init)
+
+- **Edit, don't rewrite.** Change only the needed entry in a config/generated file (`package.json`, lockfiles, manifests, CI yaml); preserve the rest. Never regenerate a whole file to add one line.
+- **No scope creep.** Build only what was asked; no speculative abstractions, layers, or options. Prefer the simplest working solution.
+- **Ambiguous literals: flag, don't guess.** Config keys, IDs, and env names can be literal values, not mappings (e.g. `environment: pulumi` may name a GitHub Environment literally called `pulumi`). State which reading you took.
+- **Cross-repo changes: update all related repos** unless told otherwise.
+- **CI/infra settings live outside code** — GitHub Environment and branch-protection rules are in repo settings, not the yaml.
+- **ClickUp list IDs come from the hierarchy** (workspace → space → folder → list); never the team/workspace ID.
+<!-- /supera:guardrails -->

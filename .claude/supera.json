@@ -1,0 +1,26 @@
+{
+  "stack": "mixed",
+  "verify": {
+    "lint": "bash scripts/check-consistency.sh"
+  },
+  "worktree": { "dir": ".worktrees", "base": "main" },
+  "clickup": {
+    "listId": "901415284967",
+    "statuses": {
+      "ready": "pending",
+      "building": "in progress",
+      "review": "in review",
+      "blocked": "blocked",
+      "rejected": "rejected",
+      "closed": "Closed"
+    }
+  },
+  "pr": { "base": "main", "remote": "origin" },
+  "tags": {
+    "skills/**": "skills",
+    "agents/**": "agents",
+    "schema/**": "schema",
+    "docs/**": "docs"
+  },
+  "audits": { "supplyChain": false }
+}
