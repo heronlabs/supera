@@ -18,6 +18,34 @@ Resolve the deny-list and consensus gate:
 - `DENY = CONFIG.security?.denyPaths ?? ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"]` — secret/key globs that must never enter the PR (step 6d). `[]` disables.
 - `VOTERS = CONFIG.review?.consensus?.voters ?? 1`; `QUORUM = CONFIG.review?.consensus?.quorum ?? (floor(VOTERS/2)+1)`. `VOTERS <= 1` disables the consensus gate (step 6e) — single review pass, the original behaviour.
 
+## 0a — Persisted attempt-state
+
+Attempt-state must survive across invocations — a fresh headless CI run (the autonomy runtime: `anthropics/claude-code-action`) has no live session, so the loop-state lives on the PR, not in memory. It's a **hidden marker comment**: an HTML comment carrying JSON, posted as a bot PR comment. This needs only the `gh` CLI (already required), never enters the code diff, and works with no linked ticket — the ClickUp MCP is absent in CI. The marker convention is fixed (not repo-specific), so it stays convention-only and is not a config field.
+
+Marker line (the JSON is on one line, wrapped in the HTML comment):
+```
+<!-- supera:pr-watch-state {"attempts":<n>,"lastFailure":"<sig>"} -->
+```
+- `attempts` — how many fix attempts have run this PR (CI failures in step 3 and consensus blocks in step 6e both increment it).
+- `lastFailure` — a short stable signature of the most recent failure (e.g. the failing job name + first error line, or `consensus:<reason>`), used to tell a repeat from a new failure.
+
+After resolving the PR (step 1), load the state once — find the marker comment and parse its JSON; if none exists, start at `STATE = {attempts: 0, lastFailure: null}`:
+```bash
+gh pr view $PR --json comments \
+  -q '[.comments[] | select(.body | contains("<!-- supera:pr-watch-state"))] | last | .body' \
+  | grep -oE '\{.*\}' || true
+```
+Persist `STATE` whenever it changes (after recording an attempt) by upserting the single marker comment — edit it in place if it exists, else create it. Carry the comment id from the load above:
+```bash
+BODY="<!-- supera:pr-watch-state {\"attempts\":$ATTEMPTS,\"lastFailure\":\"$SIG\"} -->"
+if [ -n "$COMMENT_ID" ]; then
+  gh api -X PATCH "repos/{owner}/{repo}/issues/comments/$COMMENT_ID" -f body="$BODY"
+else
+  gh pr comment $PR --body "$BODY"
+fi
+```
+Keep exactly one marker comment per PR — always update the existing one rather than appending. Treat `STATE.attempts` as the authoritative attempt count throughout this skill; the in-session count is only a mirror of it.
+
 ## 1 — Resolve the PR
 
 Parse `$ARGUMENTS` (flags in any order):
@@ -73,7 +101,7 @@ Classify and fix:
 | Clearly transient (network, runner OOM) | Note it; a re-run is acceptable here only. |
 | Unknown | Show the user; ask for guidance. |
 
-Dispatch `supera-engineer` with the exact log excerpt; wait for its JSON receipt (`schema/receipt.schema.json`) and branch on `receipt.status` — `ok` → push the fix; `needs-review`/`blocked` → surface `receipt.implemented` and any FAIL in `receipt.verification`, don't push a red fix. **Track attempts — if the same failure repeats after 2 fix attempts:** if `CLICKUP_TICKET` set, `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.blocked)`; stop; show the full log; ask for guidance; exit the turn.
+Compute the failure signature `SIG` (failing job name + first error line). Dispatch `supera-engineer` with the exact log excerpt; wait for its JSON receipt (`schema/receipt.schema.json`) and branch on `receipt.status` — `ok` → record the attempt (`STATE.attempts += 1`, `STATE.lastFailure = SIG`), persist the marker (step 0a), push the fix; `needs-review`/`blocked` → surface `receipt.implemented` and any FAIL in `receipt.verification`, don't push a red fix. **Track attempts via the persisted marker so a fresh CI invocation resumes the count:** if this `SIG` equals `STATE.lastFailure` and `STATE.attempts >= 2` (the same failure has already survived 2 fix attempts): if `CLICKUP_TICKET` set, `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.blocked)`; stop; show the full log; ask for guidance; exit the turn.
 
 After a fix:
 ```bash
@@ -161,7 +189,7 @@ Skip when `VOTERS <= 1`, **or** when steps 6a–6c delegated any fix this cycle 
 
 Otherwise dispatch `VOTERS` independent reviewer agents in parallel (single message), each: *"Adversarially review PR #<N> for merge-readiness. Hunt for ONE blocking defect — correctness, data-loss, security, or a broken contract. Reply `APPROVE`, or `BLOCK: <reason>`. Default to BLOCK if genuinely uncertain."* Count `APPROVE` votes:
 - **`>= QUORUM`** → consensus clears.
-- **`< QUORUM`** → consensus blocks. Delegate each clearly-actionable `BLOCK` reason to `supera-engineer` (wait); surface design concerns to the user instead of implementing. **Same consensus block twice after 2 fix rounds** → `STATUS.blocked` if linked, stop, show the block reasons, ask, exit.
+- **`< QUORUM`** → consensus blocks. Record the attempt against the persisted marker (`STATE.attempts += 1`, `STATE.lastFailure = "consensus:<reason>"`, persist per step 0a) so a fresh invocation resumes the count. Delegate each clearly-actionable `BLOCK` reason to `supera-engineer` (wait); surface design concerns to the user instead of implementing. **Same consensus block (`STATE.lastFailure` unchanged) after 2 fix rounds** → `STATUS.blocked` if linked, stop, show the block reasons, ask, exit.
 
 ### Close out the cycle
 
@@ -195,5 +223,6 @@ ScheduleWakeup(delaySeconds=120, reason="CI after fixes on PR #<N>", prompt="/pr
 - Never `gh run rerun` unless the failure is clearly transient — fix the root cause.
 - Don't spin-poll — always `ScheduleWakeup` and exit the turn while waiting.
 - Always preserve `--reviewed` and `--clickup-ticket` flags when rescheduling.
-- Same CI failure twice after 2 fix attempts → ticket `STATUS.blocked` (if linked), stop, show the log, ask.
+- Persist attempt-count + last-failure-signature in the hidden `<!-- supera:pr-watch-state … -->` marker comment on the PR (one per PR, edited in place) — a fresh headless CI invocation reads it and resumes the loop instead of restarting. State is git/GitHub-native (no ClickUp field) and works ticket-less.
+- Same CI failure twice after 2 fix attempts → ticket `STATUS.blocked` (if linked), stop, show the log, ask. Count from the persisted marker, not just the live session.
 - PR closed without merge → ticket `STATUS.rejected` (if linked).
