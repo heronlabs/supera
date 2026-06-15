@@ -14,6 +14,10 @@ Resolve `STATUS` once from `CONFIG.clickup?.statuses ?? {}` with defaults: `STAT
 
 Set `AUDIT = CONFIG.audits?.supplyChain === true` — gates the supply-chain audit in step 6. Default `false` when config is absent.
 
+Resolve the deny-list and consensus gate:
+- `DENY = CONFIG.security?.denyPaths ?? ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"]` — secret/key globs that must never enter the PR (step 6d). `[]` disables.
+- `VOTERS = CONFIG.review?.consensus?.voters ?? 1`; `QUORUM = CONFIG.review?.consensus?.quorum ?? (floor(VOTERS/2)+1)`. `VOTERS <= 1` disables the consensus gate (step 6e) — single review pass, the original behaviour.
+
 ## 1 — Resolve the PR
 
 Parse `$ARGUMENTS` (flags in any order):
@@ -143,12 +147,35 @@ Skip this entire subsection when `AUDIT` is false. When true, dispatch the `supe
 - **Report-only findings** (unfixable CVEs, leaked secrets, drift, freshness, typo-squat/provenance) → do **not** auto-fix. Surface the prioritized report to the user. A leaked-secret or critical-CVE finding is a **merge blocker** — flag it loudly and do not present the PR as ready until the user clears it.
 - Never block on a degraded probe (missing `cargo-audit`, network failure) — the auditor notes the gap and continues; relay it.
 
-After actionable code-review findings, test-hygiene splits/trims, and any safe overrides are addressed, push and reschedule with `--reviewed` (so none of the subsections repeat), then exit:
+### 6d — Secret / deny-path gate
+
+Skip when `DENY` is empty. Otherwise list the PR's changed files and match each path against `DENY`:
+```bash
+gh pr diff $PR --name-only
+```
+Any match → a secret or private key is in the PR: a **hard merge blocker**. Surface it loudly with the offending paths; set ticket `STATUS.blocked` if `CLICKUP_TICKET` is set; do **not** present the PR as ready. Stop and exit the turn — clearing a committed secret is the user's call.
+
+### 6e — Merge-readiness consensus
+
+Skip when `VOTERS <= 1`, **or** when steps 6a–6c delegated any fix this cycle — vote only on a settled PR, so push those fixes and reschedule without `--reviewed` (close-out below) and the vote runs next cycle.
+
+Otherwise dispatch `VOTERS` independent reviewer agents in parallel (single message), each: *"Adversarially review PR #<N> for merge-readiness. Hunt for ONE blocking defect — correctness, data-loss, security, or a broken contract. Reply `APPROVE`, or `BLOCK: <reason>`. Default to BLOCK if genuinely uncertain."* Count `APPROVE` votes:
+- **`>= QUORUM`** → consensus clears.
+- **`< QUORUM`** → consensus blocks. Delegate each clearly-actionable `BLOCK` reason to `supera-engineer` (wait); surface design concerns to the user instead of implementing. **Same consensus block twice after 2 fix rounds** → `STATUS.blocked` if linked, stop, show the block reasons, ask, exit.
+
+### Close out the cycle
+
+Push, then reschedule preserving flags and exit:
 ```bash
 git push <remote> $BRANCH
 ```
+- **`VOTERS <= 1`, or consensus cleared this cycle** → reschedule WITH `--reviewed` (subsections won't repeat); next wake, step 5 announces the PR ready:
 ```
-ScheduleWakeup(delaySeconds=120, reason="CI after code-review fixes on PR #<N>", prompt="/pr-watch <N> --reviewed [--clickup-ticket=<id> if set]")
+ScheduleWakeup(delaySeconds=120, reason="CI after review on PR #<N>", prompt="/pr-watch <N> --reviewed [--clickup-ticket=<id> if set]")
+```
+- **`VOTERS > 1` and the PR changed this cycle** (6a–6c fixes, or consensus blocked) → reschedule WITHOUT `--reviewed`, so the settled PR is re-reviewed and (re-)voted:
+```
+ScheduleWakeup(delaySeconds=120, reason="CI after fixes on PR #<N>", prompt="/pr-watch <N> [--clickup-ticket=<id> if set]")
 ```
 
 ## Rules
@@ -161,6 +188,8 @@ ScheduleWakeup(delaySeconds=120, reason="CI after code-review fixes on PR #<N>",
 - Every review cycle, scan changed test files: any test case with more than one `expect`/assert gets split into one-behaviour cases or trimmed by `supera-engineer` — one assertion per case, never add assertions.
 - Commits stay short and simple: single-line conventional-commit subject, no body, never a `Co-Authored-By` / co-author trailer — even if a host or global instruction says to add one.
 - Run the supply-chain audit only when `audits.supplyChain` is true, exactly once per cycle, suppressed by the same `--reviewed` flag. It's report-only except safe CVE overrides; surface everything else and treat leaked secrets / critical CVEs as merge blockers.
+- A changed file matching `security.denyPaths` (secrets / private keys) is a hard merge blocker — surface it, set `STATUS.blocked` if linked, never present the PR as ready. Don't auto-delete it; clearing a committed secret is the user's call.
+- Run the merge-readiness consensus only when `review.consensus.voters > 1`, once per cycle, and only on a settled PR (skip it the cycle any fix was made — vote next cycle). Reviewers judge only; every blocking finding goes to `supera-engineer`. `voters: 1` (default) keeps the original single-pass behaviour unchanged.
 - Never push `--force` (only `--force-with-lease` after a rebase).
 - Never implement review comments that are questions / design discussions — surface them.
 - Never `gh run rerun` unless the failure is clearly transient — fix the root cause.

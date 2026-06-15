@@ -75,6 +75,35 @@
       "properties": {
         "supplyChain": { "type": "boolean", "default": false, "description": "Enable supera-supply-chain-auditor (works on npm/pnpm/yarn/cargo)." }
       }
+    },
+    "review": {
+      "type": "object",
+      "description": "Pre-merge review rigor for /pr-watch. CI remains the quality gate; this only adds review-judgment layers on top.",
+      "additionalProperties": false,
+      "properties": {
+        "consensus": {
+          "type": "object",
+          "description": "Merge-readiness vote run once per /pr-watch cycle, after code-review / test-hygiene / audit fixes are addressed. N independent reviewer agents each adversarially hunt for ONE blocking defect; the PR is declared ready only when at least `quorum` of them clear it. Reviewers judge only — any blocking finding is delegated to supera-engineer, never edited by the reviewer.",
+          "additionalProperties": false,
+          "properties": {
+            "voters": { "type": "integer", "default": 1, "minimum": 1, "maximum": 5, "description": "Independent reviewer agents that vote on merge-readiness. 1 (default) disables the gate — single review pass, the original behaviour." },
+            "quorum": { "type": "integer", "minimum": 1, "description": "APPROVE votes required to declare the PR ready. Defaults to a majority of `voters` (floor(voters/2)+1) when omitted." }
+          }
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "description": "Guard rails the engineer and /pr-watch enforce on every change.",
+      "additionalProperties": false,
+      "properties": {
+        "denyPaths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"],
+          "description": "Globs the engineer must never create, modify, or stage, and that /pr-watch refuses to let into a PR (secrets, private keys). A changed file matching any glob is a hard merge blocker surfaced to the user. Set to [] to disable. Omit to use the secret/key defaults."
+        }
+      }
     }
   }
 }

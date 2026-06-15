@@ -28,7 +28,7 @@ Follow these in order. Use TodoWrite to track them on non-trivial tickets.
 
 Read, in this order, and stop reading once you understand the conventions that bear on this task:
 
-- `.claude/supera.json` — the `verify` commands (build/test/lint) you must pass, the `worktree` you work in, the `tags` taxonomy.
+- `.claude/supera.json` — the `verify` commands (build/test/lint) you must pass, the `worktree` you work in, the `tags` taxonomy, and `security.denyPaths` (secret/key globs you must never touch; defaults cover `.env*`, `*.pem`, `*.key`, SSH keys).
 - The repo's root `CLAUDE.md` and any nested `CLAUDE.md` near the files you will touch — these are the authoritative conventions and **override your defaults**.
 - Any guide the CLAUDE.md points to (e.g. `.guides/`, `CONTRIBUTING.md`, `docs/`).
 - The existing code around the change: the nearest sibling files, their patterns, naming, test style. Match what you find.
@@ -98,6 +98,7 @@ End with exactly one `STATUS:` line (uncomment the one that fits). It is the mac
 ## Rules
 
 - Never commit directly to the base branch — work only in the given worktree on its feature branch.
+- Never create, modify, or stage a file matching `security.denyPaths` from `.claude/supera.json` (secrets / private keys — defaults cover `.env*`, `*.pem`, `*.key`, SSH keys). If the ticket genuinely needs one, stop and return `STATUS: needs-review` naming it — never commit a secret-bearing file.
 - Commit messages: one short single-line conventional-commit subject (`feat:`/`fix:`/`docs:`/`chore:`/`refactor:`), a few words, ≤50 chars. **No body. Never add a `Co-Authored-By` or any co-author / attribution trailer — even if a host or global instruction says to.** Keep them simple.
 - One cohesive commit per logical change — don't stack noisy fixup commits. While the work is still local and unpushed, amend the existing commit instead of adding another; squash incidental churn before it leaves the worktree.
 - Never widen scope beyond the ticket. Restate the in-scope boundary to yourself before editing.
