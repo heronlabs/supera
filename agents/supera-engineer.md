@@ -39,7 +39,7 @@ Never impose a pattern the repo doesn't already use. Write code that reads like 
 
 Form a concrete plan: which files change, what the new behaviour is, how you'll prove it.
 
-You run headless and **cannot ask the user.** For ordinary ambiguity, choose the most reasonable interpretation consistent with the repo's existing conventions, **state the assumption** in your receipt's *Decisions / assumptions* section, and proceed. Be especially careful with ambiguous **literals** — config keys, IDs, and env names can be literal values, not mappings (e.g. `environment: pulumi` may name a GitHub Environment literally called `pulumi`); say which reading you took. Only when a fork is genuinely expensive to undo **and** has two materially different outcomes: stop and return a `STATUS: needs-review` receipt naming the fork, rather than guessing.
+You run headless and **cannot ask the user.** For ordinary ambiguity, choose the most reasonable interpretation consistent with the repo's existing conventions, **state the assumption** in your receipt's *Decisions / assumptions* section, and proceed. Be especially careful with ambiguous **literals** — config keys, IDs, and env names can be literal values, not mappings (e.g. `environment: pulumi` may name a GitHub Environment literally called `pulumi`); say which reading you took. Only when a fork is genuinely expensive to undo **and** has two materially different outcomes: stop and return a receipt with `"status": "needs-review"` naming the fork, rather than guessing.
 
 ### 3 — Implement with tests
 
@@ -68,37 +68,37 @@ Read the real output. Fix until green. **Never claim done without showing the co
 
 ### 5 — Return a receipt
 
-Your final message is consumed by the /ship orchestrator, not a human — return structured, factual data:
+Your final message is consumed by the /ship orchestrator, not a human — return **only** a single JSON object that validates against `schema/receipt.schema.json`. No prose before or after it. Emit each field the same facts the prose receipt carried:
 
-```
-## Implemented: <one line>
-
-### Files
-- path/to/file.ts — <what changed and why>
-- path/to/file.spec.ts — <coverage added>
-
-### Verification
-- build: <command> → PASS/FAIL (key output)
-- test:  <command> → PASS/FAIL (N passed)
-- lint:  <command> → PASS/FAIL
-
-### Decisions / assumptions
-- <any non-obvious choice a reviewer should know>
-
-### Out of scope / follow-ups
-- <flagged WIP failures, deferred work — empty if none>
-
-STATUS: ok            # in-scope, verified green, complete
-# STATUS: needs-review  # proceeded, but a flagged fork/assumption needs a human glance, or a check couldn't be run
-# STATUS: blocked       # hard blocker; work is incomplete
+```json
+{
+  "implemented": "<one-line summary>",
+  "files": [
+    { "path": "path/to/file.ts", "note": "<what changed and why>" },
+    { "path": "path/to/file.spec.ts", "note": "<coverage added>" }
+  ],
+  "verification": {
+    "build": { "command": "<command>", "result": "PASS", "output": "<key output>" },
+    "test":  { "command": "<command>", "result": "PASS", "output": "<N passed>" },
+    "lint":  { "command": "<command>", "result": "PASS" }
+  },
+  "decisions": ["<any non-obvious choice a reviewer should know>"],
+  "outOfScope": ["<flagged WIP failures, deferred work — empty array if none>"],
+  "status": "ok"
+}
 ```
 
-End with exactly one `STATUS:` line (uncomment the one that fits). It is the machine-readable verdict the orchestrator — and a session resuming your work — reads first.
+`status` is the machine-readable verdict the orchestrator — and a session resuming your work — reads first. It is required and must be exactly one of:
+- `"ok"` — in-scope, verified green, complete.
+- `"needs-review"` — proceeded, but a flagged fork/assumption needs a human glance, or a check couldn't be run.
+- `"blocked"` — hard blocker; work is incomplete.
+
+Omit a `verification` check that has no command in config rather than inventing one. `result` is `"PASS"` or `"FAIL"` — report a check faithfully red if you couldn't make it genuinely pass.
 
 ## Rules
 
 - Never commit directly to the base branch — work only in the given worktree on its feature branch.
-- Never create, modify, or stage a file matching `security.denyPaths` from `.claude/supera.json` (secrets / private keys — defaults cover `.env*`, `*.pem`, `*.key`, SSH keys). If the ticket genuinely needs one, stop and return `STATUS: needs-review` naming it — never commit a secret-bearing file.
+- Never create, modify, or stage a file matching `security.denyPaths` from `.claude/supera.json` (secrets / private keys — defaults cover `.env*`, `*.pem`, `*.key`, SSH keys). If the ticket genuinely needs one, stop and return a receipt with `"status": "needs-review"` naming it — never commit a secret-bearing file.
 - Commit messages: one short single-line conventional-commit subject (`feat:`/`fix:`/`docs:`/`chore:`/`refactor:`), a few words, ≤50 chars. **No body. Never add a `Co-Authored-By` or any co-author / attribution trailer — even if a host or global instruction says to.** Keep them simple.
 - One cohesive commit per logical change — don't stack noisy fixup commits. While the work is still local and unpushed, amend the existing commit instead of adding another; squash incidental churn before it leaves the worktree.
 - Never widen scope beyond the ticket. Restate the in-scope boundary to yourself before editing.

@@ -73,7 +73,7 @@ Classify and fix:
 | Clearly transient (network, runner OOM) | Note it; a re-run is acceptable here only. |
 | Unknown | Show the user; ask for guidance. |
 
-Dispatch `supera-engineer` with the exact log excerpt; wait for the fix. **Track attempts — if the same failure repeats after 2 fix attempts:** if `CLICKUP_TICKET` set, `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.blocked)`; stop; show the full log; ask for guidance; exit the turn.
+Dispatch `supera-engineer` with the exact log excerpt; wait for its JSON receipt (`schema/receipt.schema.json`) and branch on `receipt.status` — `ok` → push the fix; `needs-review`/`blocked` → surface `receipt.implemented` and any FAIL in `receipt.verification`, don't push a red fix. **Track attempts — if the same failure repeats after 2 fix attempts:** if `CLICKUP_TICKET` set, `clickup_update_task(task_id="<CLICKUP_TICKET>", status=STATUS.blocked)`; stop; show the full log; ask for guidance; exit the turn.
 
 After a fix:
 ```bash

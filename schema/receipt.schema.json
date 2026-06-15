@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/heronlabs/supera/schema/receipt.schema.json",
+  "title": "supera-engineer receipt",
+  "description": "The structured verdict the supera-engineer agent emits as its final message. Consumed by /ship and /pr-watch, which branch on `status` deterministically instead of scraping prose.",
+  "type": "object",
+  "required": ["implemented", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "implemented": {
+      "type": "string",
+      "description": "One-line summary of what was implemented."
+    },
+    "files": {
+      "type": "array",
+      "description": "Files touched, each with a short note on what changed and why.",
+      "items": {
+        "type": "object",
+        "required": ["path", "note"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "description": "Repo-relative path of the changed file." },
+          "note": { "type": "string", "description": "What changed and why, or the coverage added." }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Result of each self-verify check run from CONFIG.verify. Omit a check that has no command in config.",
+      "additionalProperties": false,
+      "properties": {
+        "build": { "$ref": "#/$defs/check" },
+        "test":  { "$ref": "#/$defs/check" },
+        "lint":  { "$ref": "#/$defs/check" }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "description": "Non-obvious choices or assumptions a reviewer should know.",
+      "items": { "type": "string" }
+    },
+    "outOfScope": {
+      "type": "array",
+      "description": "Flagged pre-existing failures, deferred work, or follow-ups. Empty when none.",
+      "items": { "type": "string" }
+    },
+    "status": {
+      "type": "string",
+      "description": "Machine-readable verdict the orchestrator reads first. 'ok' = in-scope, verified green, complete. 'needs-review' = proceeded but a flagged fork/assumption needs a human glance, or a check could not be run. 'blocked' = hard blocker; work is incomplete.",
+      "enum": ["ok", "needs-review", "blocked"]
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "required": ["command", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string", "description": "The exact command run." },
+        "result": { "type": "string", "enum": ["PASS", "FAIL"], "description": "Outcome of the check." },
+        "output": { "type": "string", "description": "Key tail of the command output (e.g. 'N passed')." }
+      }
+    }
+  }
+}
