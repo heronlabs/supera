@@ -41,8 +41,12 @@ git worktree list | grep <auditBranch>                             # worktree pr
 Route, in this order:
 
 - **An OPEN (not merged) PR exists** → today's audit is already in flight. Invoke `/pr-watch <N>` (append `--non-interactive` when set) and **stop** — never double-create.
-- **A MERGED PR exists** → today's audit already shipped. Report it and exit.
-- **A worktree exists but no PR** → reuse it (resume); continue at **step 4**.
+- **A MERGED PR exists** → today's audit already shipped. Reclaim any residual worktree first — `/pr-watch` hands merged audit PRs to nobody (audits are out of the `/ship` ladder), so a stale `chore-audit-<date>` worktree would otherwise pile up per audit. Tear it down if present (guarded so a missing worktree/branch is a no-op), then report it and exit — still ticket-less:
+  ```bash
+  git worktree list | grep -q "<WT_DIR>/<auditBranch>" && git worktree remove <WT_DIR>/<auditBranch>          # --force only if it refuses on an unclean tree
+  git rev-parse --verify --quiet <auditBranch> >/dev/null && git branch -D <auditBranch>                       # delete the branch if present
+  ```
+- **A worktree exists but no PR** → reuse it (resume). First `git fetch <REMOTE> <TARGET>` so the deny gate (step 5) and commit/report detection (step 6) diff against a fresh `<REMOTE>/<TARGET>` — step 3's fetch was skipped on this route, and a stale local ref would mis-classify new paths/commits. Then continue at **step 4**.
 - **Fresh** (no PR, no worktree) → continue at **step 3**.
 
 ## 3 — Create the worktree (no ticket)
@@ -94,7 +98,13 @@ git -C <WT_DIR>/<auditBranch> log --oneline <REMOTE>/<TARGET>..<auditBranch>
 ```bash
 git -C <WT_DIR>/<auditBranch> push -u <REMOTE> <auditBranch>
 ```
-Derive GitHub labels from `CONFIG.tags` matched against the changed files (`git -C <WT_DIR>/<auditBranch> diff --name-only <REMOTE>/<TARGET>`), **plus** always a `supera:audit` label. Create the PR assigned to `@me` (NEVER `--reviewer` — GitHub blocks self-review), base `<TARGET>`, title `Dependency audit — <YYYY-MM-DD>` (no conventional-commit prefix), body = the combined report with the two sections below:
+Derive GitHub labels from `CONFIG.tags` matched against the changed files (`git -C <WT_DIR>/<auditBranch> diff --name-only <REMOTE>/<TARGET>`), **plus** always a `supera:audit` label. Ensure that `supera:audit` label exists first — `gh pr create --label "supera:audit"` hard-fails the whole create with `could not add label: 'supera:audit' not found` when the label was never created in the repo, which on the first audit run leaves the auditor's commits stranded with no PR. Create it idempotently:
+
+```bash
+gh label create "supera:audit" --color "5319e7" --description "Opened by supera /audit" 2>/dev/null || true   # idempotent: no-op if it already exists or perms are missing
+```
+
+Create the PR assigned to `@me` (NEVER `--reviewer` — GitHub blocks self-review), base `<TARGET>`, title `Dependency audit — <YYYY-MM-DD>` (no conventional-commit prefix), body = the combined report with the two sections below:
 
 ```bash
 gh pr create \
