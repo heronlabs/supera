@@ -1,7 +1,7 @@
 ---
 name: pr-watch
 description: "Repo-agnostic PR babysitter: monitors CI, fixes failures via supera-engineer, addresses review comments, runs one code-review cycle (plus a supply-chain audit when audits.supplyChain is enabled), and exits when the branch is green, synced with the base, and all threads resolved. Keeps the ClickUp ticket in sync when one is linked."
-allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI and clickup_* MCP tools
+allowed-tools: Bash, Read, Glob, Grep, Agent, Workflow  # also requires gh CLI and clickup_* MCP tools
 ---
 
 Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failures, address review comments, run one code review — exit when everything is green and resolved. Reads `.claude/supera.json` for the install/build/test/lint commands used to reproduce failures. Keeps the ClickUp ticket in sync when `--clickup-ticket` is supplied.
@@ -17,6 +17,7 @@ Set `AUDIT = CONFIG.audits?.supplyChain === true` — gates the supply-chain aud
 Resolve the deny-list and consensus gate:
 - `DENY = CONFIG.security?.denyPaths ?? ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"]` — secret/key globs that must never enter the PR (step 6d). `[]` disables.
 - `VOTERS = CONFIG.review?.consensus?.voters ?? 1`; `QUORUM = CONFIG.review?.consensus?.quorum ?? (floor(VOTERS/2)+1)`. `VOTERS <= 1` disables the consensus gate (step 6e) — single review pass, the original behaviour.
+- `LENSES = CONFIG.review?.lenses ?? []` — the specialist review lenses fanned out in step 6a; empty (the default) keeps the single code-review pass.
 
 ## 0a — Persisted attempt-state
 
@@ -161,6 +162,46 @@ Invoke the `code-review:code-review` skill on PR `#<N>` (one cycle only). For ea
 - **Trivial nit** → apply directly if it's a one-liner; skip if subjective.
 - **Design concern** → surface to the user; do not implement without confirmation (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**).
 
+#### Extra lenses (opt-in, default off)
+
+When `LENSES` is non-empty, fan the configured specialist lenses out **in parallel via the Workflow primitive**, alongside the base code-review pass above, for more review signal per cycle. Each lens maps to its read-only `pr-review-toolkit` reviewer agent:
+
+| `LENSES` key | reviewer agent |
+|---|---|
+| `silent-failures` | `pr-review-toolkit:silent-failure-hunter` |
+| `type-design` | `pr-review-toolkit:type-design-analyzer` |
+| `test-coverage` | `pr-review-toolkit:pr-test-analyzer` |
+
+Each lens **posts its findings as PR comments and returns them; nothing is edited by a lens.** Invoke the following script via the `Workflow` tool with args `{ pr: <N>, lenses: LENSES }`:
+
+```js
+export const meta = {
+  name: 'pr-review-lenses',
+  description: 'Fan out PR review across the configured specialist lenses',
+  phases: [{ title: 'Lenses' }],
+}
+const AGENTS = {
+  'silent-failures': 'pr-review-toolkit:silent-failure-hunter',
+  'type-design': 'pr-review-toolkit:type-design-analyzer',
+  'test-coverage': 'pr-review-toolkit:pr-test-analyzer',
+}
+const FINDING = { type: 'object', additionalProperties: false,
+  properties: {
+    file: { type: 'string' }, line: { type: 'integer' }, severity: { type: 'string' },
+    kind: { type: 'string', enum: ['actionable', 'nit', 'design'] }, detail: { type: 'string' },
+  }, required: ['kind', 'detail'] }
+const SCHEMA = { type: 'object', additionalProperties: false,
+  properties: { findings: { type: 'array', items: FINDING } }, required: ['findings'] }
+const results = await parallel((args.lenses ?? []).map(k => () =>
+  agent(`Review PR #${args.pr} through your specialist lens. Post each finding as a PR comment, then return them.`,
+        { label: k, agentType: AGENTS[k], schema: SCHEMA })))
+return { findings: results.filter(Boolean).flatMap(r => r.findings ?? []) }
+```
+
+After the fan-out, **merge the returned lens findings with the base code-review findings and route the union by the SAME rules above** (actionable → `supera-engineer`; trivial one-liner nit → apply directly; design concern → surface / block in `NONINTERACTIVE`), deduping obvious overlaps. Note plainly: the lens set is bounded by the schema enum so per-PR cost stays capped; **every fix still goes through `supera-engineer`** (lenses are read-only signal); lenses **never replace CI** — CI stays the quality gate.
+
+If the `Workflow` primitive is unavailable in the runtime, dispatch the same lens agents as parallel `Agent` calls in a single message — the parallel fan-out is the requirement, `Workflow` is the preferred vehicle.
+
 ### 6b — Test hygiene (one assertion per test)
 
 **ALWAYS** run this on the changed test files, every review cycle. List the diff's test files and scan each test case for more than one `expect`/assert:
@@ -232,6 +273,7 @@ gh pr comment $PR --body "🚫 supera /pr-watch blocked (non-interactive): <what
 - Run the supply-chain audit only when `audits.supplyChain` is true, exactly once per cycle, suppressed by the same `--reviewed` flag. It's report-only except safe CVE overrides; surface everything else and treat leaked secrets / critical CVEs as merge blockers.
 - A changed file matching `security.denyPaths` (secrets / private keys) is a hard merge blocker — surface it, set `STATUS.blocked` if linked, never present the PR as ready. Don't auto-delete it; clearing a committed secret is the user's call.
 - Run the merge-readiness consensus only when `review.consensus.voters > 1`, once per cycle, and only on a settled PR (skip it the cycle any fix was made — vote next cycle). Reviewers judge only; every blocking finding goes to `supera-engineer`. `voters: 1` (default) keeps the original single-pass behaviour unchanged.
+- The optional `review.lenses` fan-out (step 6a) runs the configured specialist lenses in parallel via the `Workflow` primitive on top of the base code-review pass; default empty keeps the single code-review pass, and the set is bounded to the three specialists for the per-PR hot path. Lenses are read-only — they post findings as PR comments; every fix still goes through `supera-engineer`.
 - Never push `--force` (only `--force-with-lease` after a rebase).
 - Never implement review comments that are questions / design discussions — surface them.
 - Never `gh run rerun` unless the failure is clearly transient — fix the root cause.
