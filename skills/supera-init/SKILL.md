@@ -168,7 +168,59 @@ jobs:
 
 Write it only if the path is absent; if `.github/workflows/supera-audit.yml` already exists, show the proposed content and confirm before overwriting (same courtesy as `supera.json`). Don't touch any other workflow in `.github/workflows/`.
 
-## 7 — Report
+## 7 — Emit the pr-watch workflow (only when an `automation.prWatch.*` trigger is on)
+
+Skip this whole step unless `CONFIG.ci.provider` is `github` **and** at least one `CONFIG.automation.prWatch.*` flag is true — no workflow, the capability stays off until the repo opts in. (Tell the user once if `CONFIG.ci.provider` is set to anything other than `github` — currently the only supported provider.)
+
+When enabled, write `.github/workflows/supera-pr-watch.yml` so `/pr-watch` runs off-laptop on every PR event instead of dying when the terminal closes. The job is **agentic** — Claude runs `/pr-watch --non-interactive` headless via the official `anthropics/claude-code-action`, resolving the PR number from the event payload: it drives CI to green via `supera-engineer`, addresses review threads, and exits when the branch is green and synced. GitHub events replace the interactive run's `ScheduleWakeup` — `--non-interactive` is load-bearing (no human in CI to answer a prompt; any human-judgment fork becomes a PR comment plus a `blocked` exit). Interactive `/pr-watch` is unchanged and stays for local use — this is purely additive.
+
+Build the file from `CONFIG`, hardcoding nothing repo-specific:
+- **Triggers** come from `CONFIG.automation.prWatch` — emit a `pull_request: { types: [opened, synchronize, reopened] }` block only when `…pullRequest` is true; emit a `check_suite: { types: [completed] }` block only when `…checkSuite` is true. If a flag is false, omit that trigger entirely.
+- The workflow declares the `ANTHROPIC_API_KEY` secret and `contents: write`, `pull-requests: write`, `issues: write`, `checks: read`, `statuses: read` permissions (pr-watch needs to push fixes, comment on / update the PR, and read CI status).
+
+This repo stays git/GitHub-native and **ticket-less**: the ClickUp MCP is claude.ai-authenticated and absent in CI, so the headless run drives the PR to green and never touches ClickUp.
+
+Emit this template, substituting the trigger blocks per the flags above (the example shows both triggers; drop whichever the config disables):
+
+````yaml
+name: supera pr-watch
+
+# Agentic PR babysitter — runs /pr-watch --non-interactive headless.
+# GitHub events replace the interactive run's ScheduleWakeup.
+on:
+  pull_request:                 # only if automation.prWatch.pullRequest
+    types: [opened, synchronize, reopened]
+  check_suite:                  # only if automation.prWatch.checkSuite
+    types: [completed]
+
+permissions:
+  contents: write               # push fixes to the PR branch
+  pull-requests: write          # comment on / update the PR
+  issues: write                 # file follow-ups
+  checks: read                  # read check results
+  statuses: read                # read commit statuses
+
+jobs:
+  pr-watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Run /pr-watch --non-interactive on PR
+            #${{ github.event.pull_request.number || github.event.check_suite.pull_requests[0].number }}.
+            Drive the PR to green: reproduce and fix CI failures via
+            supera-engineer, address actionable review threads, and exit when
+            the branch is green and synced with its base. Never prompt — post
+            any human-judgment fork as a PR comment and exit blocked.
+            Stay git/GitHub-native — do not touch ClickUp.
+````
+
+Write it only if the path is absent; if `.github/workflows/supera-pr-watch.yml` already exists, show the proposed content and confirm before overwriting (same courtesy as `supera.json`). Don't touch any other workflow in `.github/workflows/`.
+
+## 8 — Report
 
 Print the written path and a compact summary of every field. Tell the user:
 > "`.claude/supera.json` written. Commit it so the config travels with the repo. Run `/ship <task or ticket>` to ship."
@@ -183,3 +235,4 @@ Print the written path and a compact summary of every field. Tell the user:
 - Output must validate against `schema/supera.schema.json`.
 - The CLAUDE.md guardrail block is marker-delimited and idempotent: create or refresh only between the `<!-- supera:guardrails -->` markers, never touch content outside them, and drop the ClickUp line when `clickup` is null.
 - Emit `.github/workflows/supera-audit.yml` only when `audits.supplyChain` is true and `ci.provider` is `github`; build its triggers from `automation.audit` and its audit command from `ci.audit` — hardcode nothing. The job is agentic (cron / dispatch / label only, never per-PR), declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write`, and stays ticket-less. Don't overwrite an existing workflow without confirming; never touch other workflow files.
+- Emit `.github/workflows/supera-pr-watch.yml` only when `ci.provider` is `github` and at least one `automation.prWatch.*` flag is true; build its triggers from `automation.prWatch` (`pullRequest` → `pull_request`, `checkSuite` → `check_suite`) — hardcode nothing, omit a trigger whose flag is false. The job is agentic — Claude runs `/pr-watch --non-interactive` headless (GitHub events replace `ScheduleWakeup`), declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write` + `checks`/`statuses: read`, and stays ticket-less. Interactive `/pr-watch` is unchanged (additive). Don't overwrite an existing workflow without confirming; never touch other workflow files.
