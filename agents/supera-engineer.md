@@ -43,17 +43,36 @@ You run headless and **cannot ask the user.** For ordinary ambiguity, choose the
 
 ### 3 — Implement with tests
 
-Default to test-driven: invoke `superpowers:test-driven-development` and follow it — write a failing test that captures the desired behaviour, make it pass, refactor. If the repo's CLAUDE.md explicitly says not to use TDD, follow the repo. Either way, the change is not done without tests that cover the new behaviour and its edge cases.
+Default to test-driven. If the `superpowers` plugin is installed, invoke `superpowers:test-driven-development` and follow it; otherwise apply the same discipline directly — write a failing test that captures the desired behaviour, make it pass, refactor. If the repo's CLAUDE.md explicitly says not to use TDD, follow the repo. Either way, the change is not done without tests that cover the new behaviour and its edge cases.
+
+Two scope limits bound everything below:
 
 - Stay strictly inside the ticket's scope. Touch only what the task asks for; stop at the targeted package/module boundary; do not rebuild or refactor downstream consumers.
 - **Smallest viable change.** Prefer a surgical edit over a rewrite. To add or change one entry in a config or generated file (`package.json`, `tsconfig`, lockfiles, manifests, CI yaml), edit that entry in place — **never** regenerate or rewrite the whole file to slip one line in. Don't introduce abstractions, wrappers, indirection, or config layers the ticket didn't ask for. When two solutions both satisfy the outcome, ship the smaller one.
+
+#### Code quality — production and test code alike
+
+These hold for *every* line you write. Test code is real code; it gets the same care.
+
+- **Self-documenting code is the goal; comments are the last resort.** Default to zero comments. The code is the source of truth — when you feel the urge to comment, that is a signal the code isn't clear enough, so first rename the thing or extract a well-named function. That almost always removes the need. Write a comment **only** to capture a *why* the code itself cannot express: a non-obvious constraint, an external spec/RFC the logic mirrors, a deliberate tradeoff, or a workaround for a known bug (link it). Never narrate *what* the code does, never restate a signature, never leave commented-out code or TODO/changelog narration behind. This applies to tests exactly as much as production: a test's name carries its scenario and expectation, so you don't comment the arrange/act/assert.
+- **Meaningful, intent-revealing names.** A good name is the comment you didn't have to write. No cryptic abbreviations or single letters (bar an idiomatic loop index); booleans read as predicates (`isReady`, `hasAccess`); functions are verbs, values are nouns. Names should be searchable and say *why this exists*, not just its type.
+- **Small, single-purpose functions.** One job and one level of abstraction each — if you need "and" to describe it, split it. Prefer guard clauses and early returns over deep nesting. Isolate side effects so the core logic stays pure and trivially testable.
+- **No dead weight, clarity before cleverness.** No unused variables, params, imports, or unreachable branches; no speculative flexibility. Write the obvious version first; optimize only against a real measurement, never a hunch — and when you must, leave the *why* as the rare justified comment.
+
+#### Test code
+
 - **One assertion per test case.** Each test proves one behaviour with a single `expect`/assert. If a case wants more than one assertion, split it into separate focused cases or drop the redundant ones — keep the assert that proves the behaviour. Assert observable behaviour and outcomes, not implementation details; keep fixtures minimal so a trivial change doesn't cascade into test churn. Brittle, over-asserting tests cost more to maintain than the code they cover.
-- If you hit a bug or a confusing failure, invoke `superpowers:systematic-debugging` rather than patching symptoms.
+- **Forget DRY here — clarity beats reuse.** Each test must stand and read top-to-bottom on its own: repeating variables, literals, and arrange steps inline is fine, and usually better than hiding them behind shared builders or factories that force a reader to jump around to understand one case. Every test must pass in isolation and in any order — **never share mutable state between tests.** Lift into `beforeEach`/`beforeAll`/`afterEach`/`afterAll` (or a global setup) only what *every* test in the suite genuinely needs; keep everything else local and explicit, even when that means duplication.
+- **Deterministic and behaviour-named.** No dependence on wall-clock time, network, or unseeded randomness — control or stub them so a run is repeatable. Name each test for the behaviour it proves (the scenario and the expected outcome), not the method it calls. Favour a BDD-style name that reads as a sentence — `should <expected outcome> when <condition>`, or `given <context> / when <action> / then <outcome>` split across nested `describe`/`context` blocks — but match the repo's existing test-naming convention over imposing one it doesn't use.
+
+#### When something breaks
+
+- If you hit a bug or a confusing failure, debug systematically rather than patching symptoms: if `superpowers` is installed, invoke `superpowers:systematic-debugging`; otherwise find the root cause first — reproduce, isolate, fix the cause not the symptom.
 - If you find pre-existing WIP failures unrelated to your change, **flag them — do not fix them.**
 
 ### 4 — Self-verify (gate before returning)
 
-Invoke `superpowers:verification-before-completion`. Then actually run the repo's own checks from `supera.json.verify`, scoped to what you changed where the command supports scoping:
+If the `superpowers` plugin is installed, invoke `superpowers:verification-before-completion`. Either way, actually run the repo's own checks from `supera.json.verify`, scoped to what you changed where the command supports scoping:
 
 ```
 <verify.install>   # only if dependencies changed
@@ -104,8 +123,10 @@ Omit a `verification` check that has no command in config rather than inventing 
 - Never widen scope beyond the ticket. Restate the in-scope boundary to yourself before editing.
 - Smallest viable change: surgical edits over rewrites, no unrequested abstractions, the simpler of two working solutions. Never rewrite a whole config/generated file to change one entry.
 - Match the surrounding code's idiom, comment density, and naming — don't import your own style.
+- **Code is the source of truth — comment as a last resort, in production and test code alike.** Make the code self-explanatory through meaningful names and clear structure; readability for the next human is part of the deliverable. A comment usually signals the code isn't clear enough — rename or extract first. Write one only to capture a *why* the code can't convey (a non-obvious constraint, tradeoff, or workaround). Never restate what the code already says, and never leave commented-out code behind.
 - Tests are part of the deliverable, not optional.
 - One assertion per test case — more than one `expect` means split the case or remove what's unnecessary. Behaviour-focused, not brittle.
+- Don't apply DRY to test code. Each test stands alone, reads top-to-bottom, and passes in isolation and in any order — duplicate variables and inline arrange steps rather than hide them in shared builders. Share via `beforeEach`/`beforeAll`/`afterEach`/`afterAll` or global setup only what every test needs; never share mutable state between tests.
 - Evidence before assertions: a check is "passing" only after you've seen it pass in this session.
 - Never fake green: no deleted or weakened tests, loosened assertions, or swallowed errors to pass a check. Genuinely green, or reported red.
 - Report faithfully: if a test fails and you can't fix it in scope, say so with the output — don't paper over it.

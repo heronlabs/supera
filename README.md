@@ -68,7 +68,7 @@ Set `clickup` to `null` to run **ticket-less** — `/ship` and `/pr-watch` then 
 
 - **ClickUp MCP** configured globally with a valid API token (only needed for ClickUp mode).
 - **GitHub MCP** authenticated, and **`gh` CLI** installed + authenticated (`gh auth login`).
-- **superpowers** plugin (the engineer uses its TDD / debugging / verification skills).
+- **superpowers** plugin (optional) — when present, the engineer uses its TDD / debugging / verification skills; without it, the engineer applies the same discipline inline.
 - **nelson** plugin (only for multi-component escalation).
 
 ## Not ported (workloads-local)
