@@ -27,7 +27,7 @@
     "apps/consumer-thp/**": "thp",
     "packages/qa-automation/**": "testing"
   },
-  "audits": { "supplyChain": true },
+  "audits": { "supplyChain": true, "freshness": { "level": "patch", "minReleaseAgeDays": 7 } },
   "ci": { "provider": "github", "audit": { "pnpm": "pnpm audit --json" } },
   "automation": { "audit": { "schedule": true, "dispatch": true, "label": true } },
   "review": { "consensus": { "voters": 2 } },
