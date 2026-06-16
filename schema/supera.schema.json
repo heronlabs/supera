@@ -39,6 +39,7 @@
       "additionalProperties": false,
       "properties": {
         "listId": { "type": ["string", "null"], "description": "List that holds this repo's backlog. Required for ticket creation." },
+        "projectTag": { "type": ["string", "null"], "description": "Constant ClickUp tag applied to every ticket from this repo (the project name). Lets a shared board be filtered per-repo. Must pre-exist in the space (best-effort). Omit/null to skip tagging." },
         "statuses": {
           "type": "object",
           "description": "Maps supera lifecycle phases to THIS repo's ClickUp status names (statuses are space-specific). Each skill reads CONFIG.clickup.statuses.<key>; omit a key to keep its default. Used only when clickup.listId is set. The human-only verdicts (completed/accepted) are intentionally absent — supera never sets them.",
@@ -62,11 +63,6 @@
         "base": { "type": "string", "default": "main", "description": "PR target branch." },
         "remote": { "type": "string", "default": "origin", "description": "Git remote to push to." }
       }
-    },
-    "tags": {
-      "type": "object",
-      "description": "Map of path glob -> tag. Each glob that matches a changed file contributes its tag, used as BOTH the GitHub label and the ClickUp tag. Use lowercase labels; ClickUp tags must pre-exist in the space (tagging is best-effort).",
-      "additionalProperties": { "type": "string" }
     },
     "audits": {
       "type": "object",

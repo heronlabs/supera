@@ -1,14 +1,14 @@
 ---
 name: refine-ticket
-description: "Refine a draft ClickUp ticket: rename to a friendly human title, enforce the concise template, fold subtasks, fill tags / priority / due date from .claude/supera.json, mirror the title onto any open PR, and move it to the 'ready' status so /ship can pick it up clean."
+description: "Refine a draft ClickUp ticket: rename to a friendly human title, enforce the concise template, fold subtasks, fill project tag / priority / due date from .claude/supera.json, mirror the title onto any open PR, and move it to the 'ready' status so /ship can pick it up clean."
 allowed-tools: Bash, Read  # also requires gh CLI and clickup_* MCP tools
 ---
 
-Refine a draft ClickUp ticket so it matches the concise template and carries every field `/ship` needs to start work. Repo-agnostic: the tag taxonomy comes from this repo's `.claude/supera.json`.
+Refine a draft ClickUp ticket so it matches the concise template and carries every field `/ship` needs to start work. Repo-agnostic: the project tag comes from this repo's `.claude/supera.json`.
 
 ## 0 — Load config
 
-Read `.claude/supera.json` into `CONFIG` for the `tags` taxonomy. If absent, skip tag derivation (still refine title/body/fields).
+Read `.claude/supera.json` into `CONFIG` for `clickup.projectTag`. If absent, skip tagging (still refine title/body/fields).
 
 Resolve `STATUS` once from `CONFIG.clickup?.statuses ?? {}` with defaults: `STATUS.ready = …?.ready ?? "pending"` (the only status this skill sets).
 
@@ -66,7 +66,7 @@ If the body already follows the template and there are no subtasks, skip this st
 
 | Field | How to derive |
 |---|---|
-| `tags` | Match path hints in the body against `CONFIG.tags`; apply every match |
+| `tags` | Apply `CONFIG.clickup.projectTag` (this repo's project tag); skip if unset |
 | `priority` | `urgent` if incident/outage/blocking · `high` if release blocker · `low` if cleanup/nice-to-have · else `normal` |
 | `due_date` | Only if the body has an explicit date or "by <day>"; convert relative → absolute `YYYY-MM-DD` using today. Never guess |
 | `status` | `STATUS.ready` — refining is what makes a ticket ready to ship |
@@ -75,11 +75,11 @@ Apply non-tag fields in one call:
 ```
 clickup_update_task(task_id="<id>", status=STATUS.ready, priority="<priority>", due_date="<YYYY-MM-DD>")
 ```
-Tags need one call each:
+Apply the project tag *(skip if unset)*:
 ```
-clickup_add_tag_to_task(task_id="<id>", tag_name="<tag>")
+clickup_add_tag_to_task(task_id="<id>", tag_name="<CONFIG.clickup.projectTag>")
 ```
-If a tag call fails (`The tag "X" does not exist in the space.` or any error), capture it in `missing_tags` and continue — never abort the loop. Emit them under `tags-missing:` in the report (user creates them in the ClickUp UI).
+If it fails (`The tag "X" does not exist in the space.` or any error), capture under `tags-missing:` in the report and continue (user creates it in the ClickUp UI).
 
 ## 5 — Report
 

@@ -64,13 +64,13 @@ clickup_get_task(task_id="<id>")
 ```
 Use the title as the canonical task description (augmented by extra context from `$ARGUMENTS`).
 
-**If no ticket ID:** create one on this repo's list, deriving tags from `CONFIG.tags`. Let ClickUp assign the list's default initial status (`open`) — do not name it:
+**If no ticket ID:** create one on this repo's list. Let ClickUp assign the list's default initial status (`open`) — do not name it:
 ```
 clickup_create_task(
   list_id="<CLICKUP>",
   name="<task description>",
   markdown_description="<body from the ClickUp template below>",
-  tags=[ ...matched CONFIG.tags values ]   # omit if none
+  tags=[ CONFIG.clickup.projectTag ]   # omit if unset or ticket-less
 )
 ```
 
@@ -117,15 +117,11 @@ git -C <WT_DIR>/<slug> push -u <REMOTE> <slug>
 clickup_update_task(task_id="<id>", status=STATUS.review)
 ```
 
-Derive labels + tags from changed paths against `CONFIG.tags`:
-```bash
-git -C <WT_DIR>/<slug> diff --name-only <REMOTE>/<BASE>
+Ensure this repo's project tag on the ticket *(skip if ticket-less or `CONFIG.clickup.projectTag` unset)* — it identifies the repo on a shared board:
 ```
-Every `CONFIG.tags` glob matching at least one changed file contributes its tag — used as both the GitHub `--label` and (best-effort) the ClickUp tag. A PR can carry several. Apply ClickUp tags *(skip if ticket-less)*:
+clickup_add_tag_to_task(task_id="<id>", tag_name="<CONFIG.clickup.projectTag>")
 ```
-clickup_update_task(task_id="<id>", tags=[ ...matched tags ])
-```
-ClickUp tags must pre-exist in the space — if a tag call fails, continue (best-effort).
+Best-effort — the tag must pre-exist in the space; if the call fails, continue.
 
 Write the PR body (template below), then create the PR assigned to `@me` so it lands in the user's review queue. Do **not** add `--reviewer` (GitHub blocks self-review; the gh-CLI user is the author):
 ```bash
@@ -136,8 +132,7 @@ gh pr create \
 <body below>
 EOF
 )" \
-  --assignee @me \
-  --label "<tag1>" --label "<tag2>"
+  --assignee @me
 ```
 Save the PR number. Link it on the ticket *(skip if ticket-less)*:
 ```
