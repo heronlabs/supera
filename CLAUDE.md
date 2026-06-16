@@ -8,8 +8,8 @@ This repo **is** a Claude Code plugin. It ships skills + agents that run in *oth
 |---|---|
 | `.claude-plugin/plugin.json` | Plugin manifest (name, version). Bump `version` on every behavioural change. |
 | `.claude-plugin/marketplace.json` | Marketplace entry so the plugin is installable via `/plugin`. Keep `version` in sync with `plugin.json`. |
-| `skills/` | `supera-init`, `ship`, `fast-ship`, `pr-watch`, `refine-ticket` — each a `SKILL.md`. `ship` owns the full phase ladder (`fresh→scaffolded→building→built→pr-open→merged`), detected from git + ClickUp with no state file: re-run `/ship` to resume interrupted work or close out a merged PR, and `/ship pause` to checkpoint mid-flight. `fast-ship` is the no-worktree/no-PR/no-ticket fast path — it ships small changes straight to base and sits outside the ladder. |
-| `agents/` | `supera-engineer` (the implementer), `supera-supply-chain-auditor`. |
+| `skills/` | `supera-init`, `ship`, `fast-ship`, `pr-watch`, `refine-ticket`, `audit` — each a `SKILL.md`. `ship` owns the full phase ladder (`fresh→scaffolded→building→built→pr-open→merged`), detected from git + ClickUp with no state file: re-run `/ship` to resume interrupted work or close out a merged PR, and `/ship pause` to checkpoint mid-flight. `fast-ship` is the no-worktree/no-PR/no-ticket fast path — it ships small changes straight to base and sits outside the ladder. `audit` is the standalone auditor orchestrator — it runs the enabled auditors against a branch via its own worktree/PR, decoupled from `/ship`; ticket-less, and CI-cron-ready via `--non-interactive`. |
+| `agents/` | `supera-engineer` (the implementer), `supera-supply-chain-auditor`, `supera-freshness-auditor`. |
 | `schema/supera.schema.json` | The per-repo `.claude/supera.json` contract. **Source of truth** — update it before changing what skills read. |
 | `examples/` | Sample `.claude/supera.json` files per stack. |
 
