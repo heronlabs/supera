@@ -142,6 +142,20 @@
             "voters": { "type": "integer", "default": 1, "minimum": 1, "maximum": 5, "description": "Independent reviewer agents that vote on merge-readiness. 1 (default) disables the gate — single review pass, the original behaviour." },
             "quorum": { "type": "integer", "minimum": 1, "description": "APPROVE votes required to declare the PR ready. Defaults to a majority of `voters` (floor(voters/2)+1) when omitted." }
           }
+        },
+        "lenses": {
+          "type": "array",
+          "description": "Extra specialist review lenses fanned out in parallel (via the Workflow primitive) during /pr-watch step 6a, on top of the base code-review pass — each posts findings as PR comments for more signal per cycle. Empty (default) keeps the single code-review pass. These run on the per-PR hot path, so the set is bounded to the listed specialists; keep the list short.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "silent-failures",
+              "type-design",
+              "test-coverage"
+            ]
+          },
+          "uniqueItems": true,
+          "default": []
         }
       }
     },
