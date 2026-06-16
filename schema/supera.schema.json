@@ -118,6 +118,14 @@
             "pullRequest": { "type": "boolean", "default": false, "description": "Run pr-watch on pull_request (opened/synchronize/reopened)." },
             "checkSuite":  { "type": "boolean", "default": false, "description": "Run pr-watch when a check_suite completes." }
           }
+        },
+        "ship": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Triggers for the supera ship workflow (headless /ship from a labeled issue). Off by default so the emitted workflow is inert until a repo opts in.",
+          "properties": {
+            "issueLabel": { "type": "boolean", "default": false, "description": "Run /ship when an issue is labeled 'supera:ship'." }
+          }
         }
       }
     },

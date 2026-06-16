@@ -220,7 +220,57 @@ jobs:
 
 Write it only if the path is absent; if `.github/workflows/supera-pr-watch.yml` already exists, show the proposed content and confirm before overwriting (same courtesy as `supera.json`). Don't touch any other workflow in `.github/workflows/`.
 
-## 8 — Report
+## 8 — Emit the ship-from-issue workflow (only when `automation.ship.issueLabel` is true)
+
+Skip this whole step when `CONFIG.automation.ship.issueLabel` is `false` — no workflow, the capability stays off until the repo opts in. It also only applies to GitHub: skip (and tell the user once) if `CONFIG.ci.provider` is set to anything other than `github` — currently the only supported provider.
+
+When enabled, write `.github/workflows/supera-ship.yml` so `/ship` runs off-laptop with **zero terminal** — labeling a GitHub issue `supera:ship` kicks off a headless build that ends in an open PR. The job is **agentic** — Claude runs `/ship` non-interactively via the official `anthropics/claude-code-action`, using the issue title + body as the task description; `supera-engineer` stays the only implementer, the workflow just orchestrates. Cost is bounded to the `supera:ship` label only — **never** a per-PR hot path. It is independent of the audit workflow (separate file): emitting one never touches the other.
+
+This repo stays git/GitHub-native and **ticket-less**: the ClickUp MCP is claude.ai-authenticated and absent in CI, so the workflow opens a PR off the issue and never touches ClickUp.
+
+The trigger is fixed (`issues: { types: [labeled] }`) and the label guard (`supera:ship`) is hardcoded, so nothing repo-specific is substituted — emit this template verbatim:
+
+````yaml
+name: supera ship from issue
+
+# Agentic headless ship — runs /ship when an issue is labeled 'supera:ship'.
+# Label only; never a per-PR hot path (cost discipline).
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write               # push the feature branch
+  pull-requests: write          # open the PR
+  issues: write                 # comment the PR link back on the issue
+
+jobs:
+  ship:
+    # label guard — only the 'supera:ship' label fires the headless build
+    if: github.event.label.name == 'supera:ship'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Run /ship headless (non-interactive) for the following task,
+            taken from the GitHub issue that was labeled 'supera:ship':
+
+            Title: ${{ github.event.issue.title }}
+
+            ${{ github.event.issue.body }}
+
+            Cut a feature branch, delegate the implementation to
+            supera-engineer (code + tests, self-verified), and open a
+            pull request. Comment the PR link back on the issue.
+            Stay git/GitHub-native and ticket-less — do not touch ClickUp.
+````
+
+Write it only if the path is absent; if `.github/workflows/supera-ship.yml` already exists, show the proposed content and confirm before overwriting (same courtesy as `supera.json`). Don't touch any other workflow in `.github/workflows/`.
+
+## 9 — Report
 
 Print the written path and a compact summary of every field. Tell the user:
 > "`.claude/supera.json` written. Commit it so the config travels with the repo. Run `/ship <task or ticket>` to ship."
@@ -236,3 +286,4 @@ Print the written path and a compact summary of every field. Tell the user:
 - The CLAUDE.md guardrail block is marker-delimited and idempotent: create or refresh only between the `<!-- supera:guardrails -->` markers, never touch content outside them, and drop the ClickUp line when `clickup` is null.
 - Emit `.github/workflows/supera-audit.yml` only when `audits.supplyChain` is true and `ci.provider` is `github`; build its triggers from `automation.audit` and its audit command from `ci.audit` — hardcode nothing. The job is agentic (cron / dispatch / label only, never per-PR), declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write`, and stays ticket-less. Don't overwrite an existing workflow without confirming; never touch other workflow files.
 - Emit `.github/workflows/supera-pr-watch.yml` only when `ci.provider` is `github` and at least one `automation.prWatch.*` flag is true; build its triggers from `automation.prWatch` (`pullRequest` → `pull_request`, `checkSuite` → `check_suite`) — hardcode nothing, omit a trigger whose flag is false. The job is agentic — Claude runs `/pr-watch --non-interactive` headless (GitHub events replace `ScheduleWakeup`), declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write` + `checks`/`statuses: read`, and stays ticket-less. Interactive `/pr-watch` is unchanged (additive). Don't overwrite an existing workflow without confirming; never touch other workflow files.
+- Emit `.github/workflows/supera-ship.yml` only when `automation.ship.issueLabel` is true and `ci.provider` is `github`. The job is agentic — it runs `/ship` headless from a `supera:ship`-labeled issue (`issues: [labeled]`, guarded so only that label fires it, never per-PR), with `supera-engineer` the only implementer; declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write`, and stays git/GitHub-native and ticket-less. Independent of the audit workflow (separate file). Don't overwrite an existing workflow without confirming; never touch other workflow files.
