@@ -109,6 +109,15 @@
             "dispatch": { "type": "boolean", "default": false, "description": "Allow manual runs via workflow_dispatch." },
             "label":    { "type": "boolean", "default": false, "description": "Run the audit when a PR is labeled 'supera:audit'." }
           }
+        },
+        "prWatch": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Triggers for the supera pr-watch workflow (drives an open PR to green headless). All default off so the emitted workflow is inert until a repo opts in.",
+          "properties": {
+            "pullRequest": { "type": "boolean", "default": false, "description": "Run pr-watch on pull_request (opened/synchronize/reopened)." },
+            "checkSuite":  { "type": "boolean", "default": false, "description": "Run pr-watch when a check_suite completes." }
+          }
         }
       }
     },
