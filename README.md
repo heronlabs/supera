@@ -2,16 +2,14 @@
 
 A repo-agnostic **ticket-shipping superagent** for Claude Code. Install once; ship tickets on any repository with the same pattern — ClickUp ticket → worktree → implement + test → PR → babysit CI → done.
 
-The orchestration lives here. Anything repo-specific (build/test/lint commands, ClickUp list, branch, tag table) lives in a tiny per-repo `.claude/supera.json`, so the **same** skills work across pnpm, npm, cargo, Strapi, Go, Python, and more.
+The orchestration lives here. Anything repo-specific (build/test/lint commands, ClickUp list, branch, project tag) lives in a tiny per-repo `.claude/supera.json`, so the **same** skills work across pnpm, npm, cargo, Strapi, Go, Python, and more.
 
 ## What's inside
 
 | Skill | What it does |
 |---|---|
 | `/supera-init` | Detect a repo's stack and write its `.claude/supera.json`. Run once per repo. |
-| `/ship [task or ticket ID]` | Full lifecycle: ClickUp ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. |
-| `/fast-ship [description]` | The fast path: ship a small change straight to base — no worktree, no PR, no ticket. The one skill allowed to commit to base. |
-| `/refine-ticket [ticket ID]` | Reformat a draft ClickUp ticket to the concise template; fill tags/priority/due date and set it `ready`. |
+| `/ship [task or ticket ID]` | Full lifecycle: ClickUp ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. || `/refine-ticket [ticket ID]` | Reformat a draft ClickUp ticket to the concise template; fill project tag/priority/due date and set it `ready`. |
 | `/pr-watch [PR#]` | Babysit a PR: monitor CI, fix failures, resolve review threads, one code-review cycle — exit when green, synced, resolved. |
 
 | Agent | Role |
