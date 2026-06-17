@@ -10,7 +10,7 @@ Refine a draft tracker ticket so it matches the concise template and carries eve
 
 Read `.claude/supera.json` into `CONFIG` for `tracker.projectTag`. If absent, skip tagging (still refine title/body/fields).
 
-`TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.updateFields`, `TOOL.setStatus`, `TOOL.addTag`, `TOOL.deleteTicket` — never a hardcoded provider tool name. Each op is individually optional: a step that needs one guards on its presence in `TOOL` and skips when absent. Derive each call's arguments from the mapped tool's own schema.
+`TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.updateFields`, `TOOL.setStatus`, `TOOL.addTag`, `TOOL.deleteTicket` — never a hardcoded provider tool name. The core ops (`getTicket`, `setStatus`) are assumed present whenever a tracker is configured; the best-effort ops (`updateFields`, `addTag`, `deleteTicket`) may be omitted, so a step that needs one guards on its presence in `TOOL` and skips when absent. Derive each call's arguments from the mapped tool's own schema.
 
 Resolve `STATUS` once from `CONFIG.tracker?.statuses ?? {}` with defaults: `STATUS.ready = …?.ready ?? "pending"` (the only status this skill sets).
 

@@ -12,7 +12,7 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 
 - **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /supera-init first."` Offer to run `/supera-init` now. Do not proceed without config.
 - `TRACKER = CONFIG.tracker?.board` — if null/absent, run **ticket-less**: skip every tracker step below and operate on git + GitHub only.
-- `TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.createTicket`, `TOOL.setStatus`, `TOOL.comment`, `TOOL.addTag`, etc. — never a hardcoded provider tool name. Each op is individually optional: a step that needs one guards on its presence in `TOOL` and skips when absent.
+- `TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.createTicket`, `TOOL.setStatus`, `TOOL.comment`, `TOOL.addTag`, etc. — never a hardcoded provider tool name. The core ops (`getTicket`, `createTicket`, `setStatus`) are assumed present whenever a tracker is configured; the best-effort ops (`comment`, `addTag`, `updateFields`, `deleteTicket`) may be omitted, so a step that needs one guards on its presence in `TOOL` and skips when absent.
 - `BASE = CONFIG.worktree?.base ?? CONFIG.pr?.base ?? <detected default branch>`.
 - `WT_DIR = CONFIG.worktree?.dir ?? ".worktrees"`. `REMOTE = CONFIG.pr?.remote ?? "origin"`.
 - `STATUS` — resolve once from `CONFIG.tracker?.statuses ?? {}` with defaults:

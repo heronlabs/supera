@@ -56,7 +56,7 @@
         },
         "tools": {
           "type": "object",
-          "description": "Maps each neutral tracker operation to a concrete MCP tool on the connected server. Omit an op the provider folds into another (skills guard on presence). Arguments are derived from each tool's own schema.",
+          "description": "Maps each neutral tracker operation to a concrete MCP tool on the connected server. getTicket / createTicket / setStatus are CORE ops, assumed present whenever tracker.board is set; comment / addTag / updateFields / deleteTicket are BEST-EFFORT and may be omitted (folded into another op or unsupported), in which case skills guard on their presence and skip. Arguments are derived from each tool's own schema.",
           "additionalProperties": false,
           "properties": {
             "getTicket":    { "type": "string", "description": "Fetch a ticket (title, status, description, subtasks). e.g. clickup_get_task." },
