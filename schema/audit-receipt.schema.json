@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/heronlabs/supera/schema/audit-receipt.schema.json",
+  "title": "supera auditor receipt",
+  "description": "The structured verdict an auditor agent (supera-supply-chain-auditor / supera-freshness-auditor) emits as its final message. Consumed by /audit, which renders the PR body and the headless signal deterministically instead of scraping the prose two-list report. One receipt per auditor; /audit merges the two.",
+  "type": "object",
+  "required": ["auditor", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "auditor": {
+      "type": "string",
+      "enum": ["supply-chain", "freshness"],
+      "description": "Which auditor produced this receipt."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "needs-review", "blocked"],
+      "description": "Machine-readable verdict /audit reads first. 'ok' = ran clean, every safe fix applied (or nothing found), nothing needs a human. 'needs-review' = advisory findings (recommend/hold/flag) a human should see; non-blocking, the PR still opens. 'blocked' = could not audit at all (no lockfile, manager/probe missing) — the run is incomplete."
+    },
+    "applied": {
+      "type": "array",
+      "description": "Safe fixes auto-applied this run. Empty when none. supply-chain leaves its edits uncommitted (so omits `commit` — /audit makes the single commit); freshness commits each as its own atomic per-package commit and fills `commit`.",
+      "items": {
+        "type": "object",
+        "required": ["verdict", "target"],
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": ["upgrade", "pin", "remove-pin"],
+            "description": "The applied remediation. supply-chain: upgrade (in-range) / pin (scoped override) / remove-pin (stale override). freshness: upgrade only."
+          },
+          "target": { "type": "string", "description": "The dependency acted on, e.g. 'lodash' or 'serde@1.0.197'." },
+          "from": { "type": "string", "description": "Version or range before the change." },
+          "to": { "type": "string", "description": "Version or range after the change." },
+          "commit": { "type": "string", "description": "The atomic commit SHA carrying this single change. Filled by freshness; omitted by supply-chain (its edits ride /audit's single CVE-override commit)." },
+          "verifiedBy": { "type": "string", "description": "Which verification check confirmed the change green, e.g. 'test' or 'build'." }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Issues NOT auto-applied — each needs a human call. Empty when none.",
+      "items": {
+        "type": "object",
+        "required": ["verdict", "target", "action"],
+        "additionalProperties": false,
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": ["recommend", "hold", "flag"],
+            "description": "recommend = a safe but out-of-level bump to consider. hold = latest-in-range is known-bad (yanked / regressed / inside cooldown). flag = needs a human decision (major, unverifiable, coupled set, or an unfixable CVE)."
+          },
+          "target": { "type": "string", "description": "The dependency or issue subject." },
+          "file": { "type": "string", "description": "Repo-relative file the finding sits in, when locatable." },
+          "line": { "type": "integer", "description": "1-based line within `file`, when locatable." },
+          "action": { "type": "string", "description": "The recommended next step." }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "The install/build/test run that confirmed the applied set is green (the §gate run mirroring CI). Omit a check the stack has no command for.",
+      "additionalProperties": false,
+      "properties": {
+        "install": { "$ref": "#/$defs/check" },
+        "build": { "$ref": "#/$defs/check" },
+        "test": { "$ref": "#/$defs/check" }
+      }
+    },
+    "degraded": {
+      "type": "array",
+      "description": "Honesty lines for degraded probes (missing cargo-audit, network failure, unverifiable publish date). Each blocked an auto-apply but never fails the run. Empty when none.",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "required": ["command", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string", "description": "The exact command run." },
+        "result": { "type": "string", "enum": ["PASS", "FAIL"], "description": "Outcome of the check." },
+        "output": { "type": "string", "description": "Key tail of the command output (e.g. 'N passed')." }
+      }
+    }
+  }
+}

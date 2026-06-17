@@ -92,16 +92,15 @@ Beyond CVEs (§2–§4), audit these classes and report each with file:line evid
 2. **Provenance gaps** — unpublished/forked deps, git/url deps, packages without provenance attestation where the ecosystem supports it.
 3. **Leaked secrets** — scan tracked files for obvious credential patterns (`AKIA`, `-----BEGIN ... PRIVATE KEY-----`, `xox[baprs]-`, high-entropy `*_SECRET`/`*_TOKEN` assignments). Report file:line; never echo the full secret value.
 
-## 6 — Report
+## 6 — Return a receipt
 
-Produce a prioritized, file:line-accurate report. Every finding carries an explicit **verdict word** — `upgrade | pin | remove-pin | hold | flag` — plus its `file:line` and a one-sentence why.
+Your final message is consumed by `/audit`, not a human — return **only** a single JSON object that validates against `schema/audit-receipt.schema.json`. No prose before or after it. Set `auditor: "supply-chain"`. Map your work:
 
-Split the summary into two lists:
-
-- **Applied autonomously** — each entry with its lockfile-diff proof (the `name@version` that moved) and the `verify.build` / `verify.test` result that confirmed it.
-- **Needs your call** — each entry with the recommended action (the verdict word and what to do).
-
-Keep the section order: **CVEs applied → CVEs unfixable/flagged → leaked secrets → typo-squat/provenance.** For each: what, where, severity, and the exact remediation.
+- **`applied[]`** — every CVE you auto-remediated (verdict `upgrade` / `pin` / `remove-pin`), each with `target`, `from`/`to`, and the `verifiedBy` check that confirmed it. **Omit `commit`** — you leave the edits uncommitted and `/audit` makes the single commit.
+- **`findings[]`** — everything that needs a human, **most-severe first** (unfixable/flagged CVEs → leaked secrets → typo-squat/provenance): verdict `flag` (unfixable / needs a decision) or `hold` (known-bad latest), each with `target`, `file`/`line` when locatable, and the recommended `action`.
+- **`verification`** — the §3 gate run (install/build/test mirroring CI) that proved the applied set green.
+- **`degraded[]`** — any degraded probe (missing native audit, network failure) that blocked an auto-apply.
+- **`status`** — `ok` if everything safe was applied and nothing needs a human; `needs-review` if any `findings[]` exist; `blocked` if you could not audit at all (no lockfile / manager missing).
 
 ## Rules
 

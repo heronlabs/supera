@@ -100,16 +100,15 @@ These are out of bounds for auto-apply, no matter how mechanical they look — s
 
 **Catalog trap** (pnpm) — a `catalog:` reference must be bumped in the catalog, not the member manifest; bumping the member detaches it ⇒ flag.
 
-## 7 — Report
+## 7 — Return a receipt
 
-Produce a prioritized, file:line-accurate report. Every line carries a **verdict word** — `upgrade | recommend | hold | flag` — plus its `file:line`, the current→candidate version, the gap class (patch/minor/major), and a one-sentence currency reason.
+Your final message is consumed by `/audit`, not a human — return **only** a single JSON object that validates against `schema/audit-receipt.schema.json`. No prose before or after it. Set `auditor: "freshness"`. Map your work:
 
-Split the summary into two lists:
-
-- **Applied autonomously** — each with its atomic commit and the current→candidate that moved, plus the verify result.
-- **Needs your call** — each recommend/hold/flag with the recommended action.
-
-**Honesty clause:** if release notes were unreachable for a minor, say so and that it was downgraded to recommend for exactly that reason — never claim a minor is "clean" without evidence. If a publish date was unverifiable, say the cooldown could not be checked and the bump was flagged.
+- **`applied[]`** — every safe in-range bump you auto-applied (verdict `upgrade`), each with `target`, `from`/`to`, the `commit` SHA of its atomic per-package commit, and the `verifiedBy` check.
+- **`findings[]`** — every `recommend` / `hold` / `flag`, most-current-impact first, each with `target`, `file`/`line` when locatable, and the recommended `action`.
+- **`verification`** — the §4 gate run (install/build/test mirroring CI) that proved the applied set green.
+- **`degraded[]`** — **honesty, never skip:** if release notes were unreachable for a minor (so it was downgraded to `recommend`), or a publish date was unverifiable (cooldown uncheckable → `flag`), record the exact reason here. Never claim a minor is "clean" without evidence.
+- **`status`** — `ok` if everything safe was applied and nothing needs a human; `needs-review` if any `findings[]` exist; `blocked` if you could not audit at all.
 
 ## Rules
 

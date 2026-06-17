@@ -68,9 +68,9 @@ Run in **this order** so a CVE override isn't churned by a freshness bump and th
 git -C <WT_DIR>/<auditBranch> add -A
 git -C <WT_DIR>/<auditBranch> diff --cached --quiet || git -C <WT_DIR>/<auditBranch> commit -m "fix: apply safe CVE overrides"
 ```
-Capture its two-list report (Applied autonomously / Needs your call).
+Parse its JSON receipt (`schema/audit-receipt.schema.json`): `applied[]` (each omits `commit` — the single commit above carries them), `findings[]`, `verification`, `degraded[]`, `status`.
 
-**b. Freshness** *(only if `AUDIT_FRESH`)* — dispatch the `supera-freshness-auditor` agent on the worktree (one pass). It auto-applies safe in-range bumps as its **own** atomic per-package commits (one `name@version` per commit) and reports recommend/hold/flag. `/audit` does not commit on its behalf — the per-package commits are already in the tree. Capture its two-list report.
+**b. Freshness** *(only if `AUDIT_FRESH`)* — dispatch the `supera-freshness-auditor` agent on the worktree (one pass). It auto-applies safe in-range bumps as its **own** atomic per-package commits (one `name@version` per commit) and reports recommend/hold/flag. `/audit` does not commit on its behalf — the per-package commits are already in the tree. Parse its JSON receipt (`schema/audit-receipt.schema.json`); its `applied[]` entries carry their own `commit` SHAs.
 
 Relay any degraded-probe gaps each auditor notes (missing `cargo-audit`, network failure, unverifiable publish date); **never fail the whole audit on a degraded probe** — a degraded probe blocks an auditor's auto-apply, not the run.
 
@@ -86,13 +86,13 @@ Any match means a secret or private key entered the tree: **ABORT** — do not p
 
 ## 6 — Open the PR, or report-only
 
-Check for commits beyond the target:
+Fold the receipts first: **combined status** = the worst of the two (`blocked` > `needs-review` > `ok`). A `blocked` auditor means that auditor could not run — note it in the report/PR Notes, but it does **not** abort the run (only the deny-path gate does). Then check for commits beyond the target:
 
 ```bash
 git -C <WT_DIR>/<auditBranch> log --oneline <REMOTE>/<TARGET>..<auditBranch>
 ```
 
-**No commits (pure report-only)** → open **no** PR. Surface the combined report — both auditors' two lists ("Applied autonomously", empty here, and "Needs your call"). Tear down the worktree (remove the worktree, delete the branch) and exit.
+**No commits (pure report-only)** → open **no** PR. Render the combined report from both receipts' `findings[]` + `degraded[]` (`applied[]` is empty here). Tear down the worktree (remove the worktree, delete the branch) and exit.
 
 **Commits present** → push and open the PR:
 ```bash
@@ -118,16 +118,16 @@ EOF
   --label "supera:audit"
 ```
 
-PR body:
+Build the PR body **from both receipts** (no prose relay) — `applied[]` → first section, `findings[]` → second, `degraded[]` → Notes:
 ```
 ## Applied autonomously
-- <fix> — <commit-sha> — <verify.build / verify.test result that confirmed it>
+- <applied.verdict> <applied.target> <applied.from→applied.to> — <applied.commit, or "in the CVE-override commit" when omitted> — verified by <applied.verifiedBy>
 
 ## Needs your call
-- <verdict word> <finding> @ <file:line> — <recommended action>
+- <finding.verdict> <finding.target> @ <finding.file>:<finding.line> — <finding.action>
 
 ## Notes
-<honesty line for any unverifiable / degraded probe — omit if none>
+- <degraded[] entry>               ← omit the whole section when both receipts' degraded[] are empty
 ```
 
 Then hand off: invoke `/pr-watch <N>` (append `--non-interactive` when set). Announce: *"Dependency audit PR #<N> opened (`<auditBranch>` → `<TARGET>`). Handing off to `/pr-watch <N>` to drive CI green."*
@@ -140,6 +140,7 @@ For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) �
 - **An ambiguous decision blocks.** Instead of asking, surface the block and exit `blocked` — don't guess past a genuine fork. If a PR already exists for this audit, post the block as a PR comment (`gh pr comment <N> --body "🚫 supera /audit blocked (non-interactive): <detail>"`); before any PR exists, print the block detail to the run output.
 - **Stay git/GitHub-native and ticket-less.** There is no ClickUp here (the MCP is claude.ai-authenticated and absent in CI) — and `/audit` is ticket-less anyway, so nothing changes on that axis. Blocks surface as PR comments or run-log lines, never prompts.
 - **The hard gates still block.** A deny-path match (step 5) and any merge-blocker the auditors surface still block and exit — they are never waved through in headless mode.
+- **Flagged findings signal, don't block.** After the PR opens, any `findings[].verdict == "flag"` (or a `blocked` auditor receipt) is surfaced as a `gh pr comment` plus a run-log line so the cron can alert — the run still succeeds; flags are advisory, not a job failure.
 
 ## Rules
 
