@@ -1,6 +1,6 @@
 ---
 name: supera-init
-description: "Bootstrap a repo for supera: detect its stack, propose install/build/test/lint commands and a tag table, ask for the ClickUp list, and write .claude/supera.json. Run once per repo before /ship. Triggers: 'supera init', 'set up supera here', 'configure supera for this repo'."
+description: "Bootstrap a repo for supera: detect its stack, propose install/build/test/lint commands and the ClickUp project tag, ask for the ClickUp list, and write .claude/supera.json. Run once per repo before /ship. Triggers: 'supera init', 'set up supera here', 'configure supera for this repo'."
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit, AskUserQuestion
 ---
 
@@ -29,13 +29,13 @@ When `package.json` exists, prefer its actual `scripts` over the generic guesses
 
 Detect monorepo scoping: if `turbo.json` or workspaces exist, propose the scoped form (e.g. `pnpm turbo run build`) rather than a single-package command.
 
-## 2 — Propose the tag table
+## 2 — Resolve the project tag
 
-List the top-level grouping directories that map to shippable units:
+Derive one lowercase project tag — the repo/project name — that `/ship` and `/refine-ticket` stamp on every ClickUp ticket so a shared board can be filtered per-repo. Take it from the repo directory name, or from `package.json` `name` with any `@scope/` prefix stripped:
 ```bash
-ls -d apps/*/ packages/*/ crates/*/ services/*/ 2>/dev/null
+basename "$(git rev-parse --show-toplevel)"
 ```
-For each, propose a glob → lowercase tag, e.g. `apps/server-cms/** → cms`, `crates/cli/** → cli`. If the repo is single-package, propose an empty `tags` object (PR gets no path-derived labels).
+Lowercase it (e.g. `Server-CMS` → `server-cms`). This becomes `clickup.projectTag`. When the repo runs ticket-less (`clickup` is `null`), there is no tag to apply.
 
 ## 3 — Resolve the ClickUp list
 
@@ -45,13 +45,20 @@ Ask the user for the ClickUp list ID that holds this repo's backlog:
 
 The list id is the number inside the list URL's `.../l/<view>-<listId>-<n>` (or `.../li/<listId>`) segment — **not** the workspace/team id in the URL prefix. The team id instead yields a "Team not authorized" failure on the first ticket call; if that happens, have the user reopen the list and copy the id from its own URL.
 
-`none` → `"clickup": null`. Otherwise emit the list **and** the status defaults so per-space names are discoverable and editable:
-`"clickup": { "listId": "<id>", "statuses": { "ready": "pending", "building": "in progress", "review": "in review", "blocked": "blocked", "rejected": "rejected", "closed": "closed" } }`.
-These defaults validate against `clickup.statuses` in the schema; the user edits a value only if this ClickUp space renamed a status.
+`none` → `"clickup": null` (no `projectTag`). Otherwise emit the list, the project tag from step 2, **and** the status defaults so per-space names are discoverable and editable:
+`"clickup": { "listId": "<id>", "projectTag": "<resolved project tag>", "statuses": { "ready": "pending", "building": "in progress", "review": "in review", "blocked": "blocked", "rejected": "rejected", "closed": "closed" } }`.
+These defaults validate against `clickup.statuses` in the schema; the user edits a value only if this ClickUp space renamed a status. `projectTag` must pre-exist in the space (best-effort); omit/null it to skip tagging.
 
 ## 4 — Confirm and write
 
-Show the proposed config and ask the user to confirm or tweak the commands (use `AskUserQuestion` if a command is ambiguous). Then write `.claude/supera.json` at the repo root:
+Show the proposed config and ask the user to confirm or tweak the commands (use `AskUserQuestion` if a command is ambiguous).
+
+Then offer the optional automation surfaces in **one** `AskUserQuestion` (default = none, leave everything off). Cover three independent opt-ins:
+- **Freshness auditor** — dependency currency auto-bumps. When chosen, emit `"audits": { "supplyChain": <detected>, "freshness": { "level": "patch", "minReleaseAgeDays": 7 } }`. When declined, emit `audits.freshness` inline at its default `{ "level": "off" }` (see the template) so it stays discoverable and editable.
+- **Headless pr-watch** — drive open PRs to green off-laptop. When chosen, emit `"automation": { "prWatch": { "pullRequest": true } }` (step 7 then emits the workflow); declined → omit the `prWatch` sub-block.
+- **Ship-from-issue** — headless `/ship` from a `supera:ship`-labelled issue. When chosen, emit `"automation": { "ship": { "issueLabel": true } }` (step 8 then emits the workflow); declined → omit the `ship` sub-block.
+
+The `audits.supplyChain` auto-detect (lockfile presence) and the `automation.audit` cron emission are independent of this prompt — keep them as below. Then write `.claude/supera.json` at the repo root:
 
 ```jsonc
 {
@@ -65,6 +72,7 @@ Show the proposed config and ask the user to confirm or tweak the commands (use 
   "worktree": { "dir": ".worktrees", "base": "<default branch>" },
   "clickup": {                       // or null to run ticket-less
     "listId": "<id>",
+    "projectTag": "<resolved project tag>",   // step 2; omit/null when ticket-less
     // Optional per-space status names; defaults shown. Edit only if this ClickUp
     // space renamed a status. Omit the whole block to keep these defaults.
     "statuses": {
@@ -73,14 +81,22 @@ Show the proposed config and ask the user to confirm or tweak the commands (use 
     }
   },
   "pr": { "base": "<default branch>", "remote": "origin" },
-  "tags": { "<glob>": "<tag>" },
-  "audits": { "supplyChain": false },
-  // Emit the automation block when ANY auditor is enabled (supplyChain OR freshness);
-  // emit the ci.audit block ONLY when supplyChain is true (its commands are supply-chain
-  // specific). ci.audit carries the native audit command per detected manager; automation.audit
-  // turns on the cron / dispatch / label triggers the audit workflow (step 6) reads.
-  "ci": { "provider": "github", "audit": { "<manager>": "<audit cmd>" } },
-  "automation": { "audit": { "schedule": true, "dispatch": true, "label": false } }
+  // supplyChain is auto-detected from lockfile presence. freshness is emitted at its
+  // default "off" so it's discoverable — flip level to "patch"/"minor" (and re-run
+  // /supera-init to (re)emit the audit workflow) to enable currency auto-bumps.
+  "audits": { "supplyChain": false, "freshness": { "level": "off" } },
+  // ci.provider is written whenever ANY auditor is enabled (supplyChain OR
+  // freshness.level != "off"); the ci.audit subkey is added ONLY when supplyChain is
+  // true (its native commands are supply-chain specific). Omit the whole ci block when
+  // no auditor is enabled.
+  "ci": { "provider": "github", "audit": { "<manager>": "<audit cmd>" } },  // only when an auditor is enabled — see below
+  // automation.audit is emitted when ANY auditor is enabled — it turns on the
+  // cron / dispatch / label triggers the audit workflow (step 6) reads.
+  // prWatch / ship are emitted only when opted in (the step-4 prompt) — steps 7 / 8.
+  "automation": { "audit": { "schedule": true, "dispatch": true, "label": false } },  // only when an auditor is enabled — see below
+  // Optional pr-watch rigor surfaces, off by default — uncomment to opt in.
+  // "review": { "consensus": { "voters": 1 } },   // voters:1 disables the merge-readiness gate (default)
+  // "security": { "denyPaths": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"] }
 }
 ```
 
@@ -89,7 +105,9 @@ Detect the default branch instead of assuming `main`:
 git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
 
-Set `audits.supplyChain` to `true` if the repo has a lockfile, else `false`. Emit the `automation.audit` block whenever **any** auditor is enabled — `audits.supplyChain` is `true` **or** `audits.freshness.level` is set and not `"off"` — so a freshness-only repo still gets the cron; default it to weekly `schedule` + `dispatch` on, `label` off (the cheap, predictable cadence — the user flips `label` on to allow `supera:audit`-labelled runs). Emit the `ci.audit` block only when `supplyChain` is `true` — its native audit commands are supply-chain specific and unused by the freshness path; include only the manager(s) the repo actually uses (the schema's default command per manager — e.g. `pnpm` → `pnpm audit --json`). When no auditor is enabled, omit both blocks.
+Set `audits.supplyChain` to `true` if the repo has a lockfile, else `false`. Emit `audits.freshness` inline at its default `{ "level": "off" }` when the user declines the freshness opt-in (step-4 prompt), so the field is discoverable and editable; set it to `{ "level": "patch", "minReleaseAgeDays": 7 }` when they accept. Enabling freshness by hand-editing `level` to `patch`/`minor` later requires re-running `/supera-init` to (re)emit the audit workflow.
+
+Write `ci.provider` (`"github"`) whenever **any** auditor is enabled — `audits.supplyChain` is `true` **or** `audits.freshness.level` is set and not `"off"` — so when freshness (or supplyChain) is enabled the audit cron is emitted, including a freshness-only repo. Add the `ci.audit` subkey **only** when `supplyChain` is `true` — its native audit commands are supply-chain specific and unused by the freshness path; include only the manager(s) the repo actually uses (the schema's default command per manager — e.g. `pnpm` → `pnpm audit --json`). Likewise emit the `automation.audit` block whenever any auditor is enabled, defaulting it to weekly `schedule` + `dispatch` on, `label` off (the cheap, predictable cadence — the user flips `label` on to allow `supera:audit`-labelled runs). When **no** auditor is enabled, omit the whole `ci` block and `automation.audit`.
 
 ## 5 — Write the guardrails into the repo's CLAUDE.md
 
@@ -281,6 +299,7 @@ Print the written path and a compact summary of every field. Tell the user:
 - Prefer the repo's real `package.json` scripts over generic templates.
 - Detect the default branch; don't hardcode `main`.
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
+- When a ClickUp list is set, emit `clickup.projectTag` (the lowercase project name from step 2) so `/ship` and `/refine-ticket` can stamp every ticket; omit/null it to skip tagging, and drop it entirely when `clickup` is null.
 - When a ClickUp list is set, emit the `clickup.statuses` defaults inline so status names are visible and editable per space; omit the block (or any single key) to fall back to the schema defaults.
 - Output must validate against `schema/supera.schema.json`.
 - The CLAUDE.md guardrail block is marker-delimited and idempotent: create or refresh only between the `<!-- supera:guardrails -->` markers, never touch content outside them, and drop the ClickUp line when `clickup` is null.
