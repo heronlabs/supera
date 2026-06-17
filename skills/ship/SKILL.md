@@ -4,7 +4,7 @@ description: "Repo-agnostic full-lifecycle orchestrator: tracker ticket → work
 allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI and the tracker's MCP tools
 ---
 
-Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands, tracker board, worktree base, status names, and the project tag. Delegate the actual code + tests to the `supera-engineer` agent. `/ship` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/ship pause` checkpoints work mid-flight. After the PR is open it hands off to `/pr-watch`.
+Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands, tracker board, worktree base, and status names. Delegate the code + tests to the `supera-engineer` agent. `/ship` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/ship pause` checkpoints mid-flight. After the PR is open it hands off to `/pr-watch`.
 
 ## 0 — Load config
 
@@ -12,7 +12,7 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 
 - **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /supera-init first."` Offer to run `/supera-init` now. Do not proceed without config.
 - `TRACKER = CONFIG.tracker?.board` — if null/absent, run **ticket-less**: skip every tracker step below and operate on git + GitHub only.
-- `TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.createTicket`, `TOOL.setStatus`, `TOOL.comment`, `TOOL.addTag`, etc. — never a hardcoded provider tool name. The core ops (`getTicket`, `createTicket`, `setStatus`) are assumed present whenever a tracker is configured; the best-effort ops (`comment`, `addTag`, `updateFields`, `deleteTicket`) may be omitted, so a step that needs one guards on its presence in `TOOL` and skips when absent.
+- `TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.createTicket`, `TOOL.setStatus`, `TOOL.comment`, etc. — never a hardcoded provider tool name. The core ops (`getTicket`, `createTicket`, `setStatus`) are assumed present whenever a tracker is configured; the best-effort ops (`comment`, `updateFields`, `deleteTicket`) may be omitted, so a step that needs one guards on its presence in `TOOL` and skips when absent.
 - `BASE = CONFIG.worktree?.base ?? CONFIG.pr?.base ?? <detected default branch>`.
 - `WT_DIR = CONFIG.worktree?.dir ?? ".worktrees"`. `REMOTE = CONFIG.pr?.remote ?? "origin"`.
 - `STATUS` — resolve once from `CONFIG.tracker?.statuses ?? {}` with defaults:
@@ -61,7 +61,7 @@ If a PR exists, route by the PR state **first** (`pr-open` / `merged`) — those
 
 **If a ticket ID was provided:** fetch it for the title + status via `TOOL.getTicket` (id = the provided ticket). Use the title as the canonical task description (augmented by extra context from `$ARGUMENTS`).
 
-**If no ticket ID:** create one on this repo's board via `TOOL.createTicket` — board = `TRACKER`, name = the task description, body = the template below, tags = `[ CONFIG.tracker.projectTag ]` (omit the tag if unset or ticket-less). Let the tracker assign its default initial status — do not name it. Derive the call's arguments from `TOOL.createTicket`'s own schema. Skip creation if `TOOL.createTicket` is unmapped (proceed with a free-text task, no ticket).
+**If no ticket ID:** create one on this repo's board via `TOOL.createTicket` — board = `TRACKER`, name = the task description, body = the template below. Let the tracker assign its default initial status — do not name it. Derive the call's arguments from `TOOL.createTicket`'s own schema. Skip creation if `TOOL.createTicket` is unmapped (proceed with a free-text task, no ticket).
 
 Save the ticket ID — you update it throughout. No assignee (single-developer project).
 
@@ -97,8 +97,6 @@ git -C <WT_DIR>/<slug> push -u <REMOTE> <slug>
 ```
 
 **Move ticket to in review** — PR open, CI running, awaiting review *(skip if ticket-less)* — `TOOL.setStatus` with `STATUS.review`.
-
-Ensure this repo's project tag on the ticket via `TOOL.addTag` (tag = `CONFIG.tracker.projectTag`) *(skip if ticket-less, `CONFIG.tracker.projectTag` unset, or `TOOL.addTag` unmapped)* — it identifies the repo on a shared board. Best-effort — the tag may need to pre-exist; if the call fails, continue.
 
 Write the PR body (template below), then create the PR assigned to `@me` so it lands in the user's review queue. Do **not** add `--reviewer` (GitHub blocks self-review; the gh-CLI user is the author):
 ```bash

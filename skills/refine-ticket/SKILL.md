@@ -1,16 +1,16 @@
 ---
 name: refine-ticket
-description: "Refine a draft tracker ticket: rename to a friendly human title, enforce the concise template, fold subtasks, fill project tag / priority / due date from .claude/supera.json, mirror the title onto any open PR, and move it to the 'ready' status so /ship can pick it up clean."
+description: "Refine a draft tracker ticket: rename to a friendly human title, enforce the concise template, fold subtasks, fill priority / due date, mirror the title onto any open PR, and move it to the 'ready' status so /ship can pick it up clean."
 allowed-tools: Bash, Read  # also requires gh CLI and the tracker's MCP tools
 ---
 
-Refine a draft tracker ticket so it matches the concise template and carries every field `/ship` needs to start work. Repo-agnostic: the project tag comes from this repo's `.claude/supera.json`.
+Refine a draft tracker ticket so it matches the concise template and carries every field `/ship` needs to start work.
 
 ## 0 — Load config
 
-Read `.claude/supera.json` into `CONFIG` for `tracker.projectTag`. If absent, skip tagging (still refine title/body/fields).
+Read `.claude/supera.json` into `CONFIG`.
 
-`TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.updateFields`, `TOOL.setStatus`, `TOOL.addTag`, `TOOL.deleteTicket` — never a hardcoded provider tool name. The core ops (`getTicket`, `setStatus`) are assumed present whenever a tracker is configured; the best-effort ops (`updateFields`, `addTag`, `deleteTicket`) may be omitted, so a step that needs one guards on its presence in `TOOL` and skips when absent. Derive each call's arguments from the mapped tool's own schema.
+`TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.updateFields`, `TOOL.setStatus`, `TOOL.deleteTicket` — never a hardcoded provider tool name. The core ops (`getTicket`, `setStatus`) are assumed present whenever a tracker is configured; the best-effort ops (`updateFields`, `deleteTicket`) may be omitted, so a step that needs one guards on its presence in `TOOL` and skips when absent. Derive each call's arguments from the mapped tool's own schema.
 
 Resolve `STATUS` once from `CONFIG.tracker?.statuses ?? {}` with defaults: `STATUS.ready = …?.ready ?? "pending"` (the only status this skill sets).
 
@@ -57,24 +57,20 @@ If the ticket has subtasks: for each, extract its `## Outcome` bullets (or its n
 
 | Field | How to derive |
 |---|---|
-| `tag` | Apply `CONFIG.tracker.projectTag` (this repo's project tag); skip if unset |
 | `priority` | `urgent` if incident/outage/blocking · `high` if release blocker · `low` if cleanup/nice-to-have · else `normal` |
 | `due date` | Only if the body has an explicit date or "by <day>"; convert relative → absolute `YYYY-MM-DD` using today. Never guess |
 | `status` | `STATUS.ready` — refining is what makes a ticket ready to ship |
 
 Move the ticket to `STATUS.ready` via `TOOL.setStatus`. Apply the priority + due date via `TOOL.updateFields` (one call; derive its argument names from the tool's schema).
 
-Apply the project tag via `TOOL.addTag` (tag = `CONFIG.tracker.projectTag`) *(skip if unset or `TOOL.addTag` unmapped)*. If it fails (the tag doesn't exist in the space, or any error), capture under `tags-missing:` in the report and continue (user creates it in the tracker UI).
-
 ## 5 — Report
 
-One line per applied change (skip non-applicable lines): `title`, `body`, `subtasks-folded`, `subtasks-not-folded`, `tags`, `tags-missing`, `priority`, `due_date`, `status`, `pr-title-mirror`, `pr-title-mismatch`. End — the user invokes `/ship <id>` next.
+One line per applied change (skip non-applicable lines): `title`, `body`, `subtasks-folded`, `subtasks-not-folded`, `priority`, `due_date`, `status`, `pr-title-mirror`, `pr-title-mismatch`. End — the user invokes `/ship <id>` next.
 
 ## Rules
 
 - **Title:** verb-led imperative, under 80 chars; no commit prefix, no `Phase N`, no app-name prefix, no unicode arrows, no trailing period.
 - **PR-title-mirror:** after renaming, mirror onto the single matching open PR.
 - **Subtasks:** fold every subtask's `## Outcome` into the parent and delete them via `TOOL.deleteTicket` — never leave a parent/subtask tree. If `TOOL.deleteTicket` is unmapped, still fold the outcomes but leave the subtasks and note `subtasks-not-folded:` (don't error).
-- **Missing tags:** never swallow tag errors silently — emit under `tags-missing:`.
 - **Single unit:** one ticket → one branch → one PR. Leave the ticket self-contained.
 - Never invent dates. This skill moves a refined draft to `STATUS.ready` (`pending`); `/ship` owns the rest of the lifecycle. No assignee, no time-tracking.
