@@ -2,14 +2,14 @@
 
 A repo-agnostic **ticket-shipping superagent** for Claude Code. Install once; ship tickets on any repository with the same pattern — tracker ticket → worktree → implement + test → PR → babysit CI → done.
 
-The orchestration lives here. Anything repo-specific (build/test/lint commands, tracker board, branch, project tag) lives in a tiny per-repo `.claude/supera.json`, so the **same** skills work across pnpm, npm, cargo, Strapi, Go, Python, and more. The tracker is provider-agnostic — bring your own ClickUp, Jira, Linear, or any MCP via a neutral tool-map.
+The orchestration lives here. Anything repo-specific (build/test/lint commands, tracker board, branch) lives in a tiny per-repo `.claude/supera.json`, so the **same** skills work across pnpm, npm, cargo, Strapi, Go, Python, and more. A tracker is optional and provider-agnostic — bring your own ClickUp, Jira, Linear, or any MCP via a neutral tool-map, or run ticket-less and let the PR be the ticket.
 
 ## What's inside
 
 | Skill | What it does |
 |---|---|
 | `/supera-init` | Detect a repo's stack and write its `.claude/supera.json`. Run once per repo. |
-| `/ship [task or ticket ID]` | Full lifecycle: tracker ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. || `/refine-ticket [ticket ID]` | Reformat a draft tracker ticket to the concise template; fill project tag/priority/due date and set it `ready`. |
+| `/ship [task or ticket ID]` | Full lifecycle: tracker ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. || `/refine-ticket [ticket ID]` | Reformat a draft tracker ticket to the concise template; fill priority/due date and set it `ready`. |
 | `/pr-watch [PR#]` | Babysit a PR: monitor CI, fix failures, resolve review threads, one code-review cycle — exit when green, synced, resolved. |
 
 | Agent | Role |
@@ -51,15 +51,13 @@ Commit `.claude/supera.json` so the config travels with the repo.
     "lint": "cargo clippy -- -D warnings"
   },
   "worktree": { "dir": ".worktrees", "base": "main" },
-  "tracker": {                                 // null → run ticket-less (git + GitHub only)
+  "tracker": {                                 // or null → ticket-less, the PR is the ticket
     "provider": "clickup",                     // informational hint; tool selection comes from tools
     "board": "901415284967",                   // ClickUp list id, Jira project key, etc.
-    "projectTag": "cli",
     "tools": {                                 // each neutral op → a concrete MCP tool on your server
       "getTicket": "clickup_get_task", "createTicket": "clickup_create_task",
       "setStatus": "clickup_update_task", "updateFields": "clickup_update_task",
-      "comment": "clickup_create_comment", "addTag": "clickup_add_tag_to_task",
-      "deleteTicket": "clickup_delete_task"
+      "comment": "clickup_create_comment", "deleteTicket": "clickup_delete_task"
     }
   },
   "pr": { "base": "main", "remote": "origin" },
@@ -67,7 +65,7 @@ Commit `.claude/supera.json` so the config travels with the repo.
 }
 ```
 
-Set `tracker` to `null` to run **ticket-less** — `/ship` and `/pr-watch` then skip all tracker status updates and operate purely on git + GitHub. Time spent is derived from git (first commit → merge), not a time-tracking API.
+Set `tracker` to `null` to run **ticket-less** — `/ship` and `/pr-watch` skip all tracker updates and operate purely on git + GitHub, with the PR standing in for the ticket. Time spent is derived from git (first commit → merge).
 
 ## Prerequisites
 
