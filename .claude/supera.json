@@ -5,7 +5,6 @@
   "tracker": {
     "provider": "clickup",
     "board": "901415284967",
-    "projectTag": "supera",
     "statuses": {
       "ready": "pending",
       "building": "in progress",
@@ -20,7 +19,6 @@
       "setStatus": "clickup_update_task",
       "updateFields": "clickup_update_task",
       "comment": "clickup_create_comment",
-      "addTag": "clickup_add_tag_to_task",
       "deleteTicket": "clickup_delete_task"
     }
   },

@@ -39,8 +39,7 @@
       "additionalProperties": false,
       "properties": {
         "provider": { "type": "string", "description": "Informational hint identifying the tracker (clickup | jira | linear | …). Surfaced in reports and helps the model reason about the connected server. Not load-bearing — tool selection comes from tracker.tools." },
-        "board": { "type": ["string", "null"], "description": "Container new tickets are created in — a ClickUp list id, a Jira project key, etc. Required for ticket creation. (Was clickup.listId.)" },
-        "projectTag": { "type": ["string", "null"], "description": "Constant tag/label applied to every ticket from this repo (the project name). Lets a shared board be filtered per-repo. Omit/null to skip tagging." },
+        "board": { "type": ["string", "null"], "description": "Container new tickets are created in — a ClickUp list id, a Jira project key, etc. Required for ticket creation." },
         "statuses": {
           "type": "object",
           "description": "Maps supera lifecycle phases to THIS tracker's status names. Each skill reads CONFIG.tracker.statuses.<key>; omit a key to keep its default. Used only when tracker.board is set. The human-only verdicts (completed/accepted) are intentionally absent — supera never sets them.",
@@ -56,7 +55,7 @@
         },
         "tools": {
           "type": "object",
-          "description": "Maps each neutral tracker operation to a concrete MCP tool on the connected server. getTicket / createTicket / setStatus are CORE ops, assumed present whenever tracker.board is set; comment / addTag / updateFields / deleteTicket are BEST-EFFORT and may be omitted (folded into another op or unsupported), in which case skills guard on their presence and skip. Arguments are derived from each tool's own schema.",
+          "description": "Maps each neutral tracker operation to a concrete MCP tool on the connected server. getTicket / createTicket / setStatus are CORE ops, assumed present whenever tracker.board is set; comment / updateFields / deleteTicket are BEST-EFFORT and may be omitted (folded into another op or unsupported), in which case skills guard on their presence and skip. Arguments are derived from each tool's own schema.",
           "additionalProperties": false,
           "properties": {
             "getTicket":    { "type": "string", "description": "Fetch a ticket (title, status, description, subtasks). e.g. clickup_get_task." },
@@ -64,7 +63,6 @@
             "setStatus":    { "type": "string", "description": "Move a ticket to a status. ClickUp: clickup_update_task. Jira: the transition tool." },
             "updateFields": { "type": "string", "description": "Set name / description / priority / due date. ClickUp: clickup_update_task. Jira: the update-issue tool." },
             "comment":      { "type": "string", "description": "Post a comment. e.g. clickup_create_comment." },
-            "addTag":       { "type": "string", "description": "Apply a tag/label. e.g. clickup_add_tag_to_task. Omit if folded into updateFields." },
             "deleteTicket": { "type": "string", "description": "Delete a ticket (subtask folding). e.g. clickup_delete_task." }
           }
         }
@@ -81,7 +79,7 @@
     },
     "audits": {
       "type": "object",
-      "description": "Optional audit agents ship/CI can run.",
+      "description": "Optional audit agents /audit, /ship, and /pr-watch can run locally.",
       "additionalProperties": false,
       "properties": {
         "supplyChain": { "type": "boolean", "default": false, "description": "Enable supera-supply-chain-auditor (works on npm/pnpm/yarn/cargo)." },
@@ -102,59 +100,6 @@
               "default": 7,
               "description": "Cooldown: only auto-apply a version whose exact-resolved publish date is at least this many days old (defuses day-zero compromised/yanked releases). If the publish date is unreachable (e.g. crates.io REST down) => UNVERIFIED => FLAG, never auto."
             }
-          }
-        }
-      }
-    },
-    "ci": {
-      "type": "object",
-      "description": "CI runtime and the native package-manager audit commands the supera audit workflow runs in CI. Schema-first per the roadmap; the Phase 1 audit workflow reads these.",
-      "additionalProperties": false,
-      "properties": {
-        "provider": { "type": "string", "default": "github", "description": "CI provider whose workflow files supera emits. Currently only GitHub Actions is supported." },
-        "audit": {
-          "type": "object",
-          "description": "Native audit command per package manager. The audit workflow picks the one matching the detected stack; omit a manager the repo doesn't use.",
-          "additionalProperties": false,
-          "properties": {
-            "npm":   { "type": "string", "default": "npm audit --json",          "description": "npm native vulnerability audit." },
-            "pnpm":  { "type": "string", "default": "pnpm audit --json",         "description": "pnpm native vulnerability audit." },
-            "yarn":  { "type": "string", "default": "yarn npm audit --json",     "description": "yarn (berry) native vulnerability audit." },
-            "cargo": { "type": "string", "default": "cargo audit --json",        "description": "cargo native vulnerability audit (cargo-audit)." }
-          }
-        }
-      }
-    },
-    "automation": {
-      "type": "object",
-      "description": "Which triggers enable supera's CI automation workflows. Schema-first; the Phase 1 audit workflow is emitted/gated from these flags.",
-      "additionalProperties": false,
-      "properties": {
-        "audit": {
-          "type": "object",
-          "description": "Triggers for the supera supply-chain audit workflow. All default off so the workflow is inert until a repo opts in.",
-          "additionalProperties": false,
-          "properties": {
-            "schedule": { "type": "boolean", "default": false, "description": "Run the audit on a weekly cron schedule." },
-            "dispatch": { "type": "boolean", "default": false, "description": "Allow manual runs via workflow_dispatch." },
-            "label":    { "type": "boolean", "default": false, "description": "Run the audit when a PR is labeled 'supera:audit'." }
-          }
-        },
-        "prWatch": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Triggers for the supera pr-watch workflow (drives an open PR to green headless). All default off so the emitted workflow is inert until a repo opts in.",
-          "properties": {
-            "pullRequest": { "type": "boolean", "default": false, "description": "Run pr-watch on pull_request (opened/synchronize/reopened)." },
-            "checkSuite":  { "type": "boolean", "default": false, "description": "Run pr-watch when a check_suite completes." }
-          }
-        },
-        "ship": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Triggers for the supera ship workflow (headless /ship from a labeled issue). Off by default so the emitted workflow is inert until a repo opts in.",
-          "properties": {
-            "issueLabel": { "type": "boolean", "default": false, "description": "Run /ship when an issue is labeled 'supera:ship'." }
           }
         }
       }
