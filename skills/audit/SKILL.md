@@ -98,7 +98,7 @@ git -C <WT_DIR>/<auditBranch> log --oneline <REMOTE>/<TARGET>..<auditBranch>
 ```bash
 git -C <WT_DIR>/<auditBranch> push -u <REMOTE> <auditBranch>
 ```
-Derive GitHub labels from `CONFIG.tags` matched against the changed files (`git -C <WT_DIR>/<auditBranch> diff --name-only <REMOTE>/<TARGET>`), **plus** always a `supera:audit` label. Ensure that `supera:audit` label exists first — `gh pr create --label "supera:audit"` hard-fails the whole create with `could not add label: 'supera:audit' not found` when the label was never created in the repo, which on the first audit run leaves the auditor's commits stranded with no PR. Create it idempotently:
+Label the PR `supera:audit`. Ensure that `supera:audit` label exists first — `gh pr create --label "supera:audit"` hard-fails the whole create with `could not add label: 'supera:audit' not found` when the label was never created in the repo, which on the first audit run leaves the auditor's commits stranded with no PR. Create it idempotently:
 
 ```bash
 gh label create "supera:audit" --color "5319e7" --description "Opened by supera /audit" 2>/dev/null || true   # idempotent: no-op if it already exists or perms are missing
@@ -115,7 +115,7 @@ gh pr create \
 EOF
 )" \
   --assignee @me \
-  --label "supera:audit" --label "<matched tag>"
+  --label "supera:audit"
 ```
 
 PR body:
