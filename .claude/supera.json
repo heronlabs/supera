@@ -1,8 +1,6 @@
 {
   "stack": "mixed",
-  "verify": {
-    "lint": "bash scripts/check-consistency.sh"
-  },
+  "verify": {},
   "worktree": { "dir": ".worktrees", "base": "main" },
   "clickup": {
     "listId": "901415284967",

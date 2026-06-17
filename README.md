@@ -41,7 +41,7 @@ Commit `.claude/supera.json` so the config travels with the repo.
 
 ## Per-repo config
 
-`.claude/supera.json` — see `schema/supera.schema.json` for the full contract and `examples/` for samples. Minimal:
+`.claude/supera.json` — see `schema/supera.schema.json` for the full contract. Minimal:
 
 ```jsonc
 {
