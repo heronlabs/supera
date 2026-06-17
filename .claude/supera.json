@@ -2,8 +2,9 @@
   "stack": "mixed",
   "verify": {},
   "worktree": { "dir": ".worktrees", "base": "main" },
-  "clickup": {
-    "listId": "901415284967",
+  "tracker": {
+    "provider": "clickup",
+    "board": "901415284967",
     "projectTag": "supera",
     "statuses": {
       "ready": "pending",
@@ -12,6 +13,15 @@
       "blocked": "blocked",
       "rejected": "rejected",
       "closed": "Closed"
+    },
+    "tools": {
+      "getTicket": "clickup_get_task",
+      "createTicket": "clickup_create_task",
+      "setStatus": "clickup_update_task",
+      "updateFields": "clickup_update_task",
+      "comment": "clickup_create_comment",
+      "addTag": "clickup_add_tag_to_task",
+      "deleteTicket": "clickup_delete_task"
     }
   },
   "pr": { "base": "main", "remote": "origin" },
