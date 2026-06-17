@@ -1,6 +1,6 @@
 ---
 name: supera-init
-description: "Bootstrap a repo for supera: detect its stack, propose install/build/test/lint commands and the ClickUp project tag, ask for the ClickUp list, and write .claude/supera.json. Run once per repo before /ship. Triggers: 'supera init', 'set up supera here', 'configure supera for this repo'."
+description: "Bootstrap a repo for supera: detect its stack, propose install/build/test/lint commands and the project tag, ask for the tracker (provider + board), and write .claude/supera.json. Run once per repo before /ship. Triggers: 'supera init', 'set up supera here', 'configure supera for this repo'."
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit, AskUserQuestion
 ---
 
@@ -31,23 +31,28 @@ Detect monorepo scoping: if `turbo.json` or workspaces exist, propose the scoped
 
 ## 2 — Resolve the project tag
 
-Derive one lowercase project tag — the repo/project name — that `/ship` and `/refine-ticket` stamp on every ClickUp ticket so a shared board can be filtered per-repo. Take it from the repo directory name, or from `package.json` `name` with any `@scope/` prefix stripped:
+Derive one lowercase project tag — the repo/project name — that `/ship` and `/refine-ticket` stamp on every tracker ticket so a shared board can be filtered per-repo. Take it from the repo directory name, or from `package.json` `name` with any `@scope/` prefix stripped:
 ```bash
 basename "$(git rev-parse --show-toplevel)"
 ```
-Lowercase it (e.g. `Server-CMS` → `server-cms`). This becomes `clickup.projectTag`. When the repo runs ticket-less (`clickup` is `null`), there is no tag to apply.
+Lowercase it (e.g. `Server-CMS` → `server-cms`). This becomes `tracker.projectTag`. When the repo runs ticket-less (`tracker` is `null`), there is no tag to apply.
 
-## 3 — Resolve the ClickUp list
+## 3 — Resolve the tracker
 
-Ask the user for the ClickUp list ID that holds this repo's backlog:
+**Migrate first.** If `.claude/supera.json` already exists with a legacy `clickup` block (pre-tracker config, re-init), convert it to `tracker` and skip the questions below: `board ← clickup.listId`, `provider ← "clickup"`, keep `projectTag` + `statuses` verbatim, and fill the ClickUp `tools` preset (below). Report the migration in step 9 (`tracker-migrated: clickup → tracker`).
 
-> "ClickUp list ID for this repo's backlog? (paste the numeric list id, or say 'none' to run ticket-less — ship/pr-watch will skip ClickUp entirely.)"
+Otherwise resolve a fresh tracker. If a tracker MCP server is connected, detect it and use its identity to pick the `provider` hint and tool preset; if you can't detect one, ask. Ask the user for the provider + board:
 
-The list id is the number inside the list URL's `.../l/<view>-<listId>-<n>` (or `.../li/<listId>`) segment — **not** the workspace/team id in the URL prefix. The team id instead yields a "Team not authorized" failure on the first ticket call; if that happens, have the user reopen the list and copy the id from its own URL.
+> "Which issue tracker, and the board/list id that holds this repo's backlog? (e.g. `clickup 901415284967`, `jira ENG`, or say 'none' to run ticket-less — ship/pr-watch/refine skip the tracker entirely.)"
 
-`none` → `"clickup": null` (no `projectTag`). Otherwise emit the list, the project tag from step 2, **and** the status defaults so per-space names are discoverable and editable:
-`"clickup": { "listId": "<id>", "projectTag": "<resolved project tag>", "statuses": { "ready": "pending", "building": "in progress", "review": "in review", "blocked": "blocked", "rejected": "rejected", "closed": "closed" } }`.
-These defaults validate against `clickup.statuses` in the schema; the user edits a value only if this ClickUp space renamed a status. `projectTag` must pre-exist in the space (best-effort); omit/null it to skip tagging.
+The board is the container new tickets are created in — a ClickUp **list id**, a Jira **project key**, a Linear **team/project id**, etc. It comes from the tracker's own hierarchy (e.g. ClickUp workspace → space → folder → list; copy the list's own id from the list URL's `.../l/<view>-<listId>-<n>` or `.../li/<listId>` segment) — **not** the workspace/team id in the URL prefix, which yields an authorization failure on the first ticket call.
+
+`none` → `"tracker": null` (no `projectTag`, no `tools`). Otherwise emit `provider`, `board`, the project tag from step 2, the status defaults (so per-tracker names are discoverable and editable), **and** a `tools` map from the preset matching the provider:
+
+- **ClickUp** (`provider: "clickup"`): `getTicket: clickup_get_task`, `createTicket: clickup_create_task`, `setStatus: clickup_update_task`, `updateFields: clickup_update_task`, `comment: clickup_create_comment`, `addTag: clickup_add_tag_to_task`, `deleteTicket: clickup_delete_task`.
+- **Jira** (`provider: "jira"`, **TEMPLATE** — confirm each name against the installed Jira MCP server's real tool names): `getTicket: jira_get_issue`, `createTicket: jira_create_issue`, `setStatus: jira_transition_issue` (a status transition), `updateFields: jira_update_issue`, `comment: jira_add_comment`, `deleteTicket: jira_delete_issue`; **`addTag` omitted** (Jira applies labels via `updateFields`).
+
+For any other provider, ask the user for each op's tool name (or leave an op out — every `tools` op is individually optional; skills guard on its presence). The status defaults validate against `tracker.statuses` in the schema; the user edits a value only if this tracker renamed a status. `projectTag` is applied best-effort; omit/null it to skip tagging.
 
 ## 4 — Confirm and write
 
@@ -70,14 +75,23 @@ The `audits.supplyChain` auto-detect (lockfile presence) and the `automation.aud
     "lint": "<lint cmd>"
   },
   "worktree": { "dir": ".worktrees", "base": "<default branch>" },
-  "clickup": {                       // or null to run ticket-less
-    "listId": "<id>",
+  "tracker": {                       // or null to run ticket-less
+    "provider": "<clickup | jira | linear | …>",   // informational hint; tool selection comes from tools below
+    "board": "<id>",                 // ClickUp list id, Jira project key, etc.
     "projectTag": "<resolved project tag>",   // step 2; omit/null when ticket-less
-    // Optional per-space status names; defaults shown. Edit only if this ClickUp
-    // space renamed a status. Omit the whole block to keep these defaults.
+    // Optional per-tracker status names; defaults shown. Edit only if this tracker
+    // renamed a status. Omit the whole block to keep these defaults.
     "statuses": {
       "ready": "pending", "building": "in progress", "review": "in review",
       "blocked": "blocked", "rejected": "rejected", "closed": "closed"
+    },
+    // Each neutral op → a concrete MCP tool on the connected server. Omit an op the
+    // provider folds into another (skills guard on presence). ClickUp preset shown.
+    "tools": {
+      "getTicket": "clickup_get_task", "createTicket": "clickup_create_task",
+      "setStatus": "clickup_update_task", "updateFields": "clickup_update_task",
+      "comment": "clickup_create_comment", "addTag": "clickup_add_tag_to_task",
+      "deleteTicket": "clickup_delete_task"
     }
   },
   "pr": { "base": "<default branch>", "remote": "origin" },
@@ -122,7 +136,7 @@ Insert a small, repo-agnostic guardrail block into the target repo's root `CLAUD
 - **Ambiguous literals: flag, don't guess.** Config keys, IDs, and env names can be literal values, not mappings (e.g. `environment: pulumi` may name a GitHub Environment literally called `pulumi`). State which reading you took.
 - **Cross-repo changes: update all related repos** unless told otherwise.
 - **CI/infra settings live outside code** — GitHub Environment and branch-protection rules are in repo settings, not the yaml.
-- **ClickUp list IDs come from the hierarchy** (workspace → space → folder → list); never the team/workspace ID.
+- **Tracker board/list IDs come from the tracker's own hierarchy** (e.g. workspace → space → folder → list); never the workspace/team id.
 <!-- /supera:guardrails -->
 ````
 
@@ -130,7 +144,7 @@ Apply it like this:
 - **No `CLAUDE.md`** → create it containing the block.
 - **`CLAUDE.md` exists without the markers** → show the block and confirm (same courtesy as overwriting `supera.json`), then **append** it after the existing content — never modify what is already there.
 - **Markers already present** → replace only the text between `<!-- supera:guardrails -->` and `<!-- /supera:guardrails -->`; leave everything else untouched (idempotent re-init).
-- **Drop the ClickUp line entirely when `clickup` is `null`** (ticket-less repos) — that gotcha only applies when this repo uses ClickUp.
+- **Drop the tracker line entirely when `tracker` is `null`** (ticket-less repos) — that gotcha only applies when this repo uses a tracker.
 
 ## 6 — Emit the dependency audit workflow (only when an auditor is enabled and a trigger is on)
 
@@ -142,7 +156,7 @@ Build the file from `CONFIG`, hardcoding nothing repo-specific:
 - **Triggers** come from `CONFIG.automation.audit` — emit a `schedule:` block (`cron: "0 6 * * 1"`, weekly Monday 06:00 UTC) only when `…schedule` is true; emit `workflow_dispatch:` only when `…dispatch` is true; emit the `pull_request: { types: [labeled] }` trigger only when `…label` is true. If a flag is false, omit that trigger entirely. When `label` is on, guard the job with `if: github.event_name != 'pull_request' || github.event.label.name == 'supera:audit'` so only the `supera:audit` label fires it.
 - The workflow declares the `ANTHROPIC_API_KEY` secret and `contents: write`, `pull-requests: write`, `issues: write` permissions — `/audit` creates the `supera:audit` repo label (an Issues-API resource) before opening the PR, so the label scope is required even though it files no separate issue.
 
-This repo stays git/GitHub-native and **ticket-less**: the ClickUp MCP is claude.ai-authenticated and absent in CI, so the workflow opens a PR and never touches ClickUp.
+This repo stays git/GitHub-native and **ticket-less**: the tracker MCP may be absent in CI, so the workflow opens a PR and never touches the tracker.
 
 Emit this template, substituting the trigger blocks per the flags above (the example shows all three triggers + the `supera:audit` label guard; drop whichever the config disables):
 
@@ -181,7 +195,7 @@ jobs:
             security-first), carry their safe auto-fixes into a pull
             request, and hand off to /pr-watch to drive it green.
             Report all findings in the PR body; file no separate issue.
-            Stay git/GitHub-native and ticket-less — do not touch ClickUp.
+            Stay git/GitHub-native and ticket-less — do not touch the tracker.
 ````
 
 Write it only if the path is absent; if `.github/workflows/supera-audit.yml` already exists, show the proposed content and confirm before overwriting (same courtesy as `supera.json`). Don't touch any other workflow in `.github/workflows/`.
@@ -196,7 +210,7 @@ Build the file from `CONFIG`, hardcoding nothing repo-specific:
 - **Triggers** come from `CONFIG.automation.prWatch` — emit a `pull_request: { types: [opened, synchronize, reopened] }` block only when `…pullRequest` is true; emit a `check_suite: { types: [completed] }` block only when `…checkSuite` is true. If a flag is false, omit that trigger entirely.
 - The workflow declares the `ANTHROPIC_API_KEY` secret and `contents: write`, `pull-requests: write`, `issues: write`, `checks: read`, `statuses: read` permissions (pr-watch needs to push fixes, comment on / update the PR, and read CI status).
 
-This repo stays git/GitHub-native and **ticket-less**: the ClickUp MCP is claude.ai-authenticated and absent in CI, so the headless run drives the PR to green and never touches ClickUp.
+This repo stays git/GitHub-native and **ticket-less**: the tracker MCP may be absent in CI, so the headless run drives the PR to green and never touches the tracker.
 
 Emit this template, substituting the trigger blocks per the flags above (the example shows both triggers; drop whichever the config disables):
 
@@ -233,7 +247,7 @@ jobs:
             supera-engineer, address actionable review threads, and exit when
             the branch is green and synced with its base. Never prompt — post
             any human-judgment fork as a PR comment and exit blocked.
-            Stay git/GitHub-native — do not touch ClickUp.
+            Stay git/GitHub-native — do not touch the tracker.
 ````
 
 Write it only if the path is absent; if `.github/workflows/supera-pr-watch.yml` already exists, show the proposed content and confirm before overwriting (same courtesy as `supera.json`). Don't touch any other workflow in `.github/workflows/`.
@@ -244,7 +258,7 @@ Skip this whole step when `CONFIG.automation.ship.issueLabel` is `false` — no 
 
 When enabled, write `.github/workflows/supera-ship.yml` so `/ship` runs off-laptop with **zero terminal** — labeling a GitHub issue `supera:ship` kicks off a headless build that ends in an open PR. The job is **agentic** — Claude runs `/ship` non-interactively via the official `anthropics/claude-code-action`, using the issue title + body as the task description; `supera-engineer` stays the only implementer, the workflow just orchestrates. Cost is bounded to the `supera:ship` label only — **never** a per-PR hot path. It is independent of the audit workflow (separate file): emitting one never touches the other.
 
-This repo stays git/GitHub-native and **ticket-less**: the ClickUp MCP is claude.ai-authenticated and absent in CI, so the workflow opens a PR off the issue and never touches ClickUp.
+This repo stays git/GitHub-native and **ticket-less**: the tracker MCP may be absent in CI, so the workflow opens a PR off the issue and never touches the tracker.
 
 The trigger is fixed (`issues: { types: [labeled] }`) and the label guard (`supera:ship`) is hardcoded, so nothing repo-specific is substituted — emit this template verbatim:
 
@@ -283,7 +297,7 @@ jobs:
             Cut a feature branch, delegate the implementation to
             supera-engineer (code + tests, self-verified), and open a
             pull request. Comment the PR link back on the issue.
-            Stay git/GitHub-native and ticket-less — do not touch ClickUp.
+            Stay git/GitHub-native and ticket-less — do not touch the tracker.
 ````
 
 Write it only if the path is absent; if `.github/workflows/supera-ship.yml` already exists, show the proposed content and confirm before overwriting (same courtesy as `supera.json`). Don't touch any other workflow in `.github/workflows/`.
@@ -299,10 +313,12 @@ Print the written path and a compact summary of every field. Tell the user:
 - Prefer the repo's real `package.json` scripts over generic templates.
 - Detect the default branch; don't hardcode `main`.
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
-- When a ClickUp list is set, emit `clickup.projectTag` (the lowercase project name from step 2) so `/ship` and `/refine-ticket` can stamp every ticket; omit/null it to skip tagging, and drop it entirely when `clickup` is null.
-- When a ClickUp list is set, emit the `clickup.statuses` defaults inline so status names are visible and editable per space; omit the block (or any single key) to fall back to the schema defaults.
+- When a tracker is set, emit `tracker.provider` + `tracker.board` and a `tracker.tools` map from the provider preset (ClickUp/Jira presets in step 3; ask per-op for any other provider, each op individually optional).
+- When a tracker is set, emit `tracker.projectTag` (the lowercase project name from step 2) so `/ship` and `/refine-ticket` can stamp every ticket; omit/null it to skip tagging, and drop it entirely when `tracker` is null.
+- When a tracker is set, emit the `tracker.statuses` defaults inline so status names are visible and editable per tracker; omit the block (or any single key) to fall back to the schema defaults.
+- On re-init, migrate a legacy `clickup` block to `tracker` (board←listId, provider←"clickup", keep projectTag + statuses, fill the ClickUp tools preset) and report it.
 - Output must validate against `schema/supera.schema.json`.
-- The CLAUDE.md guardrail block is marker-delimited and idempotent: create or refresh only between the `<!-- supera:guardrails -->` markers, never touch content outside them, and drop the ClickUp line when `clickup` is null.
+- The CLAUDE.md guardrail block is marker-delimited and idempotent: create or refresh only between the `<!-- supera:guardrails -->` markers, never touch content outside them, and drop the tracker line when `tracker` is null.
 - Emit `.github/workflows/supera-audit.yml` only when `ci.provider` is `github`, at least one auditor is enabled (`audits.supplyChain` is true **or** `audits.freshness.level` is set and not `off`), and at least one `automation.audit` trigger (`schedule`/`dispatch`/`label`) is true; build its triggers from `automation.audit` — hardcode nothing. The job is agentic — Claude runs `/audit --non-interactive` headless (every enabled auditor → PR → `/pr-watch`; cron / dispatch / label only, never per-PR), declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write` (the label scope creates the `supera:audit` repo label, an Issues-API resource, even though it files no separate issue), and stays ticket-less. Don't overwrite an existing workflow without confirming; never touch other workflow files.
 - Emit `.github/workflows/supera-pr-watch.yml` only when `ci.provider` is `github` and at least one `automation.prWatch.*` flag is true; build its triggers from `automation.prWatch` (`pullRequest` → `pull_request`, `checkSuite` → `check_suite`) — hardcode nothing, omit a trigger whose flag is false. The job is agentic — Claude runs `/pr-watch --non-interactive` headless (GitHub events replace `ScheduleWakeup`), declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write` + `checks`/`statuses: read`, and stays ticket-less. Interactive `/pr-watch` is unchanged (additive). Don't overwrite an existing workflow without confirming; never touch other workflow files.
 - Emit `.github/workflows/supera-ship.yml` only when `automation.ship.issueLabel` is true and `ci.provider` is `github`. The job is agentic — it runs `/ship` headless from a `supera:ship`-labeled issue (`issues: [labeled]`, guarded so only that label fires it, never per-PR), with `supera-engineer` the only implementer; declares the `ANTHROPIC_API_KEY` secret with `contents`/`pull-requests`/`issues: write`, and stays git/GitHub-native and ticket-less. Independent of the audit workflow (separate file). Don't overwrite an existing workflow without confirming; never touch other workflow files.
