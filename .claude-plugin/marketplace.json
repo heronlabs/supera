@@ -12,7 +12,7 @@
       "author": { "name": "Lucas Lacerda" },
       "source": "./",
       "license": "MIT",
-      "keywords": ["workflow", "agents", "clickup", "shipping", "ci", "heronlabs"],
+      "keywords": ["workflow", "agents", "tracker", "shipping", "ci", "heronlabs"],
       "category": "workflow"
     }
   ]

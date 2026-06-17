@@ -4,5 +4,5 @@
   "version": "0.24.0",
   "author": { "name": "Lucas Lacerda" },
   "license": "MIT",
-  "keywords": ["workflow", "agents", "clickup", "shipping", "ci", "heronlabs"]
+  "keywords": ["workflow", "agents", "tracker", "shipping", "ci", "heronlabs"]
 }
