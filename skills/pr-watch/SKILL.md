@@ -10,7 +10,7 @@ Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failur
 
 Read `.claude/supera.json` into `CONFIG` (for `verify.*` commands and `pr.base`/`pr.remote`). If absent, proceed with sensible git/gh defaults and skip any config-derived command (tell the user once that supera isn't initialised here).
 
-`TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Set ticket status via `TOOL.setStatus` and post comments via `TOOL.comment` — never a hardcoded provider tool name; each op is individually optional and a step that needs one guards on its presence in `TOOL`.
+`TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Set ticket status via `TOOL.setStatus` and post comments via `TOOL.comment` — never a hardcoded provider tool name. The core op `setStatus` is assumed present whenever a tracker is configured; the best-effort op `comment` may be omitted, so a step that needs it guards on its presence in `TOOL` and skips when absent.
 
 Resolve `STATUS` once from `CONFIG.tracker?.statuses ?? {}` with defaults: `STATUS.review = …?.review ?? "in review"`, `STATUS.blocked = …?.blocked ?? "blocked"`, `STATUS.rejected = …?.rejected ?? "rejected"`. Set ticket status only via `STATUS.<key>`.
 
