@@ -1,20 +1,21 @@
 ---
 name: ship
-description: "Repo-agnostic full-lifecycle orchestrator: ClickUp ticket → worktree → plan → delegate to supera-engineer (code + tests) → self-verified → PR → ticket 'in review' → /pr-watch, and on a merged PR closes the ticket + tears down. Idempotent: re-run to resume interrupted work or close out; `/ship pause` checkpoints mid-flight. Driven by .claude/supera.json so it works in any repo."
-allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI and clickup_* MCP tools
+description: "Repo-agnostic full-lifecycle orchestrator: tracker ticket → worktree → plan → delegate to supera-engineer (code + tests) → self-verified → PR → ticket 'in review' → /pr-watch, and on a merged PR closes the ticket + tears down. Idempotent: re-run to resume interrupted work or close out; `/ship pause` checkpoints mid-flight. Driven by .claude/supera.json so it works in any repo."
+allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI and the tracker's MCP tools
 ---
 
-Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands, ClickUp list, worktree base, status names, and the project tag. Delegate the actual code + tests to the `supera-engineer` agent. `/ship` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/ship pause` checkpoints work mid-flight. After the PR is open it hands off to `/pr-watch`.
+Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands, tracker board, worktree base, status names, and the project tag. Delegate the actual code + tests to the `supera-engineer` agent. `/ship` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/ship pause` checkpoints work mid-flight. After the PR is open it hands off to `/pr-watch`.
 
 ## 0 — Load config
 
 Read `.claude/supera.json` at the repo root into `CONFIG`.
 
 - **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /supera-init first."` Offer to run `/supera-init` now. Do not proceed without config.
-- `CLICKUP = CONFIG.clickup?.listId` — if null/absent, run **ticket-less**: skip every ClickUp step below and operate on git + GitHub only.
+- `TRACKER = CONFIG.tracker?.board` — if null/absent, run **ticket-less**: skip every tracker step below and operate on git + GitHub only.
+- `TOOL = CONFIG.tracker?.tools ?? {}` — the neutral-op → MCP-tool map. Invoke each tracker op as `TOOL.getTicket`, `TOOL.createTicket`, `TOOL.setStatus`, `TOOL.comment`, `TOOL.addTag`, etc. — never a hardcoded provider tool name. Each op is individually optional: a step that needs one guards on its presence in `TOOL` and skips when absent.
 - `BASE = CONFIG.worktree?.base ?? CONFIG.pr?.base ?? <detected default branch>`.
 - `WT_DIR = CONFIG.worktree?.dir ?? ".worktrees"`. `REMOTE = CONFIG.pr?.remote ?? "origin"`.
-- `STATUS` — resolve once from `CONFIG.clickup?.statuses ?? {}` with defaults:
+- `STATUS` — resolve once from `CONFIG.tracker?.statuses ?? {}` with defaults:
   `STATUS.building = …?.building ?? "in progress"`,
   `STATUS.review = …?.review ?? "in review"`,
   `STATUS.closed = …?.closed ?? "closed"`.
@@ -28,8 +29,8 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 
 Otherwise `$ARGUMENTS` may be:
 - A free-text task description — e.g. `"add payment retry on timeout"`
-- A ClickUp ticket ID + optional extra context — e.g. `"86abc123 also handle nil amounts"`
-- Just a ClickUp ticket ID — e.g. `"86abc123"`
+- A tracker ticket ID + optional extra context — e.g. `"86abc123 also handle nil amounts"`
+- Just a tracker ticket ID — e.g. `"86abc123"`
 - A branch name (resume / close-out an existing ship) — e.g. `"feat-add-payment-retry-on-timeout"`
 
 If empty, ask for a task description (in `NONINTERACTIVE` mode there's nothing to ship and no PR to comment on — exit `blocked`, see **Non-interactive mode**).
@@ -53,28 +54,16 @@ If a PR exists, route by the PR state **first** (`pr-open` / `merged`) — those
 | `scaffolded` | worktree/branch, **0 commits** vs base | **Resume:** delegate the full implementation (**Resuming interrupted work** below), then continue to step 5. |
 | `building` | commits, **HEAD is `wip:`**, no PR | **Resume:** soft-reset the checkpoint, recover `nextUp`, delegate the remainder (**Resuming interrupted work** below), then continue to step 5. |
 | `built` | commits, HEAD not `wip:`, no PR | Skip steps 2–4; jump straight to **step 5** (open the PR). |
-| `pr-open` | PR exists, not merged | Invoke `/pr-watch <N>` (+ `--clickup-ticket=<id>` if a ticket is linked). Stop. |
+| `pr-open` | PR exists, not merged | Invoke `/pr-watch <N>` (+ `--ticket=<id>` if a ticket is linked). Stop. |
 | `merged` | PR merged | Run **Closing out a merged PR** below. Stop. |
 
-## 2 — ClickUp ticket  *(skip entirely if ticket-less)*
+## 2 — Tracker ticket  *(skip entirely if ticket-less)*
 
-**If a ticket ID was provided:** fetch it for the title + status:
-```
-clickup_get_task(task_id="<id>")
-```
-Use the title as the canonical task description (augmented by extra context from `$ARGUMENTS`).
+**If a ticket ID was provided:** fetch it for the title + status via `TOOL.getTicket` (id = the provided ticket). Use the title as the canonical task description (augmented by extra context from `$ARGUMENTS`).
 
-**If no ticket ID:** create one on this repo's list. Let ClickUp assign the list's default initial status (`open`) — do not name it:
-```
-clickup_create_task(
-  list_id="<CLICKUP>",
-  name="<task description>",
-  markdown_description="<body from the ClickUp template below>",
-  tags=[ CONFIG.clickup.projectTag ]   # omit if unset or ticket-less
-)
-```
+**If no ticket ID:** create one on this repo's board via `TOOL.createTicket` — board = `TRACKER`, name = the task description, body = the template below, tags = `[ CONFIG.tracker.projectTag ]` (omit the tag if unset or ticket-less). Let the tracker assign its default initial status — do not name it. Derive the call's arguments from `TOOL.createTicket`'s own schema. Skip creation if `TOOL.createTicket` is unmapped (proceed with a free-text task, no ticket).
 
-Save the task ID — you update it throughout. No assignee (single-developer project).
+Save the ticket ID — you update it throughout. No assignee (single-developer project).
 
 ## 3 — Create worktree
 
@@ -92,18 +81,13 @@ Confirm the worktree exists and the install succeeded before continuing. If the 
 
 Form an internal implementation plan. It stays internal — proceed immediately unless the user explicitly said "show me the plan first" or invoked `/plan` before `/ship`.
 
-**Choose the executor:**
-- **Default → `supera-engineer`** (one strong agent does code + tests, self-verifies).
-- **Escalate → `nelson`** only when the ticket is genuinely multi-component and parallelisable (several independent subsystems, a migration across many sites). `nelson` fans the work out; use it sparingly — solo is the norm.
+The executor is always `supera-engineer` (one strong agent does code + tests, self-verifies) — the sole implementer; `/ship` orchestrates, it never edits application code itself.
 
-**Move ticket to building** *(skip if ticket-less)*:
-```
-clickup_update_task(task_id="<id>", status=STATUS.building)
-```
+**Move ticket to building** *(skip if ticket-less)* — `TOOL.setStatus` with `STATUS.building`.
 
-Announce: *"Plan ready. Delegating to `<executor>` in worktree `<WT_DIR>/<slug>`."* If the task hinges on a term with two plausible readings — a literal name vs. a mapping, an unfamiliar proper noun, a config key that could mean two things — add one line stating the reading you're shipping (e.g. *"reading `environment pulumi` as the literal GitHub environment named `pulumi`, not a per-stack map"*). This is a visible-by-default check, not a gate: proceed unless the fork is genuinely expensive to undo — that case is the engineer's `superpowers:brainstorming` step, not a blocking question here.
+Announce: *"Plan ready. Delegating to `supera-engineer` in worktree `<WT_DIR>/<slug>`."* If the task hinges on a term with two plausible readings — a literal name vs. a mapping, an unfamiliar proper noun, a config key that could mean two things — add one line stating the reading you're shipping (e.g. *"reading `environment pulumi` as the literal GitHub environment named `pulumi`, not a per-stack map"*). This is a visible-by-default check, not a gate: proceed unless the fork is genuinely expensive to undo — that case is the engineer's `superpowers:brainstorming` step, not a blocking question here.
 
-Dispatch the executor with: the full task description, the worktree path, and the path to `.claude/supera.json`. The engineer self-verifies (build/test/lint from config) before returning — **do not run the quality gate yourself; CI is the gate, the engineer is the pre-flight.** Wait for its receipt — a JSON object matching `schema/receipt.schema.json`. Parse it and branch on `receipt.status`: `ok` → continue to step 5; `needs-review` or `blocked` → surface `receipt.implemented`, any FAIL in `receipt.verification`, and `receipt.outOfScope` to the user before pushing (in `NONINTERACTIVE` mode no PR exists yet to comment on — print the receipt detail and exit `blocked`, see **Non-interactive mode**).
+Dispatch `supera-engineer` with: the full task description, the worktree path, and the path to `.claude/supera.json`. The engineer self-verifies (build/test/lint from config) before returning — **do not run the quality gate yourself; CI is the gate, the engineer is the pre-flight.** Wait for its receipt — a JSON object matching `schema/receipt.schema.json`. Parse it and branch on `receipt.status`: `ok` → continue to step 5; `needs-review` or `blocked` → surface `receipt.implemented`, any FAIL in `receipt.verification`, and `receipt.outOfScope` to the user before pushing (in `NONINTERACTIVE` mode no PR exists yet to comment on — print the receipt detail and exit `blocked`, see **Non-interactive mode**).
 
 ## 5 — Create the PR
 
@@ -112,16 +96,9 @@ Push the branch:
 git -C <WT_DIR>/<slug> push -u <REMOTE> <slug>
 ```
 
-**Move ticket to in review** — PR open, CI running, awaiting review *(skip if ticket-less)*:
-```
-clickup_update_task(task_id="<id>", status=STATUS.review)
-```
+**Move ticket to in review** — PR open, CI running, awaiting review *(skip if ticket-less)* — `TOOL.setStatus` with `STATUS.review`.
 
-Ensure this repo's project tag on the ticket *(skip if ticket-less or `CONFIG.clickup.projectTag` unset)* — it identifies the repo on a shared board:
-```
-clickup_add_tag_to_task(task_id="<id>", tag_name="<CONFIG.clickup.projectTag>")
-```
-Best-effort — the tag must pre-exist in the space; if the call fails, continue.
+Ensure this repo's project tag on the ticket via `TOOL.addTag` (tag = `CONFIG.tracker.projectTag`) *(skip if ticket-less, `CONFIG.tracker.projectTag` unset, or `TOOL.addTag` unmapped)* — it identifies the repo on a shared board. Best-effort — the tag may need to pre-exist; if the call fails, continue.
 
 Write the PR body (template below), then create the PR assigned to `@me` so it lands in the user's review queue. Do **not** add `--reviewer` (GitHub blocks self-review; the gh-CLI user is the author):
 ```bash
@@ -134,14 +111,11 @@ EOF
 )" \
   --assignee @me
 ```
-Save the PR number. Link it on the ticket *(skip if ticket-less)*:
-```
-clickup_create_comment(entity_id="<id>", comment_text="PR #<N> opened: <PR URL>")
-```
+Save the PR number. Link it on the ticket via `TOOL.comment` (text = `PR #<N> opened: <PR URL>`) *(skip if ticket-less or `TOOL.comment` unmapped)*.
 
 ## 6 — Hand off to /pr-watch
 
-Invoke `/pr-watch <PR-number>` — append `--clickup-ticket=<ticket-id>` only when a ticket exists, and `--non-interactive` when `NONINTERACTIVE` is set (so the headless run stays prompt-free through the PR cycle).
+Invoke `/pr-watch <PR-number>` — append `--ticket=<ticket-id>` only when a ticket exists, and `--non-interactive` when `NONINTERACTIVE` is set (so the headless run stays prompt-free through the PR cycle).
 
 Announce: *"PR #<N> is open. <Ticket in review (CI running). >Handing off to `/pr-watch <PR-number>`. Once it reports the PR merged, re-run `/ship <slug>` to close the ticket and clean up."*
 
@@ -155,7 +129,7 @@ For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) w
 - **An ambiguous decision blocks.** When the interactive flow would stop to ask, instead surface the block as a comment and exit `blocked` — don't guess past a genuine fork:
   - If a PR already exists for this work (phase `pr-open`/`built`-then-pushed), post the block as a PR comment: `gh pr comment <N> --body "🚫 supera /ship blocked (non-interactive): <what's ambiguous + the receipt/verification detail>"`.
   - Before any PR exists, print the block detail to the run output (there's nothing to comment on yet).
-- **Stay git/GitHub-native.** The ClickUp MCP is claude.ai-authenticated and absent in CI, so a headless run is ticket-less: every ClickUp step is already guarded by `CLICKUP`, and blocks surface as PR/issue comments, never ClickUp prompts. `--non-interactive` does **not** depend on a ticket being present.
+- **Stay git/GitHub-native.** The tracker MCP may be absent in CI, so a headless run is ticket-less: every tracker step is already guarded by `TRACKER`, and blocks surface as PR/issue comments, never tracker prompts. `--non-interactive` does **not** depend on a ticket being present.
 - The non-prompt steps (phase routing, worktree, delegate, push, PR, hand-off) are unchanged — a clean run still opens the PR and hands off to `/pr-watch --non-interactive`.
 
 ---
@@ -176,13 +150,9 @@ cd <WT_DIR>/<slug> && <CONFIG.worktree.postCreate ?? CONFIG.verify.install>
 git -C <WT_DIR>/<slug> show -s --format=%b HEAD     # read nextUp from the wip: body BEFORE resetting
 git -C <WT_DIR>/<slug> reset --soft HEAD~1
 ```
-Also read the latest `⏸ Paused` ClickUp comment *(ticket mode)* for `nextUp`.
+Also read the latest `⏸ Paused` tracker comment *(ticket mode)* for `nextUp`.
 
-**Re-delegate the remainder.** Move the ticket to building and dispatch the engineer *(skip the ClickUp line if ticket-less)*:
-```
-clickup_update_task(task_id="<id>", status=STATUS.building)
-```
-Dispatch `supera-engineer` with: the task description (ticket title + recovered `nextUp`), the worktree path, and the path to `.claude/supera.json`. For `building`, lead with `nextUp` so the engineer continues exactly where pause stopped — don't redo finished work. The engineer self-verifies before returning (**CI is the gate; don't run the full build/test/lint here**). Wait for its JSON receipt (`schema/receipt.schema.json`); branch on `receipt.status` — `ok` continues, `needs-review`/`blocked` surfaces `receipt.implemented` and any FAIL in `receipt.verification` to the user before continuing (in `NONINTERACTIVE` mode, exit `blocked` instead — see **Non-interactive mode**).
+**Re-delegate the remainder.** Move the ticket to building via `TOOL.setStatus` with `STATUS.building` *(skip if ticket-less)*, then dispatch `supera-engineer` with: the task description (ticket title + recovered `nextUp`), the worktree path, and the path to `.claude/supera.json`. For `building`, lead with `nextUp` so the engineer continues exactly where pause stopped — don't redo finished work. The engineer self-verifies before returning (**CI is the gate; don't run the full build/test/lint here**). Wait for its JSON receipt (`schema/receipt.schema.json`); branch on `receipt.status` — `ok` continues, `needs-review`/`blocked` surfaces `receipt.implemented` and any FAIL in `receipt.verification` to the user before continuing (in `NONINTERACTIVE` mode, exit `blocked` instead — see **Non-interactive mode**).
 
 Then fall through to **step 5** to open the PR. If a soft-reset rewrote an already-pushed `wip:` commit, push with `--force-with-lease` (never `--force`).
 
@@ -203,10 +173,7 @@ git -C <WT_PATH> status --porcelain      # anything staged?
    - Tree already clean → skip the commit; the branch state itself is the checkpoint.
    The `wip:` prefix is load-bearing: the resume path keys off it to soft-reset before continuing. Never name a real commit `wip:`.
 4. **Push so the work survives:** `git -C <WT_PATH> push -u <REMOTE> <BRANCH>` (`--force-with-lease` only if it rewrote history).
-5. **Sync the ticket** *(skip if ticket-less)* — comment the pause; leave the status `STATUS.building` (pause is not a blocker):
-```
-clickup_create_comment(entity_id="<TICKET>", comment_text="⏸ Paused. Done: <…>. Next: <nextUp>. Branch `<BRANCH>` pushed — resume with /ship <BRANCH>.")
-```
+5. **Sync the ticket** *(skip if ticket-less or `TOOL.comment` unmapped)* — comment the pause via `TOOL.comment` (text = `⏸ Paused. Done: <…>. Next: <nextUp>. Branch <BRANCH> pushed — resume with /ship <BRANCH>.`); leave the status `STATUS.building` (pause is not a blocker).
 6. **Report:** *"Paused `<BRANCH>`. WIP committed + pushed, worktree kept. Resume with `/ship <BRANCH>`."* List `wip-commit` (sha or "tree clean"), `pushed`, `ticket-comment` (ticket mode only). Stop.
 
 ---
@@ -224,7 +191,7 @@ gh pr view <N> --json commits -q '.commits | length'         # commit count
 gh pr view <N> --json commits -q '.commits[0].committedDate' # first commit time (PR commits are oldest-first)
 gh pr view <N> --json mergedAt -q .mergedAt                   # merge time
 ```
-   **Time spent** = first-commit time → merge time (no ClickUp time-tracking API).
+   **Time spent** = first-commit time → merge time (no tracker time-tracking API).
    Format:
 ```
 ✅ Shipped: <goal>
@@ -233,11 +200,7 @@ gh pr view <N> --json mergedAt -q .mergedAt                   # merge time
      - <path>
      - <path>
 ```
-2. **Close the ticket** *(skip if ticket-less)* — post the summary as a comment, then set closed:
-```
-clickup_create_comment(entity_id="<TICKET>", comment_text="<summary block>")
-clickup_update_task(task_id="<TICKET>", status=STATUS.closed)
-```
+2. **Close the ticket** *(skip if ticket-less)* — post the summary via `TOOL.comment` (skip the comment if `TOOL.comment` unmapped), then set closed via `TOOL.setStatus` with `STATUS.closed`.
 3. **Tear down the workspace** (silently — no confirm; each step is guarded so a missing worktree/branch is a no-op, not an error):
 ```bash
 [ "<BRANCH>" != "<BASE>" ] && git worktree list | grep -q "<WT_DIR>/<slug>" && git worktree remove <WT_PATH>   # --force only if it refuses on an unclean tree
@@ -259,11 +222,11 @@ clickup_update_task(task_id="<TICKET>", status=STATUS.closed)
 | `/pr-watch <N>` | PR is open | Drives CI green + review threads to resolution. Hands merged PRs back to `/ship`. |
 | `/ship <branch>` (re-run, `merged`) | PR is merged | Posts the summary (goal · time · files), sets the ticket `closed`, removes the worktree + local branch. The terminal step. |
 
-The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → building → built → pr-open → merged`. Every skill detects it the same way (git + ClickUp, no state file).
+The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → building → built → pr-open → merged`. Every skill detects it the same way (git + tracker, no state file).
 
 ---
 
-## ClickUp ticket body template
+## Tracker ticket body template
 
 ```
 ## Context
@@ -293,11 +256,11 @@ The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → b
 - [ ] <verification step the reviewer can run or check>
 
 ## Notes
-<ClickUp link if a ticket exists: [ClickUp #<id>](https://app.clickup.com/t/<id>)>
+<tracker link if a ticket exists, e.g. [#<id>](<ticket URL>)>
 <load-bearing decisions or known follow-ups — omit if none>
 ```
 
-## Ticket lifecycle reference  *(ClickUp mode only)*
+## Ticket lifecycle reference  *(ticket mode only)*
 
 | Phase | Status | Set by |
 |---|---|---|
@@ -313,12 +276,12 @@ Human-only verdicts `completed` / `accepted` are never set by a skill — mark t
 
 ## Rules
 
-- Read `.claude/supera.json` first — never hardcode commands, list IDs, branches, tags, or **status names** (always `STATUS.<key>`).
-- Ticket-less mode (no `clickup.listId`) is first-class: skip all ClickUp steps, ship purely on git + GitHub. Derive close-out time from git commit timestamps.
+- Read `.claude/supera.json` first — never hardcode commands, board IDs, branches, tags, tracker tool names, or **status names** (always `STATUS.<key>`; always `TOOL.<op>`).
+- Ticket-less mode (no `tracker.board`) is first-class: skip all tracker steps, ship purely on git + GitHub. Derive close-out time from git commit timestamps.
 - `--non-interactive` (headless CI) never prompts: an ambiguous decision becomes a PR/issue comment plus a `blocked` exit, never a question. Interactive is the default; the flag is preserved when handing off to `/pr-watch`.
 - Never commit directly to the base branch. Never remove `BASE` or its worktree.
 - **Idempotent + full-lifecycle:** run the step 1.5 phase routing first — never double-create a worktree or duplicate work; continue from the detected phase (resume / open PR / close out). Only `/pr-watch` lives outside `/ship`; never duplicate it.
-- Always delegate code + tests to `supera-engineer` (or `nelson` for genuinely parallel work) — `/ship` orchestrates, it does not implement.
+- Always delegate code + tests to `supera-engineer` — the sole implementer; `/ship` orchestrates, it does not implement.
 - The engineer self-verifies as pre-flight; **CI is the quality gate** — do not run a full build/test/lint from the orchestrator before pushing.
-- Always `--assignee @me`, never `--reviewer`. No ClickUp assignee, no ClickUp time-tracking.
+- Always `--assignee @me`, never `--reviewer`. No tracker assignee, no tracker time-tracking.
 - A `wip:` HEAD is always soft-reset before resuming, then pushed `--force-with-lease` (never `--force`).
