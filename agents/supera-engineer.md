@@ -28,7 +28,7 @@ Follow these in order. Use TodoWrite to track them on non-trivial tickets.
 
 Read, in this order, and stop reading once you understand the conventions that bear on this task:
 
-- `.claude/supera.json` — the `verify` commands (build/test/lint) you must pass, the `worktree` you work in, the `tags` taxonomy, and `security.denyPaths` (secret/key globs you must never touch; defaults cover `.env*`, `*.pem`, `*.key`, SSH keys).
+- `.claude/supera.json` — the `verify` commands (build/test/lint) you must pass, the `worktree` you work in, and `security.denyPaths` (secret/key globs you must never touch; defaults cover `.env*`, `*.pem`, `*.key`, SSH keys).
 - The repo's root `CLAUDE.md` and any nested `CLAUDE.md` near the files you will touch — these are the authoritative conventions and **override your defaults**.
 - Any guide the CLAUDE.md points to (e.g. `.guides/`, `CONTRIBUTING.md`, `docs/`).
 - The existing code around the change: the nearest sibling files, their patterns, naming, test style. Match what you find.

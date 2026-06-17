@@ -4,7 +4,7 @@ description: "Repo-agnostic full-lifecycle orchestrator: ClickUp ticket → work
 allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI and clickup_* MCP tools
 ---
 
-Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands, ClickUp list, worktree base, status names, and the tag table. Delegate the actual code + tests to the `supera-engineer` agent. `/ship` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/ship pause` checkpoints work mid-flight. After the PR is open it hands off to `/pr-watch`.
+Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands, ClickUp list, worktree base, status names, and the project tag. Delegate the actual code + tests to the `supera-engineer` agent. `/ship` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/ship pause` checkpoints work mid-flight. After the PR is open it hands off to `/pr-watch`.
 
 ## 0 — Load config
 
