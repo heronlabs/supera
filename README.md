@@ -1,23 +1,21 @@
 # supera
 
-A repo-agnostic **ticket-shipping superagent** for Claude Code. Install once; ship tickets on any repository with the same pattern — ClickUp ticket → worktree → implement + test → PR → babysit CI → done.
+A repo-agnostic **ticket-shipping superagent** for Claude Code. Install once; ship tickets on any repository with the same pattern — tracker ticket → worktree → implement + test → PR → babysit CI → done.
 
-The orchestration lives here. Anything repo-specific (build/test/lint commands, ClickUp list, branch, project tag) lives in a tiny per-repo `.claude/supera.json`, so the **same** skills work across pnpm, npm, cargo, Strapi, Go, Python, and more.
+The orchestration lives here. Anything repo-specific (build/test/lint commands, tracker board, branch, project tag) lives in a tiny per-repo `.claude/supera.json`, so the **same** skills work across pnpm, npm, cargo, Strapi, Go, Python, and more. The tracker is provider-agnostic — bring your own ClickUp, Jira, Linear, or any MCP via a neutral tool-map.
 
 ## What's inside
 
 | Skill | What it does |
 |---|---|
 | `/supera-init` | Detect a repo's stack and write its `.claude/supera.json`. Run once per repo. |
-| `/ship [task or ticket ID]` | Full lifecycle: ClickUp ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. || `/refine-ticket [ticket ID]` | Reformat a draft ClickUp ticket to the concise template; fill project tag/priority/due date and set it `ready`. |
+| `/ship [task or ticket ID]` | Full lifecycle: tracker ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. || `/refine-ticket [ticket ID]` | Reformat a draft tracker ticket to the concise template; fill project tag/priority/due date and set it `ready`. |
 | `/pr-watch [PR#]` | Babysit a PR: monitor CI, fix failures, resolve review threads, one code-review cycle — exit when green, synced, resolved. |
 
 | Agent | Role |
 |---|---|
 | `supera-engineer` | **The problem-solver.** One strong agent that implements code **and** tests in the worktree, adapts to the repo's own conventions, and self-verifies before returning. Uses superpowers (TDD, systematic-debugging, verification). Replaces all per-stack scribes. |
 | `supera-supply-chain-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo): CVEs, freshness, drift, typo-squats, leaked secrets. Report-only + safe CVE overrides. |
-
-For genuinely multi-component tickets, `/ship` escalates to **`nelson`** for parallel fan-out; solo `supera-engineer` is the default.
 
 ## Install
 
@@ -33,7 +31,7 @@ For genuinely multi-component tickets, `/ship` escalates to **`nelson`** for par
 ```bash
 cd ~/Workfolder/heronlabs/<any-repo>
 /supera-init                 # one time — detects stack, writes .claude/supera.json
-/ship 86abc123               # ship a ClickUp ticket, or:
+/ship 86abc123               # ship a tracker ticket, or:
 /ship "add retry on timeout" # ship from a free-text task
 ```
 
@@ -53,22 +51,26 @@ Commit `.claude/supera.json` so the config travels with the repo.
     "lint": "cargo clippy -- -D warnings"
   },
   "worktree": { "dir": ".worktrees", "base": "main" },
-  "clickup": { "listId": "901415284967" },   // null → run ticket-less (git + GitHub only)
+  "tracker": {                                 // null → run ticket-less (git + GitHub only)
+    "provider": "clickup",                     // informational hint; tool selection comes from tools
+    "board": "901415284967",                   // ClickUp list id, Jira project key, etc.
+    "projectTag": "cli",
+    "tools": {                                 // each neutral op → a concrete MCP tool on your server
+      "getTicket": "clickup_get_task", "createTicket": "clickup_create_task",
+      "setStatus": "clickup_update_task", "updateFields": "clickup_update_task",
+      "comment": "clickup_create_comment", "addTag": "clickup_add_tag_to_task",
+      "deleteTicket": "clickup_delete_task"
+    }
+  },
   "pr": { "base": "main", "remote": "origin" },
-  "tags": { "crates/cli/**": "cli" },
   "audits": { "supplyChain": true }
 }
 ```
 
-Set `clickup` to `null` to run **ticket-less** — `/ship` and `/pr-watch` then skip all ClickUp status updates and operate purely on git + GitHub. Time spent is derived from git (first commit → merge), not a time-tracking API.
+Set `tracker` to `null` to run **ticket-less** — `/ship` and `/pr-watch` then skip all tracker status updates and operate purely on git + GitHub. Time spent is derived from git (first commit → merge), not a time-tracking API.
 
 ## Prerequisites
 
-- **ClickUp MCP** configured globally with a valid API token (only needed for ClickUp mode).
-- **GitHub MCP** authenticated, and **`gh` CLI** installed + authenticated (`gh auth login`).
+- A **tracker MCP** configured with your provider's tools — ClickUp, Jira, Linear, or any MCP server (only needed in ticket mode; map each op in `tracker.tools`).
+- **`gh` CLI** installed + authenticated (`gh auth login`) — all GitHub work goes through the CLI.
 - **superpowers** plugin (optional) — when present, the engineer uses its TDD / debugging / verification skills; without it, the engineer applies the same discipline inline.
-- **nelson** plugin (only for multi-component escalation).
-
-## Not ported (workloads-local)
-
-`race-hunter` (financial-path / TypeORM-specific) and `arch-critic` (dependency-cruiser-specific) stay in the `workloads` repo. Add generalized versions here later if another repo needs them.
