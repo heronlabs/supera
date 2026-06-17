@@ -57,7 +57,7 @@ git worktree add <WT_DIR>/<auditBranch> -b <auditBranch> <REMOTE>/<TARGET>
 cd <WT_DIR>/<auditBranch> && <CONFIG.worktree.postCreate ?? CONFIG.verify.install>   # only if one is defined; skip otherwise
 ```
 
-`/audit` creates **no ClickUp ticket** — it is ticket-less by design, even when `clickup.listId` is set. Audits are recurring hygiene, not backlog work, so there are no ClickUp steps in this skill at all.
+`/audit` creates **no tracker ticket** — it is ticket-less by design, even when `tracker.board` is set. Audits are recurring hygiene, not backlog work, so there are no tracker steps in this skill at all.
 
 ## 4 — Run the auditors (security-first pipeline)
 
@@ -138,7 +138,7 @@ For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) �
 
 - **Never prompt.** Do not call `AskUserQuestion`. The clear path still flows end to end: the auditors run, their safe fixes commit, the PR opens, and `/audit` hands off to `/pr-watch --non-interactive`.
 - **An ambiguous decision blocks.** Instead of asking, surface the block and exit `blocked` — don't guess past a genuine fork. If a PR already exists for this audit, post the block as a PR comment (`gh pr comment <N> --body "🚫 supera /audit blocked (non-interactive): <detail>"`); before any PR exists, print the block detail to the run output.
-- **Stay git/GitHub-native and ticket-less.** There is no ClickUp here (the MCP is claude.ai-authenticated and absent in CI) — and `/audit` is ticket-less anyway, so nothing changes on that axis. Blocks surface as PR comments or run-log lines, never prompts.
+- **Stay git/GitHub-native and ticket-less.** There is no tracker here (the MCP may be absent in CI) — and `/audit` is ticket-less anyway, so nothing changes on that axis. Blocks surface as PR comments or run-log lines, never prompts.
 - **The hard gates still block.** A deny-path match (step 5) and any merge-blocker the auditors surface still block and exit — they are never waved through in headless mode.
 - **Flagged findings signal, don't block.** After the PR opens, any `findings[].verdict == "flag"` (or a `blocked` auditor receipt) is surfaced as a `gh pr comment` plus a run-log line so the cron can alert — the run still succeeds; flags are advisory, not a job failure.
 
@@ -148,7 +148,7 @@ For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) �
 - Auditor agents are the implementers; `/audit` orchestrates and never edits manifests/lockfiles itself.
 - Security-first order: supply-chain (CVE overrides) before freshness (currency bumps).
 - Date-scoped audit branch `chore-audit-<date>` — idempotent within a day; a same-day re-run routes to the open PR via `/pr-watch`.
-- Ticket-less by design — no ClickUp ticket even when `clickup.listId` is set; there are no ClickUp steps in this skill.
+- Ticket-less by design — no tracker ticket even when `tracker.board` is set; there are no tracker steps in this skill.
 - A pure report-only result opens no PR — surface the report and tear down the worktree.
 - Deny-path match is a hard abort — surface the offending paths, tear down, never push.
 - Reads only existing schema fields; CI stays the quality gate — the auditors self-verify their bumps and `/pr-watch` drives CI green.
