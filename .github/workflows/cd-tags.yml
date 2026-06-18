@@ -1,0 +1,80 @@
+name: '[ CD ] | Tags'
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: The SEMVER specification.
+        required: true
+        type: choice
+        default: patch
+        options:
+          - 'major'
+          - 'minor'
+          - 'patch'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 'Bump, tag, release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      SPEC: ${{ inputs.spec || 'patch' }}
+      GH_TOKEN: ${{ secrets.PAT }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Config git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version, sync manifests, and tag
+        run: npm version "${SPEC}" -m "[skip ci] release v%s"
+
+      - name: Push commit and tag
+        run: |
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push --follow-tags
+
+      - name: Update floating major and minor tags
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          MAJOR_TAG="v${MAJOR}"
+          MINOR_TAG="v${MAJOR}.${MINOR}"
+          git tag -fa "$MAJOR_TAG" -m "Latest ${MAJOR_TAG}.x.x release"
+          git tag -fa "$MINOR_TAG" -m "Latest ${MINOR_TAG}.x release"
+          git push origin "$MAJOR_TAG" --force
+          git push origin "$MINOR_TAG" --force
+
+      - name: Create GitHub release
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --generate-notes
