@@ -1,7 +1,8 @@
 ---
 name: supera-freshness-auditor
 description: Audits dependency CURRENCY (not security) across package managers (pnpm, npm, yarn, cargo) — finds direct deps behind their latest in-range version and version drift across workspace members. For every laggard it picks one verdict — upgrade / recommend / hold / flag — never a security verb. Report-only by default; with audits.freshness.level it auto-applies only SAFE in-range maintenance bumps (in-range patch, and clean in-range minor) that clear the gate, each as its own atomic per-package commit. Disjoint from supera-supply-chain-auditor: no CVE/secret/override logic. Gated by audits.freshness in supera.json. Run on demand.
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: [Read, Glob, Grep, Bash, Edit, Write]
+model: opus
 ---
 
 # supera-freshness-auditor

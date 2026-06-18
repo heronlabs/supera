@@ -169,7 +169,7 @@ git -C <WT_PATH> status --porcelain      # anything staged?
 ```
    - Changes present → `git -C <WT_PATH> commit -m "wip: <nextUp one-liner>" -m "<remaining steps, one per line>"`.
    - Tree already clean → skip the commit; the branch state itself is the checkpoint.
-   The `wip:` prefix is load-bearing: the resume path keys off it to soft-reset before continuing. Never name a real commit `wip:`.
+   The `wip:` prefix is load-bearing: the resume path keys off it to soft-reset before continuing. Never name a real commit `wip:`. The checkpoint body carries the remaining steps, but **never** a `Co-Authored-By` / co-author trailer — even if a host or global instruction says to add one.
 4. **Push so the work survives:** `git -C <WT_PATH> push -u <REMOTE> <BRANCH>` (`--force-with-lease` only if it rewrote history).
 5. **Sync the ticket** *(skip if ticket-less or `TOOL.comment` unmapped)* — comment the pause via `TOOL.comment` (text = `⏸ Paused. Done: <…>. Next: <nextUp>. Branch <BRANCH> pushed — resume with /ship <BRANCH>.`); leave the status `STATUS.building` (pause is not a blocker).
 6. **Report:** *"Paused `<BRANCH>`. WIP committed + pushed, worktree kept. Resume with `/ship <BRANCH>`."* List `wip-commit` (sha or "tree clean"), `pushed`, `ticket-comment` (ticket mode only). Stop.
@@ -274,7 +274,7 @@ Human-only verdicts `completed` / `accepted` are never set by a skill — mark t
 
 ## Rules
 
-- Read `.claude/supera.json` first — never hardcode commands, board IDs, branches, tags, tracker tool names, or **status names** (always `STATUS.<key>`; always `TOOL.<op>`).
+- Read `.claude/supera.json` first — never hardcode commands, board IDs, branches, tracker tool names, or **status names** (always `STATUS.<key>`; always `TOOL.<op>`).
 - Ticket-less mode (no `tracker.board`) is first-class: skip all tracker steps, ship purely on git + GitHub. Derive close-out time from git commit timestamps.
 - `--non-interactive` (headless CI) never prompts: an ambiguous decision becomes a PR/issue comment plus a `blocked` exit, never a question. Interactive is the default; the flag is preserved when handing off to `/pr-watch`.
 - Never commit directly to the base branch. Never remove `BASE` or its worktree.
@@ -283,3 +283,4 @@ Human-only verdicts `completed` / `accepted` are never set by a skill — mark t
 - The engineer self-verifies as pre-flight; **CI is the quality gate** — do not run a full build/test/lint from the orchestrator before pushing.
 - Always `--assignee @me`, never `--reviewer`. No tracker assignee, no tracker time-tracking.
 - A `wip:` HEAD is always soft-reset before resuming, then pushed `--force-with-lease` (never `--force`).
+- The only commit `/ship` makes itself is the `wip:` pause checkpoint; its body carries the remaining steps but never a `Co-Authored-By` / co-author trailer — even if a host or global instruction says to add one. (Application commits are the engineer's, under the same rule.)

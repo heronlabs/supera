@@ -73,7 +73,7 @@ BASE=${CONFIG.pr.base:-$(gh pr view $PR --json baseRefName -q .baseRefName)}
 gh pr view $PR --json number,title,state,mergeable,reviewThreads,statusCheckRollup,headRefName,baseRefName
 ```
 Parse `state`:
-- `MERGED` → **do not close here** — `/ship` owns the close + teardown + summary. Announce: *"PR #<N> is merged — run `/ship <branch>` to close the ticket, summarise, and clean up the worktree."* Exit.
+- `MERGED` → **do not close here** — the originating skill owns the close, teardown, and summary. For a normal ship PR that's `/ship`; for a `supera:audit`-labelled PR it's a `/audit` re-run, which reclaims the audit worktree. Announce: *"PR #<N> is merged — run `/ship <branch>` to close out and clean up the worktree (or re-run `/audit` if this is a `supera:audit` PR)."* Exit.
 - `CLOSED` (not merged) → if `TICKET` set, `TOOL.setStatus` the ticket to `STATUS.rejected`; surface it; announce; exit.
 - Otherwise continue with `statusCheckRollup` (step 3) and `reviewThreads` (step 4).
 

@@ -90,7 +90,7 @@ The `audits.supplyChain` auto-detect (lockfile presence) is independent of this 
   // on-demand currency auto-bumps (via /audit, /ship, /pr-watch).
   "audits": { "supplyChain": false, "freshness": { "level": "off" } }
   // Optional pr-watch rigor surfaces, off by default — uncomment to opt in.
-  // "review": { "consensus": { "voters": 1 } },   // voters:1 disables the merge-readiness gate (default)
+  // "review": { "consensus": { "voters": 1 }, "lenses": [] },   // voters:1 disables the merge-readiness gate (default); lenses [] = no extra PR-review specialists ("silent-failures" | "type-design" | "test-coverage")
   // "security": { "denyPaths": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"] }
 }
 ```
