@@ -8,24 +8,24 @@ This repo **is** a Claude Code plugin. It ships skills + agents that run in *oth
 |---|---|
 | `.claude-plugin/plugin.json` | Plugin manifest (name, version). Bump `version` on every behavioural change. |
 | `.claude-plugin/marketplace.json` | Marketplace entry so the plugin is installable via `/plugin`. Keep `version` in sync with `plugin.json`. |
-| `skills/` | `supera-init`, `ship`, `pr-watch`, `refine-ticket`, `audit` — each a `SKILL.md`. `ship` owns the full phase ladder (`fresh→scaffolded→building→built→pr-open→merged`), detected from git + tracker with no state file: re-run `/ship` to resume interrupted work or close out a merged PR, and `/ship pause` to checkpoint mid-flight. `audit` is the standalone auditor orchestrator — it runs the enabled auditors against a branch via its own worktree/PR, decoupled from `/ship`; ticket-less, and runs interactive or `--non-interactive`. |
+| `skills/` | `supera-init`, `ship`, `pr-watch`, `refactor`, `audit` — each a `SKILL.md`. `ship` owns the full phase ladder (`fresh→scaffolded→building→built→pr-open→merged`), detected from git + GitHub with no state file: re-run `/ship` to resume interrupted work or close out a merged PR, and `/ship pause` to checkpoint mid-flight. `refactor` dispatches `supera-engineer` against existing code (standalone or mid-ship), lightweight — no worktree/PR by default. `audit` is the standalone auditor orchestrator — it runs the enabled auditors against a branch via its own worktree/PR, decoupled from `/ship`, interactive or `--non-interactive`. |
 | `agents/` | `supera-engineer` (the implementer), `supera-supply-chain-auditor`, `supera-freshness-auditor`. |
 | `schema/` | `supera.schema.json` — the per-repo `.claude/supera.json` contract (**source of truth**, update before changing what skills read). `receipt.schema.json` — the `supera-engineer`→`ship`/`pr-watch` JSON receipt. `audit-receipt.schema.json` — the auditor receipt. |
+| `guidelines/` | `commit-conventions.md`, `auditor-base.md` — canonical cross-cutting conventions. Skills and agents reference these; they never restate them. |
 
 ## Core invariants — do not break
 
-- **Nothing repo-specific is hardcoded in a skill.** Commands, the tracker board id, branches, remotes, and the tracker tool-map come from `.claude/supera.json` (read into `CONFIG` at the top of each skill). Tracker work is expressed as neutral ops (`getTicket`, `setStatus`, …) resolved through `CONFIG.tracker.tools.<op>` — never a hardcoded provider tool name. If you need a new repo-specific value, add it to `schema/supera.schema.json` first, then read it from `CONFIG`.
-- **`supera-engineer` is the only implementer.** `/ship` and `/pr-watch` orchestrate and delegate; they never edit application code themselves.
+- **Nothing repo-specific is hardcoded in a skill.** Commands, branches, and remotes come from `.claude/supera.json` (read into `CONFIG` at the top of each skill). If you need a new repo-specific value, add it to `schema/supera.schema.json` first, then read it from `CONFIG`.
+- **Skills orchestrate, agents implement, shared guidelines are canonical.** `/ship`, `/pr-watch`, and `/refactor` route lifecycle and PR mechanics and **delegate all application code to `supera-engineer`** — the only implementer; the auditors are the implementers for `/audit`. Cross-cutting conventions live once under `guidelines/`; a rule stated in two documents is a defect.
 - **Nothing commits to base directly.** Every skill works on a branch/worktree and ships via PR — CI is the gate on every change. There is no direct-to-base fast path.
-- **One phase ladder, one owner.** The lifecycle (`fresh→scaffolded→building→built→pr-open→merged`) is derived from git + tracker — **no state file**. `/ship` owns the whole ladder and is idempotent: it resumes interrupted builds, opens the PR, and on a merged PR closes the ticket (status `closed`) + tears down the worktree. `/ship pause` writes the `wip:` checkpoint. `/pr-watch` drives the open PR green and hands merged PRs back to `/ship`. Status names are config-driven (`tracker.statuses` in the schema → `STATUS.<key>` in skills), never hardcoded.
-- **Ticket-less is first-class.** Every tracker/timer step is guarded by `tracker.board` being set. New steps that touch the tracker must carry the same guard.
+- **One phase ladder, one owner.** The lifecycle (`fresh→scaffolded→building→built→pr-open→merged`) is derived from git + GitHub — **no state file, no tracker**. `/ship` owns the whole ladder and is idempotent: it resumes interrupted builds, opens the PR, and on a merged PR closes out + tears down the worktree. `/ship pause` writes the `wip:` checkpoint. `/pr-watch` drives the open PR green and hands merged PRs back to `/ship`.
+- **The PR is the ticket.** supera is git/GitHub-native — there is no external issue tracker. Lifecycle, escalation, and history live in the branch, the PR, and its comments; a blocked run surfaces as a `<!-- supera:blocked -->` marker comment on the PR, never a tracker status.
 - **CI is the quality gate.** The engineer self-verifies as pre-flight; orchestrators do not run a full build/test/lint before pushing.
 - **Schema and skills stay in sync.** A field skills read must exist in the schema with a description and default.
 
 ## Conventions
 
-- Skills are config-driven and self-contained — templates are inlined, not cross-referenced via fragile paths.
-- Keep `version` in `plugin.json` and `marketplace.json` identical.
+- **Repo-specific behaviour stays self-contained** — commands, branches, and remotes come from `CONFIG`, templates are inlined, no fragile cross-repo paths. Cross-cutting conventions are the exception: canonical under `guidelines/`, referenced not restated (see Core invariants).
 - Prefer adding a generalized agent here over copying a workloads-specific one — generalize across ecosystems (detect the manager, then act).
 
 ## Releasing a change

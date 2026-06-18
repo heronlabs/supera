@@ -15,9 +15,11 @@ You auto-apply only **three** bounded remediations (§2 marks them ✅), each th
 
 Dependency *currency* — how far behind latest a dep has fallen, version drift across members, and routine maintenance bumps — is out of scope here; that is `supera-freshness-auditor`'s job.
 
+**Shared mechanics** — ecosystem detection, the auto-apply gate's common boxes, the always-FLAG baseline, and the receipt contract — live in `guidelines/auditor-base.md`. This doc adds only the supply-chain rubric (CVE remediation, secrets, typo-squats, provenance).
+
 ## 1 — Detect the ecosystem
 
-Inspect the repo root (and workspaces) for marker files, in this priority:
+Detect the manager and read the workspace config per `guidelines/auditor-base.md`. Your native audit per manager:
 
 | Marker | Manager | Native audit |
 |---|---|---|
@@ -25,10 +27,6 @@ Inspect the repo root (and workspaces) for marker files, in this priority:
 | `package-lock.json` | npm | `npm audit` |
 | `yarn.lock` | yarn | `yarn npm audit` (berry) / `yarn audit` (classic) |
 | `Cargo.lock` / `Cargo.toml` | cargo | `cargo audit` (needs `cargo-audit`) |
-
-If multiple managers are present, audit each and label findings by ecosystem. If a required tool is missing (e.g. `cargo-audit`), note it as a gap and skip that probe — do not fail the whole audit.
-
-For JS workspaces, also read the monorepo config: `pnpm-workspace.yaml` (catalog + `pnpm.overrides`), root `package.json` `overrides`/`resolutions`. Collect every `package.json` (root + workspace members) and every `dependencies`/`devDependencies`/`peerDependencies` entry.
 
 ### Per-manager auto-apply primitives
 
@@ -59,31 +57,20 @@ The three ✅ verdicts (UPGRADE in-range, scoped OVERRIDE, REMOVE stale) are the
 
 ## 3 — Auto-apply gate — ALL must pass, else revert and FLAG
 
-Before any ✅ remediation lands, every box below must be checked. A single miss means you **revert to the tree exactly as found and FLAG the finding** instead. This is what keeps bounded-auto safe.
+Every shared gate box in `guidelines/auditor-base.md` applies (one `name@version`, version actually moved, real install + build + test mirroring CI, stage manifest + lockfile together, atomic revert-to-FLAG on any miss). On top of them, these supply-chain boxes must also pass — a single miss means you **revert to the tree exactly as found and FLAG the finding** instead:
 
 - [ ] **Confident, non-degraded audit.** The native audit ran clean with explicit `--omit`/`--include` (dev/prod) scoping. An empty, errored, or degraded audit ⇒ **no** auto-apply.
-- [ ] **One `name@version` per change.** The change targets a single package; the lockfile diff touches only that package.
-- [ ] **Version actually moved.** Re-read the lockfile and prove the resolved version changed — a no-op edit is not a fix.
 - [ ] **Re-audit clean across ALL paths**, including any duplicate copies of the package, with no new advisory introduced.
-- [ ] **Real install + build + test mirroring CI.** Run an actual install and the repo's `verify.build` + `verify.test` with the CI lockfile flag (`--frozen-lockfile` / `--immutable` / `--locked`). **Never** `--lockfile-only` — it verifies an unbuilt tree. A green exit code alone is **not** proof: read the output.
 - [ ] **Peer-range clearance.** Overrides bypass peer-dependency SAT, so check peer ranges explicitly before trusting an override.
-- [ ] **Stage manifest + lockfile together.** Both move in one change; never hand-edit the lockfile.
-- [ ] **Atomic revert to FLAG on any failure.** On any miss, restore the tree to exactly how you found it and surface the finding instead of a half-applied fix.
 
 ## 4 — Always FLAG (never auto-apply)
 
-These are out of bounds for auto-apply, no matter how mechanical they look — recommend the action and hand the decision to the user:
+The shared always-FLAG baseline in `guidelines/auditor-base.md` applies (majors / out-of-range, range-widening, non-semver descriptors, both-direct-and-transitive, framework migration / EOL, documented load-bearing pins, yanked/regressed → HOLD). On top of it, these supply-chain cases always FLAG:
 
-- A **major / out-of-range** bump.
 - **Fix-target ≠ vuln-target** — the advisory's fixed range lands on a different package or path than the one flagged.
-- **Patched-but-yanked or regressed** newer version → **HOLD** (pin-below / wait).
 - A **peer-range break** the override or bump would introduce.
 - **Multi-copy** packages where the fix covers only one copy of a duplicated dependency.
-- A **non-semver version descriptor**: `patch:`, a git-url dep, `$ref`/`$name` aliases, or a cargo `[patch]` git-path — there is no clean range to move within.
-- A dep that is **BOTH direct AND transitive** — moving one role can desync the other.
 - **Stacked advisories** with differing fix cutoffs — take the **max** cutoff; it can flip a minor into a major.
-- A **framework migration / EOL** runtime.
-- A **documented load-bearing pin** — check the repo's CLAUDE.md / `.guides/` for "do not bump" pins and leave them alone.
 
 ## 5 — Analyse the other issue classes
 
@@ -95,20 +82,16 @@ Beyond CVEs (§2–§4), audit these classes and report each with file:line evid
 
 ## 6 — Return a receipt
 
-Your final message is consumed by `/audit`, not a human — return **only** a single JSON object that validates against `schema/audit-receipt.schema.json`. No prose before or after it. Set `auditor: "supply-chain"`. Map your work:
+Return the receipt per `guidelines/auditor-base.md` (single JSON validating `schema/audit-receipt.schema.json`, no prose). Set `auditor: "supply-chain"` and map your work:
 
-- **`applied[]`** — every CVE you auto-remediated (verdict `upgrade` / `pin` / `remove-pin`), each with `target`, `from`/`to`, and the `verifiedBy` check that confirmed it. **Omit `commit`** — you leave the edits uncommitted and `/audit` makes the single commit.
-- **`findings[]`** — everything that needs a human, **most-severe first** (unfixable/flagged CVEs → leaked secrets → typo-squat/provenance): verdict `flag` (unfixable / needs a decision) or `hold` (known-bad latest), each with `target`, `file`/`line` when locatable, and the recommended `action`.
-- **`verification`** — the §3 gate run (install/build/test mirroring CI) that proved the applied set green.
+- **`applied[]`** — every CVE you auto-remediated (verdict `upgrade` / `pin` / `remove-pin`), each with `target`, `from`/`to`, and the `verifiedBy` check. **Omit `commit`** — you leave the edits uncommitted and `/audit` makes the single commit.
+- **`findings[]`** — everything that needs a human, **most-severe first** (unfixable/flagged CVEs → leaked secrets → typo-squat/provenance): verdict `flag` or `hold`, each with `target`, `file`/`line` when locatable, and the recommended `action`.
+- **`verification`** — the gate run (install/build/test mirroring CI) that proved the applied set green.
 - **`degraded[]`** — any degraded probe (missing native audit, network failure) that blocked an auto-apply.
-- **`status`** — `ok` if everything safe was applied and nothing needs a human; `needs-review` if any `findings[]` exist; `blocked` if you could not audit at all (no lockfile / manager missing).
+- **`status`** — `ok` / `needs-review` (any `findings[]`) / `blocked` (could not audit at all).
 
 ## Rules
 
-- For every CVE, pick the correct verdict from the §2 rubric — never reflexively add an override. A blanket pin that freezes a vulnerable major or masks an in-range upgrade is the wrong call.
-- Auto-apply only the three ✅ remediations (in-range UPGRADE, scoped OVERRIDE, REMOVE stale), and only after the §3 gate passes in full. Everything else is FLAGGED.
-- On any gate miss, revert atomically to the tree as found and FLAG — never leave a half-applied fix.
-- Never bump majors, migrate frameworks, or refactor deps autonomously.
-- Never change a version the repo documents as a load-bearing pin — flag it.
+- For every CVE, pick the correct verdict from the §2 rubric — never reflexively add an override.
+- Auto-apply only the three ✅ remediations (in-range UPGRADE, scoped OVERRIDE, REMOVE stale), and only after the gate passes in full (shared boxes in `guidelines/auditor-base.md` + §3); everything else is FLAGGED.
 - Never print a full secret value — file:line + pattern name only.
-- If a tool or network probe fails, degrade gracefully: note the gap, continue the audit. A degraded audit blocks auto-apply.

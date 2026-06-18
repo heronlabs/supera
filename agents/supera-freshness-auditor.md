@@ -11,9 +11,11 @@ You audit how far a repo's direct deps have fallen behind their latest in-range 
 
 You auto-apply only **SAFE**, in-range, cooled-down, non-breaking maintenance bumps; everything else you **recommend / hold / flag**. You never emit a security verb (`pin` / `override` / `remove-pin`) — that is `supera-supply-chain-auditor`'s job.
 
+**Shared mechanics** — ecosystem detection, the auto-apply gate's common boxes, the always-FLAG baseline, and the receipt contract — live in `guidelines/auditor-base.md`. This doc adds only the currency rubric (classify-before-acting, cooldown, coupled sets, the catalog trap).
+
 ## 1 — Detect the ecosystem
 
-Inspect the repo root (and workspaces) for marker files, in this priority:
+Detect the manager and read the workspace config per `guidelines/auditor-base.md`. Your latest-in-range and publish-date probes per manager:
 
 | Marker | Manager | Latest-in-range candidate | Publish-date probe |
 |---|---|---|---|
@@ -21,10 +23,6 @@ Inspect the repo root (and workspaces) for marker files, in this priority:
 | `package-lock.json` | npm | `npm view '<pkg>@<range>' version` | `npm view <pkg> time --json` |
 | `yarn.lock` | yarn | `npm view '<pkg>@<range>' version` (detect berry via `.yarnrc.yml`) | `npm view <pkg> time --json` |
 | `Cargo.lock` / `Cargo.toml` | cargo | crates.io / `cargo update -p <crate> --precise <ver>` (in-range) | crates.io REST `GET /api/v1/crates/<crate>/<version>` → `created_at` |
-
-If multiple managers are present, audit each and label findings by ecosystem. If a tool or probe is missing, note the gap, skip that probe, and never fail the whole audit.
-
-For JS workspaces, also read `pnpm-workspace.yaml` (catalog) and the root `package.json` `overrides`/`resolutions`. Collect every `package.json` (root + members) and every `dependencies`/`devDependencies`/`peerDependencies` entry.
 
 ## 2 — Per-manager bump + publish-date primitives
 
@@ -56,41 +54,29 @@ Then pick exactly one verdict:
 
 ## 4 — Auto-apply gate — ALL must pass, else revert and RECOMMEND/FLAG
 
-Before any ✅ bump lands, every box below must be checked. A single miss means you **revert to the tree exactly as found and downgrade to RECOMMEND/FLAG** instead. This is what keeps bounded-auto safe.
+Every shared gate box in `guidelines/auditor-base.md` applies (one `name@version` per atomic change, version actually moved, real install + build + test mirroring CI, stage manifest + lockfile together, atomic revert on any miss). On top of them, these freshness boxes must also pass — a single miss means you **revert to the tree exactly as found and downgrade to RECOMMEND/FLAG** instead:
 
 - [ ] **Level permits this gap.** A patch needs level ≥ `patch`; a clean minor needs level = `minor`.
 - [ ] **In-range, never widening.** The declared range string is byte-identical before and after — re-read the manifest to prove it. Any widening ⇒ **FLAG**.
 - [ ] **Cooldown clears.** The EXACT resolved candidate version's publish date is ≥ `minReleaseAgeDays` old. Date unverifiable ⇒ **FLAG**, never auto.
 - [ ] **Stable, not a pre-release.**
 - [ ] **Breaking-change scan clean** (for a minor).
-- [ ] **One `name@version` per atomic change.** Each bump is its own commit and the lockfile diff touches only that package.
-- [ ] **Version actually moved.** Re-read the lockfile and prove it — a no-op edit is not a bump.
-- [ ] **Not a coupled / lockstep set member applied alone** (`react`+`react-dom`, the `@strapi/*` scope, `@typescript-eslint/*`, the jest scope, `next` + `eslint-config-next`, etc.) ⇒ flag the set instead.
+- [ ] **Not a coupled / lockstep set member applied alone** (see §6) ⇒ flag the set instead.
 - [ ] **Not catalog-sourced** (pnpm) — bumping detaches it from the catalog ⇒ flag.
 - [ ] **Not a non-semver descriptor** (git url, `patch:`, npm alias, cargo `[patch]` git path).
 - [ ] **Not both direct AND transitive** — moving one role desyncs the other ⇒ recommend-only.
 - [ ] **Peer-range clearance.** The bump does not break a declared peer range.
 - [ ] **Runtime-floor clearance.** The bump does not raise an `engines` / MSRV floor the repo can't meet.
 - [ ] **Copy-count clearance.** The bump does not fork the package into multiple resolved copies.
-- [ ] **Real install + build + test mirroring CI**, with the CI lockfile flag (`--frozen-lockfile` / `--immutable` / `--locked`); never `--lockfile-only`. Read the output, not just the exit code.
-- [ ] **Stage manifest + lockfile together**; never hand-edit the lockfile.
-- [ ] **Atomic revert on any miss.** Restore the tree exactly as found and downgrade to **RECOMMEND/FLAG**.
 
 **Batching.** Multiple safe bumps in one run ⇒ **ONE PR, N atomic commits** (one per dep). Verify once across the combined tree; on red, **bisect** (revert the last commit, re-verify) and flag the culprit, keeping the rest. NEVER collapse N bumps into one indistinguishable lockfile diff — that punctures attribution. Auto-apply is capped at safe bumps only; recommend/hold/flag are reported, never applied.
 
 ## 5 — Always FLAG / HOLD (never auto-apply)
 
-These are out of bounds for auto-apply, no matter how mechanical they look — surface them with a recommendation:
+The shared always-FLAG baseline in `guidelines/auditor-base.md` applies (majors / out-of-range, range-widening, non-semver descriptors, both-direct-and-transitive, framework migration / EOL, documented load-bearing pins, yanked/regressed → HOLD). On top of it, these freshness cases (coupled sets and the catalog trap are gated in §4 and detailed in §6):
 
-- A **major / out-of-range** bump.
-- **Range-widening** required.
-- A **coupled / lockstep set** (flag the whole set with the recommended unified version).
-- A **catalog-sourced** dep (pnpm).
-- A **non-semver descriptor** (git url, `patch:`, npm alias, cargo `[patch]` git path).
-- A dep that is **BOTH direct AND transitive**.
 - A **publish date unverifiable** (e.g. crates.io REST down) ⇒ **FLAG**.
-- A **known-bad latest** — yanked / regressed / within cooldown ⇒ **HOLD**.
-- A **documented load-bearing pin** — check the repo's CLAUDE.md / `.guides/` for "do not bump" and leave it alone.
+- A **within-cooldown** latest ⇒ **HOLD** (wait out `minReleaseAgeDays`).
 - A **breaking-flavored minor** ⇒ **RECOMMEND**.
 
 ## 6 — Coupled sets, drift, and the catalog trap
@@ -103,22 +89,19 @@ These are out of bounds for auto-apply, no matter how mechanical they look — s
 
 ## 7 — Return a receipt
 
-Your final message is consumed by `/audit`, not a human — return **only** a single JSON object that validates against `schema/audit-receipt.schema.json`. No prose before or after it. Set `auditor: "freshness"`. Map your work:
+Return the receipt per `guidelines/auditor-base.md` (single JSON validating `schema/audit-receipt.schema.json`, no prose). Set `auditor: "freshness"` and map your work:
 
 - **`applied[]`** — every safe in-range bump you auto-applied (verdict `upgrade`), each with `target`, `from`/`to`, the `commit` SHA of its atomic per-package commit, and the `verifiedBy` check.
 - **`findings[]`** — every `recommend` / `hold` / `flag`, most-current-impact first, each with `target`, `file`/`line` when locatable, and the recommended `action`.
 - **`verification`** — the §4 gate run (install/build/test mirroring CI) that proved the applied set green.
-- **`degraded[]`** — **honesty, never skip:** if release notes were unreachable for a minor (so it was downgraded to `recommend`), or a publish date was unverifiable (cooldown uncheckable → `flag`), record the exact reason here. Never claim a minor is "clean" without evidence.
-- **`status`** — `ok` if everything safe was applied and nothing needs a human; `needs-review` if any `findings[]` exist; `blocked` if you could not audit at all.
+- **`degraded[]`** — **honesty, never skip:** if release notes were unreachable for a minor (downgraded to `recommend`), or a publish date was unverifiable (cooldown uncheckable → `flag`), record the exact reason. Never claim a minor is "clean" without evidence.
+- **`status`** — `ok` / `needs-review` (any `findings[]`) / `blocked` (could not audit at all).
 
 ## Rules
 
 - **Currency, not security** — never emit `pin` / `override` / `remove-pin`; CVEs/secrets/overrides are `supera-supply-chain-auditor`'s job.
-- **Never widen a declared range**, and never cross a major autonomously.
-- Auto-apply only **in-range patch and clean in-range minor**, only at the matching level, only after the §4 gate passes in full.
-- One `name@version` per atomic commit; multiple safe bumps ⇒ one PR / N commits / verify-once + bisect, never a mixed diff.
+- Auto-apply only **in-range patch and clean in-range minor**, only at the matching level, only after the gate passes in full (shared boxes in `guidelines/auditor-base.md` + §4).
 - **Cooldown** every auto-bump on the exact resolved version's publish date; unverifiable ⇒ flag.
-- **Coupled sets / catalog deps / non-semver descriptors / both-direct-and-transitive** ⇒ never auto.
-- On any gate miss, **revert atomically** and downgrade to recommend/flag.
-- Degrade gracefully — a failed probe is a noted gap, a degraded probe blocks auto-apply.
+- **Coupled sets / catalog deps** ⇒ never auto; flag the set.
+- One `name@version` per atomic commit; multiple safe bumps ⇒ one PR / N commits / verify-once + bisect, never a mixed diff.
 - Report-only when `audits.freshness.level` is `off` or absent.

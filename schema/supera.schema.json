@@ -33,41 +33,6 @@
         "postCreate": { "type": "string", "description": "Command run inside a fresh worktree, usually the install step. Defaults to verify.install if omitted." }
       }
     },
-    "tracker": {
-      "type": ["object", "null"],
-      "description": "Issue-tracker wiring. Set to null (or omit) to run ticket-less: ship/pr-watch/refine skip all tracker steps and operate purely on git + GitHub.",
-      "additionalProperties": false,
-      "properties": {
-        "provider": { "type": "string", "description": "Informational hint identifying the tracker (clickup | jira | linear | …). Surfaced in reports and helps the model reason about the connected server. Not load-bearing — tool selection comes from tracker.tools." },
-        "board": { "type": ["string", "null"], "description": "Container new tickets are created in — a ClickUp list id, a Jira project key, etc. Required for ticket creation." },
-        "statuses": {
-          "type": "object",
-          "description": "Maps supera lifecycle phases to THIS tracker's status names. Each skill reads CONFIG.tracker.statuses.<key>; omit a key to keep its default. Used only when tracker.board is set. The human-only verdicts (completed/accepted) are intentionally absent — supera never sets them.",
-          "additionalProperties": false,
-          "properties": {
-            "ready":    { "type": "string", "default": "pending",     "description": "Refined and ready to ship. Set by /refine-ticket." },
-            "building": { "type": "string", "default": "in progress", "description": "Engineer implementing. Set by /ship." },
-            "review":   { "type": "string", "default": "in review",   "description": "PR open: CI + human review. Set by /ship at PR push." },
-            "blocked":  { "type": "string", "default": "blocked",     "description": "Stuck: repeated CI failure or unresolved blocker. Set by /pr-watch." },
-            "rejected": { "type": "string", "default": "rejected",    "description": "PR closed without merge. Terminal. Set by /pr-watch." },
-            "closed":   { "type": "string", "default": "closed",      "description": "Merged, done, archived. Set by /ship on merge." }
-          }
-        },
-        "tools": {
-          "type": "object",
-          "description": "Maps each neutral tracker operation to a concrete MCP tool on the connected server. getTicket / createTicket / setStatus are CORE ops, assumed present whenever tracker.board is set; comment / updateFields / deleteTicket are BEST-EFFORT and may be omitted (folded into another op or unsupported), in which case skills guard on their presence and skip. Arguments are derived from each tool's own schema.",
-          "additionalProperties": false,
-          "properties": {
-            "getTicket":    { "type": "string", "description": "Fetch a ticket (title, status, description, subtasks). e.g. clickup_get_task." },
-            "createTicket": { "type": "string", "description": "Create a ticket in `board`. e.g. clickup_create_task." },
-            "setStatus":    { "type": "string", "description": "Move a ticket to a status. ClickUp: clickup_update_task. Jira: the transition tool." },
-            "updateFields": { "type": "string", "description": "Set name / description / priority / due date. ClickUp: clickup_update_task. Jira: the update-issue tool." },
-            "comment":      { "type": "string", "description": "Post a comment. e.g. clickup_create_comment." },
-            "deleteTicket": { "type": "string", "description": "Delete a ticket (subtask folding). e.g. clickup_delete_task." }
-          }
-        }
-      }
-    },
     "pr": {
       "type": "object",
       "description": "Pull-request defaults.",
