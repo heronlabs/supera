@@ -9,13 +9,16 @@ The orchestration lives here. Anything repo-specific (build/test/lint commands, 
 | Skill | What it does |
 |---|---|
 | `/supera-init` | Detect a repo's stack and write its `.claude/supera.json`. Run once per repo. |
-| `/ship [task or ticket ID]` | Full lifecycle: tracker ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. || `/refine-ticket [ticket ID]` | Reformat a draft tracker ticket to the concise template; fill priority/due date and set it `ready`. |
+| `/ship [task or ticket ID]` | Full lifecycle: tracker ticket → worktree → delegate to `supera-engineer` → PR → ticket in review → hand off to `/pr-watch`; re-run to close out (ticket → closed, worktree torn down). Idempotent — also owns `pause`/resume. |
+| `/refine-ticket [ticket ID]` | Reformat a draft tracker ticket to the concise template; fill priority/due date and set it `ready`. |
 | `/pr-watch [PR#]` | Babysit a PR: monitor CI, fix failures, resolve review threads, one code-review cycle — exit when green, synced, resolved. |
+| `/audit [branch]` | Run the enabled dependency auditors on a branch, carry their safe auto-fixes into a PR, hand off to `/pr-watch`. Ticket-less; CI-cron-ready via `--non-interactive`. |
 
 | Agent | Role |
 |---|---|
 | `supera-engineer` | **The problem-solver.** One strong agent that implements code **and** tests in the worktree, adapts to the repo's own conventions, and self-verifies before returning. Uses superpowers (TDD, systematic-debugging, verification). Replaces all per-stack scribes. |
-| `supera-supply-chain-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo): CVEs, freshness, drift, typo-squats, leaked secrets. Report-only + safe CVE overrides. |
+| `supera-supply-chain-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo): CVEs, missing/stale overrides, typo-squats, provenance gaps, leaked secrets. Report-only + safe CVE overrides. |
+| `supera-freshness-auditor` | Cross-ecosystem dependency **currency** (not security): direct deps behind their latest in-range version, version drift across workspace members. Report-only + safe in-range bumps. Gated by `audits.freshness`. |
 
 ## Install
 

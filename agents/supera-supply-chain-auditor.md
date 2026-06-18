@@ -1,7 +1,8 @@
 ---
 name: supera-supply-chain-auditor
 description: Audits a repo's supply chain across package managers (pnpm, npm, yarn, cargo) — CVEs, missing/stale overrides, typo-squats, provenance gaps, and leaked secrets. Detects the manager from lockfiles; runs that ecosystem's native audit. For every CVE it picks the correct remediation (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning. Report-only by default; auto-applies only the three bounded remediations that pass the §3 gate. Gated by audits.supplyChain in supera.json. Run on demand.
-tools: Read, Glob, Grep, Bash, Edit, Write
+tools: [Read, Glob, Grep, Bash, Edit, Write]
+model: opus
 ---
 
 # supera-supply-chain-auditor
