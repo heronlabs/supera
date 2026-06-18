@@ -1,0 +1,33 @@
+{
+  "author": "Heron Labs",
+  "description": "Repo-agnostic ticket-shipping superagent — Claude Code plugin (skills + agents).",
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "@vitest/coverage-v8": "^4.1.6",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-jsonc": "^3.1.2",
+    "eslint-plugin-yml": "^3.3.2",
+    "gts": "^7.0.0",
+    "jiti": "^2.7.0",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.60.0",
+    "vitest": "^4.1.6"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "name": "@heronlabs/supera",
+  "packageManager": "pnpm@10.33.2",
+  "prettier": "gts/.prettierrc.json",
+  "private": true,
+  "scripts": {
+    "lint:check": "gts lint && eslint \"**/*.json\" \"**/*.yml\" \"**/*.yaml\" --no-error-on-unmatched-pattern",
+    "lint:fix": "gts fix && eslint \"**/*.json\" \"**/*.yml\" \"**/*.yaml\" --fix --no-error-on-unmatched-pattern",
+    "test:unit": "vitest run",
+    "version": "node tools/sync-plugin-version.mjs && git add .claude-plugin/plugin.json .claude-plugin/marketplace.json"
+  },
+  "version": "0.25.0"
+}
