@@ -1,6 +1,10 @@
 {
-  "stack": "mixed",
-  "verify": {},
+  "stack": "pnpm",
+  "verify": {
+    "install": "pnpm install --frozen-lockfile",
+    "test": "pnpm test:unit",
+    "lint": "pnpm lint:check"
+  },
   "worktree": { "dir": ".worktrees", "base": "main" },
   "tracker": {
     "provider": "clickup",

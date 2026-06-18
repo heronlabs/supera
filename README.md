@@ -72,3 +72,15 @@ Set `tracker` to `null` to run **ticket-less** — `/ship` and `/pr-watch` skip 
 - A **tracker MCP** configured with your provider's tools — ClickUp, Jira, Linear, or any MCP server (only needed in ticket mode; map each op in `tracker.tools`).
 - **`gh` CLI** installed + authenticated (`gh auth login`) — all GitHub work goes through the CLI.
 - **superpowers** plugin (optional) — when present, the engineer uses its TDD / debugging / verification skills; without it, the engineer applies the same discipline inline.
+
+## Development
+
+supera is a data/docs repo (JSON schemas + markdown skills), tooled with pnpm:
+
+```bash
+pnpm install        # restore dev tooling (Node >=22, pnpm 10.33.2)
+pnpm test:unit      # vitest: schemas compile, fixtures validate, versions stay in lockstep
+pnpm lint:check     # gts (TS tests) + jsonc/yml validity
+```
+
+`package.json` is the **version source of truth**. `npm version <major|minor|patch>` bumps it and fires the `version` hook (`tools/sync-plugin-version.mjs`), which mirrors the new version into `.claude-plugin/plugin.json` and the `supera` entry of `.claude-plugin/marketplace.json`. The `.github/workflows/cd-tags.yml` release workflow runs the same bump in CI, tags `v<x.y.z>` (plus floating `vX` / `vX.Y`), and creates the GitHub release.

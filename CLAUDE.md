@@ -6,8 +6,12 @@ This repo **is** a Claude Code plugin. It ships skills + agents that run in *oth
 
 | Path | Contents |
 |---|---|
-| `.claude-plugin/plugin.json` | Plugin manifest (name, version). Bump `version` on every behavioural change. |
-| `.claude-plugin/marketplace.json` | Marketplace entry so the plugin is installable via `/plugin`. Keep `version` in sync with `plugin.json`. |
+| `package.json` | pnpm tooling harness (`private`, devDependencies only — no publish). The **version source of truth**; `plugin.json` + `marketplace.json` mirror it. Holds the `test:unit` / `lint:check` / `lint:fix` scripts and the npm `version` lifecycle hook. |
+| `.claude-plugin/plugin.json` | Plugin manifest (name, version). `version` mirrors `package.json` — synced by the `version` hook, never hand-bumped. |
+| `.claude-plugin/marketplace.json` | Marketplace entry so the plugin is installable via `/plugin`. The `supera` entry's `version` mirrors `package.json` — synced by the `version` hook. |
+| `tools/` | `sync-plugin-version.mjs` — fired by the `version` hook to surgically mirror `package.json`'s version into both manifests. |
+| `tests/` | vitest + ajv schema tests: each schema compiles, `.claude/supera.json` and fixtures validate, the three manifests stay version-locked. |
+| `.github/workflows/` | `ci.yml` (lint + test merge gate) and `cd-tags.yml` (release: bump, sync manifests, tag `v<x.y.z>` + floating tags, GitHub release). |
 | `skills/` | `supera-init`, `ship`, `pr-watch`, `refine-ticket`, `audit` — each a `SKILL.md`. `ship` owns the full phase ladder (`fresh→scaffolded→building→built→pr-open→merged`), detected from git + tracker with no state file: re-run `/ship` to resume interrupted work or close out a merged PR, and `/ship pause` to checkpoint mid-flight. `audit` is the standalone auditor orchestrator — it runs the enabled auditors against a branch via its own worktree/PR, decoupled from `/ship`; ticket-less, and runs interactive or `--non-interactive`. |
 | `agents/` | `supera-engineer` (the implementer), `supera-supply-chain-auditor`, `supera-freshness-auditor`. |
 | `schema/` | `supera.schema.json` — the per-repo `.claude/supera.json` contract (**source of truth**, update before changing what skills read). `receipt.schema.json` — the `supera-engineer`→`ship`/`pr-watch` JSON receipt. `audit-receipt.schema.json` — the auditor receipt. |
@@ -25,14 +29,14 @@ This repo **is** a Claude Code plugin. It ships skills + agents that run in *oth
 ## Conventions
 
 - Skills are config-driven and self-contained — templates are inlined, not cross-referenced via fragile paths.
-- Keep `version` in `plugin.json` and `marketplace.json` identical.
+- Keep `version` in lockstep across `package.json`, `plugin.json`, and `marketplace.json` (`package.json` is the source of truth; the `version` hook syncs the rest). The version-lockstep test guards this.
 - Prefer adding a generalized agent here over copying a workloads-specific one — generalize across ecosystems (detect the manager, then act).
 
 ## Releasing a change
 
 1. Edit the skill/agent/schema.
-2. Bump `version` in both `plugin.json` and `marketplace.json`.
-3. Commit. Consumers pick it up on next `/plugin update`.
+2. `npm version <major|minor|patch>` — bumps `package.json` and fires the `version` hook (`tools/sync-plugin-version.mjs`), which syncs + stages `plugin.json` and `marketplace.json`. Never hand-bump the manifests.
+3. Commit (or let the `cd-tags.yml` workflow do the bump + tag + release in CI). Consumers pick it up on next `/plugin update`.
 
 <!-- supera:guardrails -->
 ## Working with this repo (managed by /supera-init — edits between these markers are overwritten on re-init)
