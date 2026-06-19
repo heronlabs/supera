@@ -1,6 +1,8 @@
 {
   "name": "supera-marketplace",
-  "owner": { "name": "Lucas Lacerda" },
+  "owner": {
+    "name": "Lucas Lacerda"
+  },
   "metadata": {
     "description": "Heron Labs superagent for shipping changes across any repository with one consistent pattern"
   },
@@ -8,11 +10,20 @@
     {
       "name": "supera",
       "description": "Repo-agnostic change-shipping superagent: init, start (full lifecycle), pr-watch, refactor, and audit (security + freshness auditors), driven by a per-repo .claude/supera.json config.",
-      "version": "0.28.0",
-      "author": { "name": "Lucas Lacerda" },
+      "version": "0.28.1",
+      "author": {
+        "name": "Lucas Lacerda"
+      },
       "source": "./",
       "license": "MIT",
-      "keywords": ["workflow", "agents", "shipping", "ci", "refactor", "heronlabs"],
+      "keywords": [
+        "workflow",
+        "agents",
+        "shipping",
+        "ci",
+        "refactor",
+        "heronlabs"
+      ],
       "category": "workflow"
     }
   ]
