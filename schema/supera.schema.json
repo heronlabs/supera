@@ -10,17 +10,38 @@
     "stack": {
       "type": "string",
       "description": "Primary toolchain, used to pick audit/verify behaviour.",
-      "examples": ["pnpm", "npm", "yarn", "cargo", "strapi", "go", "python", "mixed"]
+      "examples": [
+        "pnpm",
+        "npm",
+        "yarn",
+        "cargo",
+        "strapi",
+        "go",
+        "python",
+        "mixed"
+      ]
     },
     "verify": {
       "type": "object",
       "description": "Commands the engineer runs to self-verify before returning, and pr-watch uses to reproduce CI failures. Any field may be omitted if the stack has no such step.",
       "additionalProperties": false,
       "properties": {
-        "install": { "type": "string", "description": "Dependency install, e.g. 'pnpm install --frozen-lockfile'." },
-        "build": { "type": "string", "description": "Build / typecheck, e.g. 'pnpm turbo run build'." },
-        "test": { "type": "string", "description": "Unit tests, e.g. 'pnpm turbo run test:unit'." },
-        "lint": { "type": "string", "description": "Lint, e.g. 'pnpm lint:check'." }
+        "install": {
+          "type": "string",
+          "description": "Dependency install, e.g. 'pnpm install --frozen-lockfile'."
+        },
+        "build": {
+          "type": "string",
+          "description": "Build / typecheck, e.g. 'pnpm turbo run build'."
+        },
+        "test": {
+          "type": "string",
+          "description": "Unit tests, e.g. 'pnpm turbo run test:unit'."
+        },
+        "lint": {
+          "type": "string",
+          "description": "Lint, e.g. 'pnpm lint:check'."
+        }
       }
     },
     "worktree": {
@@ -28,9 +49,20 @@
       "description": "How start creates its isolated workspace.",
       "additionalProperties": false,
       "properties": {
-        "dir": { "type": "string", "default": ".worktrees", "description": "Directory (relative to repo root) holding feature worktrees." },
-        "base": { "type": "string", "default": "main", "description": "Branch new work is cut from." },
-        "postCreate": { "type": "string", "description": "Command run inside a fresh worktree, usually the install step. Defaults to verify.install if omitted." }
+        "dir": {
+          "type": "string",
+          "default": ".worktrees",
+          "description": "Directory (relative to repo root) holding feature worktrees."
+        },
+        "base": {
+          "type": "string",
+          "default": "main",
+          "description": "Branch new work is cut from."
+        },
+        "postCreate": {
+          "type": "string",
+          "description": "Command run inside a fresh worktree, usually the install step. Defaults to verify.install if omitted."
+        }
       }
     },
     "pr": {
@@ -38,8 +70,16 @@
       "description": "Pull-request defaults.",
       "additionalProperties": false,
       "properties": {
-        "base": { "type": "string", "default": "main", "description": "PR target branch." },
-        "remote": { "type": "string", "default": "origin", "description": "Git remote to push to." }
+        "base": {
+          "type": "string",
+          "default": "main",
+          "description": "PR target branch."
+        },
+        "remote": {
+          "type": "string",
+          "default": "origin",
+          "description": "Git remote to push to."
+        }
       }
     },
     "audits": {
@@ -47,7 +87,11 @@
       "description": "Optional audit agents /audit, /start, and /pr-watch can run locally.",
       "additionalProperties": false,
       "properties": {
-        "security": { "type": "boolean", "default": false, "description": "Enable supera-security-auditor (works on npm/pnpm/yarn/cargo)." },
+        "security": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable supera-security-auditor (works on npm/pnpm/yarn/cargo)."
+        },
         "freshness": {
           "type": "object",
           "description": "Enable supera-freshness-auditor (dependency CURRENCY, not security). Disjoint from audits.security: no CVE/secret/override logic.",
@@ -79,8 +123,18 @@
           "description": "Merge-readiness vote run once per /pr-watch cycle, after code-review / test-hygiene / audit fixes are addressed. N independent reviewer agents each adversarially hunt for ONE blocking defect; the PR is declared ready only when at least `quorum` of them clear it. Reviewers judge only — any blocking finding is delegated to supera-engineer, never edited by the reviewer.",
           "additionalProperties": false,
           "properties": {
-            "voters": { "type": "integer", "default": 1, "minimum": 1, "maximum": 5, "description": "Independent reviewer agents that vote on merge-readiness. 1 (default) disables the gate — single review pass, the original behaviour." },
-            "quorum": { "type": "integer", "minimum": 1, "description": "APPROVE votes required to declare the PR ready. Defaults to a majority of `voters` (floor(voters/2)+1) when omitted." }
+            "voters": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 5,
+              "description": "Independent reviewer agents that vote on merge-readiness. 1 (default) disables the gate — single review pass, the original behaviour."
+            },
+            "quorum": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "APPROVE votes required to declare the PR ready. Defaults to a majority of `voters` (floor(voters/2)+1) when omitted."
+            }
           }
         },
         "lenses": {
@@ -88,11 +142,7 @@
           "description": "Extra specialist review lenses fanned out in parallel (via the Workflow primitive) during /pr-watch step 6a, on top of the base code-review pass — each posts findings as PR comments for more signal per cycle. Empty (default) keeps the single code-review pass. These run on the per-PR hot path, so the set is bounded to the listed specialists; keep the list short.",
           "items": {
             "type": "string",
-            "enum": [
-              "silent-failures",
-              "type-design",
-              "test-coverage"
-            ]
+            "enum": ["silent-failures", "type-design", "test-coverage"]
           },
           "uniqueItems": true,
           "default": []
@@ -106,8 +156,18 @@
       "properties": {
         "denyPaths": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"],
+          "items": {"type": "string"},
+          "default": [
+            "**/.env",
+            "**/.env.*",
+            "**/*.pem",
+            "**/*.key",
+            "**/*.p12",
+            "**/*.pfx",
+            "**/id_rsa",
+            "**/id_ed25519",
+            "**/*.keystore"
+          ],
           "description": "Globs the engineer must never create, modify, or stage, and that /pr-watch refuses to let into a PR (secrets, private keys). A changed file matching any glob is a hard merge blocker surfaced to the user. Set to [] to disable. Omit to use the secret/key defaults."
         }
       }

@@ -1,7 +1,7 @@
 ---
 name: audit
 description: "Standalone dependency-audit orchestrator: branches its own worktree off a target branch, runs the repo's enabled auditors (security CVE overrides, then freshness currency bumps), carries their safe auto-fixes into a PR, and hands off to /pr-watch. Decoupled from /start — runs standalone. Callable by a human or a headless CI cron via --non-interactive. Driven by .claude/supera.json so it works in any repo."
-allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI
+allowed-tools: Bash, Read, Glob, Grep, Agent # also requires gh CLI
 ---
 
 Run this repo's enabled dependency auditors against a target branch (default the base) **without** needing `/start` first. `/audit` cuts its own worktree off the target, lets the auditor **agents** apply their bounded safe auto-fixes (CVE overrides, in-range currency bumps), opens a PR carrying those fixes, and hands off to `/pr-watch` to drive it green. Audits are recurring hygiene, not backlog work, and `--non-interactive` makes it CI-cron-ready. It **never** commits to base: `/audit` always ships via PR on its own branch, and it never edits dependency manifests/lockfiles itself — the auditor agents are the implementers, exactly as `/pr-watch` step 6c dispatches them.
@@ -61,14 +61,16 @@ cd <WT_DIR>/<auditBranch> && <CONFIG.worktree.postCreate ?? CONFIG.verify.instal
 
 Run in **this order** so a CVE override isn't churned by a freshness bump and the freshness auditor sees the post-override lockfile. Each auditor runs **exactly once**.
 
-**a. Security** *(only if `AUDIT_SEC`)* — dispatch the `supera-security-auditor` agent on the worktree (one pass). It applies safe, gated CVE remediations (in-range upgrade, scoped override, remove-stale-override), **leaving the edits in the tree**, and reports the rest. On return, if the tree is dirty, `/audit` stages and commits them as **one** commit (only if something is staged):
+**a. Security** _(only if `AUDIT_SEC`)_ — dispatch the `supera-security-auditor` agent on the worktree (one pass). It applies safe, gated CVE remediations (in-range upgrade, scoped override, remove-stale-override), **leaving the edits in the tree**, and reports the rest. On return, if the tree is dirty, `/audit` stages and commits them as **one** commit (only if something is staged):
+
 ```bash
 git -C <WT_DIR>/<auditBranch> add -A
 git -C <WT_DIR>/<auditBranch> diff --cached --quiet || git -C <WT_DIR>/<auditBranch> commit -m "fix: apply safe CVE overrides"
 ```
+
 Parse its JSON receipt (`schema/audit-receipt.schema.json`): `applied[]` (each omits `commit` — the single commit above carries them), `findings[]`, `verification`, `degraded[]`, `status`.
 
-**b. Freshness** *(only if `AUDIT_FRESH`)* — dispatch the `supera-freshness-auditor` agent on the worktree (one pass). It auto-applies safe in-range bumps as its **own** atomic per-package commits (one `name@version` per commit) and reports recommend/hold/flag. `/audit` does not commit on its behalf — the per-package commits are already in the tree. Parse its JSON receipt (`schema/audit-receipt.schema.json`); its `applied[]` entries carry their own `commit` SHAs.
+**b. Freshness** _(only if `AUDIT_FRESH`)_ — dispatch the `supera-freshness-auditor` agent on the worktree (one pass). It auto-applies safe in-range bumps as its **own** atomic per-package commits (one `name@version` per commit) and reports recommend/hold/flag. `/audit` does not commit on its behalf — the per-package commits are already in the tree. Parse its JSON receipt (`schema/audit-receipt.schema.json`); its `applied[]` entries carry their own `commit` SHAs.
 
 Relay any degraded-probe gaps each auditor notes (missing `cargo-audit`, network failure, unverifiable publish date); **never fail the whole audit on a degraded probe** — a degraded probe blocks an auditor's auto-apply, not the run.
 
@@ -93,9 +95,11 @@ git -C <WT_DIR>/<auditBranch> log --oneline <REMOTE>/<TARGET>..<auditBranch>
 **No commits (pure report-only)** → open **no** PR. Render the combined report from both receipts' `findings[]` + `degraded[]` (`applied[]` is empty here). Tear down the worktree (remove the worktree, delete the branch) and exit.
 
 **Commits present** → push and open the PR:
+
 ```bash
 git -C <WT_DIR>/<auditBranch> push -u <REMOTE> <auditBranch>
 ```
+
 Label the PR `supera:audit`. Ensure that `supera:audit` label exists first — `gh pr create --label "supera:audit"` hard-fails the whole create with `could not add label: 'supera:audit' not found` when the label was never created in the repo, which on the first audit run leaves the auditor's commits stranded with no PR. Create it idempotently:
 
 ```bash
@@ -117,6 +121,7 @@ EOF
 ```
 
 Build the PR body **from both receipts** (no prose relay) — `applied[]` → first section, `findings[]` → second, `degraded[]` → Notes:
+
 ```
 ## Applied autonomously
 - <applied.verdict> <applied.target> <applied.from→applied.to> — <applied.commit, or "in the CVE-override commit" when omitted> — verified by <applied.verifiedBy>
@@ -128,7 +133,7 @@ Build the PR body **from both receipts** (no prose relay) — `applied[]` → fi
 - <degraded[] entry>               ← omit the whole section when both receipts' degraded[] are empty
 ```
 
-Then hand off: invoke `/pr-watch <N>` (append `--non-interactive` when set). Announce: *"Dependency audit PR #<N> opened (`<auditBranch>` → `<TARGET>`). Handing off to `/pr-watch <N>` to drive CI green."*
+Then hand off: invoke `/pr-watch <N>` (append `--non-interactive` when set). Announce: _"Dependency audit PR #<N> opened (`<auditBranch>` → `<TARGET>`). Handing off to `/pr-watch <N>` to drive CI green."_
 
 ## Non-interactive mode (`--non-interactive`)
 

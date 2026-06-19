@@ -19,8 +19,14 @@
         "required": ["path", "note"],
         "additionalProperties": false,
         "properties": {
-          "path": { "type": "string", "description": "Repo-relative path of the changed file." },
-          "note": { "type": "string", "description": "What changed and why, or the coverage added." }
+          "path": {
+            "type": "string",
+            "description": "Repo-relative path of the changed file."
+          },
+          "note": {
+            "type": "string",
+            "description": "What changed and why, or the coverage added."
+          }
         }
       }
     },
@@ -29,20 +35,20 @@
       "description": "Result of each self-verify check run from CONFIG.verify. Omit a check that has no command in config.",
       "additionalProperties": false,
       "properties": {
-        "build": { "$ref": "#/$defs/check" },
-        "test":  { "$ref": "#/$defs/check" },
-        "lint":  { "$ref": "#/$defs/check" }
+        "build": {"$ref": "#/$defs/check"},
+        "test": {"$ref": "#/$defs/check"},
+        "lint": {"$ref": "#/$defs/check"}
       }
     },
     "decisions": {
       "type": "array",
       "description": "Non-obvious choices or assumptions a reviewer should know.",
-      "items": { "type": "string" }
+      "items": {"type": "string"}
     },
     "outOfScope": {
       "type": "array",
       "description": "Flagged pre-existing failures, deferred work, or follow-ups. Empty when none.",
-      "items": { "type": "string" }
+      "items": {"type": "string"}
     },
     "status": {
       "type": "string",
@@ -56,9 +62,16 @@
       "required": ["command", "result"],
       "additionalProperties": false,
       "properties": {
-        "command": { "type": "string", "description": "The exact command run." },
-        "result": { "type": "string", "enum": ["PASS", "FAIL"], "description": "Outcome of the check." },
-        "output": { "type": "string", "description": "Key tail of the command output (e.g. 'N passed')." }
+        "command": {"type": "string", "description": "The exact command run."},
+        "result": {
+          "type": "string",
+          "enum": ["PASS", "FAIL"],
+          "description": "Outcome of the check."
+        },
+        "output": {
+          "type": "string",
+          "description": "Key tail of the command output (e.g. 'N passed')."
+        }
       }
     }
   }
