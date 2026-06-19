@@ -1,18 +1,18 @@
 ---
 name: pr-watch
-description: "Repo-agnostic PR babysitter: monitors CI, fixes failures via supera-engineer, addresses review comments, runs one code-review cycle (plus a supply-chain audit when audits.supplyChain is enabled), and exits when the branch is green, synced with the base, and all threads resolved."
+description: "Repo-agnostic PR babysitter: monitors CI, fixes failures via supera-engineer, addresses review comments, runs one code-review cycle (plus a security audit when audits.security is enabled), and exits when the branch is green, synced with the base, and all threads resolved."
 allowed-tools: Bash, Read, Glob, Grep, Agent, Workflow  # also requires the gh CLI
 ---
 
 Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failures, address review comments, run one code review — exit when everything is green and resolved. Reads `.claude/supera.json` for the install/build/test/lint commands used to reproduce failures.
 
-`/pr-watch` **monitors without blocking**: at every wait (CI running, a re-run after a fix) it reschedules via `ScheduleWakeup` and exits the turn, then resumes on the next wake — it never spins inline. It is one half of an intentional round-trip — `/ship` opens the PR and hands here; `/pr-watch` drives it green and hands the merged PR back to `/ship` to close out.
+`/pr-watch` **monitors without blocking**: at every wait (CI running, a re-run after a fix) it reschedules via `ScheduleWakeup` and exits the turn, then resumes on the next wake — it never spins inline. It is one half of an intentional round-trip — `/start` opens the PR and hands here; `/pr-watch` drives it green and hands the merged PR back to `/start` to close out.
 
 ## 0 — Load config
 
 Read `.claude/supera.json` into `CONFIG` (for `verify.*` commands and `pr.base`/`pr.remote`). If absent, proceed with sensible git/gh defaults and skip any config-derived command (tell the user once that supera isn't initialised here).
 
-Set `AUDIT = CONFIG.audits?.supplyChain === true` — gates the supply-chain audit in step 6. Default `false` when config is absent.
+Set `AUDIT = CONFIG.audits?.security === true` — gates the security audit in step 6. Default `false` when config is absent.
 
 Resolve the deny-list and consensus gate:
 - `DENY = CONFIG.security?.denyPaths ?? ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"]` — secret/key globs that must never enter the PR (step 6d). `[]` disables.
@@ -72,7 +72,7 @@ BASE=${CONFIG.pr.base:-$(gh pr view $PR --json baseRefName -q .baseRefName)}
 gh pr view $PR --json number,title,state,mergeable,reviewThreads,statusCheckRollup,headRefName,baseRefName
 ```
 Parse `state`:
-- `MERGED` → **do not close here** — the originating skill owns the close, teardown, and summary. For a normal ship PR that's `/ship`; for a `supera:audit`-labelled PR it's a `/audit` re-run, which reclaims the audit worktree. Announce: *"PR #<N> is merged — run `/ship <branch>` to close out and clean up the worktree (or re-run `/audit` if this is a `supera:audit` PR)."* Exit.
+- `MERGED` → **do not close here** — the originating skill owns the close, teardown, and summary. For a normal ship PR that's `/start`; for a `supera:audit`-labelled PR it's a `/audit` re-run, which reclaims the audit worktree. Announce: *"PR #<N> is merged — run `/start <branch>` to close out and clean up the worktree (or re-run `/audit` if this is a `supera:audit` PR)."* Exit.
 - `CLOSED` (not merged) → surface that the PR was closed without merging; announce; exit. (Tearing down an abandoned branch is a manual `git worktree remove`.)
 - Otherwise continue with `statusCheckRollup` (step 3) and `reviewThreads` (step 4).
 
@@ -152,7 +152,7 @@ git rebase <remote>/$BASE
 ```
 Delegate conflict resolution to `supera-engineer` with the conflicting file list. Push `--force-with-lease`. Reschedule (preserve flags) and exit.
 
-## 6 — Code review + supply-chain audit
+## 6 — Code review + security audit
 
 All checks below run exactly once per cycle and are suppressed by `--reviewed` (step 5 exits before reaching here when `REVIEWED=true`).
 
@@ -211,10 +211,10 @@ gh pr diff $PR --name-only | grep -iE '\.(spec|test)\.|_test\.|(^|/)test_' || tr
 ```
 For any test case carrying **more than one assertion** → delegate to `supera-engineer` to bring it to its **one-assertion-per-test standard** (split into one-behaviour-per-case, or trim to the assert that proves the behaviour). Don't add assertions — only split or trim.
 
-### 6c — Supply-chain audit
+### 6c — Security audit
 
-Skip this entire subsection when `AUDIT` is false. When true, dispatch the `supera-supply-chain-auditor` agent on the worktree (one pass). It detects the manager, runs the native audit, and is report-only **except** safe, mechanical CVE overrides it applies autonomously. On return:
-- **Safe CVE overrides applied** (lockfile / `package.json` / `Cargo.toml` changed) → these ride out with the push below; reply on the PR referencing the commit: `gh pr review $PR --comment --body "Supply-chain: applied safe CVE overrides in <commit-sha>: <one-line summary>"`.
+Skip this entire subsection when `AUDIT` is false. When true, dispatch the `supera-security-auditor` agent on the worktree (one pass). It detects the manager, runs the native audit, and is report-only **except** safe, mechanical CVE overrides it applies autonomously. On return:
+- **Safe CVE overrides applied** (lockfile / `package.json` / `Cargo.toml` changed) → these ride out with the push below; reply on the PR referencing the commit: `gh pr review $PR --comment --body "Security: applied safe CVE overrides in <commit-sha>: <one-line summary>"`.
 - **Report-only findings** (unfixable CVEs, leaked secrets, drift, freshness, typo-squat/provenance) → do **not** auto-fix. Surface the prioritized report to the user. A leaked-secret or critical-CVE finding is a **merge blocker** — flag it loudly and do not present the PR as ready until the user clears it (in `NONINTERACTIVE` mode, a merge-blocker finding **blocks** — see **Non-interactive mode**).
 - Never block on a degraded probe (missing `cargo-audit`, network failure) — the auditor notes the gap and continues; relay it.
 
@@ -266,7 +266,7 @@ gh pr comment $PR --body "🚫 supera /pr-watch blocked (non-interactive): <what
 
 - Read `.claude/supera.json` for the commands used to reproduce failures — don't assume pnpm/npm.
 - **Don't spin-poll** — at every wait, `ScheduleWakeup` and exit the turn; preserve `--reviewed` and `--non-interactive` on every reschedule.
-- On `MERGED`, defer close-out to `/ship` — never close out or remove the worktree here; `/ship` owns the terminal step.
+- On `MERGED`, defer close-out to `/start` — never close out or remove the worktree here; `/start` owns the terminal step.
 - Exit and announce when the PR is green, synced, and all threads resolved — merging is the user's decision.
 - Never push `--force` — only `--force-with-lease` after a rebase.
 - A **terminal block** posts the `<!-- supera:blocked -->` PR comment and stops (§0a) — that comment is the escalation signal; supera has no tracker.

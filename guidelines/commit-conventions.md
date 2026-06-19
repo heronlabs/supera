@@ -20,7 +20,7 @@ The rules above hold for all committers; these are the only per-actor specifics:
 | Committer | Commits |
 |---|---|
 | `supera-engineer` | the application change on the feature branch (code **and** tests). |
-| `/ship` | only its `wip:` pause checkpoint. |
+| `/start` | only its `wip:` pause checkpoint. |
 | `supera-freshness-auditor` | one atomic `chore:` commit **per package** bumped — never a mixed lockfile diff. |
-| `supera-supply-chain-auditor` | **nothing** — leaves its edits uncommitted; `/audit` makes the single commit. |
-| `/audit` | the single commit folding the supply-chain auditor's applied edits. |
+| `supera-security-auditor` | **nothing** — leaves its edits uncommitted; `/audit` makes the single commit. |
+| `/audit` | the single commit folding the security auditor's applied edits. |

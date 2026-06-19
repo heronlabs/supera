@@ -1,16 +1,16 @@
 ---
-name: ship
-description: "Repo-agnostic full-lifecycle orchestrator: task → worktree → plan → delegate to supera-engineer (code + tests) → self-verified → PR → /pr-watch, and on a merged PR tears down. Idempotent: re-run to resume interrupted work or close out; `/ship pause` checkpoints mid-flight. Driven by .claude/supera.json so it works in any repo."
+name: start
+description: "Repo-agnostic full-lifecycle orchestrator: task → worktree → plan → delegate to supera-engineer (code + tests) → self-verified → PR → /pr-watch, and on a merged PR tears down. Idempotent: re-run to resume interrupted work or close out; `/start pause` checkpoints mid-flight. Driven by .claude/supera.json so it works in any repo."
 allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires the gh CLI
 ---
 
-Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands and worktree base. Delegate the code + tests to the `supera-engineer` agent. `/ship` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/ship pause` checkpoints mid-flight. After the PR is open it hands off to `/pr-watch`. The PR is the unit of work — there is no separate ticket.
+Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands and worktree base. Delegate the code + tests to the `supera-engineer` agent. `/start` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/start pause` checkpoints mid-flight. After the PR is open it hands off to `/pr-watch`. The PR is the unit of work — there is no separate ticket.
 
 ## 0 — Load config
 
 Read `.claude/supera.json` at the repo root into `CONFIG`.
 
-- **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /supera-init first."` Offer to run `/supera-init` now. Do not proceed without config.
+- **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /init first."` Offer to run `/init` now. Do not proceed without config.
 - `BASE = CONFIG.worktree?.base ?? CONFIG.pr?.base ?? <detected default branch>`.
 - `WT_DIR = CONFIG.worktree?.dir ?? ".worktrees"`. `REMOTE = CONFIG.pr?.remote ?? "origin"`.
 
@@ -22,7 +22,7 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 
 Otherwise `$ARGUMENTS` may be:
 - A free-text task description — e.g. `"add payment retry on timeout"`
-- A branch name (resume / close-out an existing ship) — e.g. `"feat-add-payment-retry-on-timeout"`
+- A branch name (resume / close-out an existing run) — e.g. `"feat-add-payment-retry-on-timeout"`
 
 If empty, ask for a task description (in `NONINTERACTIVE` mode there's nothing to ship and no PR to comment on — exit `blocked`, see **Non-interactive mode**).
 
@@ -30,7 +30,7 @@ Derive a branch slug: lowercase, kebab-case, ≤50 chars, special chars stripped
 
 ## 1.5 — Phase routing (idempotency + lifecycle)
 
-Before creating anything, detect whether work for this task already exists — `/ship` must **never** double-create a worktree or duplicate work, and a re-run drives the next phase. Detect the branch (the derived slug, or a branch name passed directly) and its state. The PR probe runs from the repo root (no worktree needed); the two `git -C <WT_DIR>/<slug>` probes run **only when the worktree is present**:
+Before creating anything, detect whether work for this task already exists — `/start` must **never** double-create a worktree or duplicate work, and a re-run drives the next phase. Detect the branch (the derived slug, or a branch name passed directly) and its state. The PR probe runs from the repo root (no worktree needed); the two `git -C <WT_DIR>/<slug>` probes run **only when the worktree is present**:
 ```bash
 gh pr list --head <slug> --state all --json number,state     # PR? merged? (repo-root, always safe)
 git worktree list | grep <slug>                              # worktree present? gates the next two:
@@ -62,9 +62,9 @@ Confirm the worktree exists and the install succeeded before continuing. If the 
 
 ## 3 — Plan and delegate
 
-Form an internal implementation plan. It stays internal — proceed immediately unless the user explicitly said "show me the plan first" or invoked `/plan` before `/ship`.
+Form an internal implementation plan. It stays internal — proceed immediately unless the user explicitly said "show me the plan first" or invoked `/plan` before `/start`.
 
-The executor is always `supera-engineer` (one strong agent does code + tests, self-verifies) — the sole implementer; `/ship` orchestrates, it never edits application code itself.
+The executor is always `supera-engineer` (one strong agent does code + tests, self-verifies) — the sole implementer; `/start` orchestrates, it never edits application code itself.
 
 Announce: *"Plan ready. Delegating to `supera-engineer` in worktree `<WT_DIR>/<slug>`."* If the task hinges on a term with two plausible readings — a literal name vs. a mapping, an unfamiliar proper noun, a config key that could mean two things — add one line stating the reading you're shipping (e.g. *"reading `environment pulumi` as the literal GitHub environment named `pulumi`, not a per-stack map"*). This is a visible-by-default check, not a gate: proceed unless the fork is genuinely expensive to undo — that case is the engineer's `superpowers:brainstorming` step, not a blocking question here.
 
@@ -94,7 +94,7 @@ Save the PR number.
 
 Invoke `/pr-watch <PR-number>` — append `--non-interactive` when `NONINTERACTIVE` is set (so the headless run stays prompt-free through the PR cycle).
 
-Announce: *"PR #<N> is open. Handing off to `/pr-watch <PR-number>`. Once it reports the PR merged, re-run `/ship <slug>` to close out and clean up."*
+Announce: *"PR #<N> is open. Handing off to `/pr-watch <PR-number>`. Once it reports the PR merged, re-run `/start <slug>` to close out and clean up."*
 
 ---
 
@@ -104,7 +104,7 @@ For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) w
 
 - **Never prompt.** Skip every step that would ask the user a question or wait for a decision (the points flagged "see **Non-interactive mode**" above). Do not call `AskUserQuestion`.
 - **An ambiguous decision blocks.** When the interactive flow would stop to ask, instead surface the block as a comment and exit `blocked` — don't guess past a genuine fork:
-   - If a PR already exists for this work (phase `pr-open`/`built`-then-pushed), post the block as a PR comment: `gh pr comment <N> --body "🚫 supera /ship blocked (non-interactive): <what's ambiguous + the receipt/verification detail>"`.
+   - If a PR already exists for this work (phase `pr-open`/`built`-then-pushed), post the block as a PR comment: `gh pr comment <N> --body "🚫 supera /start blocked (non-interactive): <what's ambiguous + the receipt/verification detail>"`.
    - Before any PR exists, print the block detail to the run output (there's nothing to comment on yet).
 - **Stay git/GitHub-native.** A blocked decision surfaces as a PR/issue comment, never a tracker prompt — supera has no tracker. `--non-interactive` changes only the prompt points, never the pipeline.
 - The non-prompt steps (phase routing, worktree, delegate, push, PR, hand-off) are unchanged — a clean run still opens the PR and hands off to `/pr-watch --non-interactive`.
@@ -113,7 +113,7 @@ For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) w
 
 ## Resuming interrupted work (phases `scaffolded` / `building`)
 
-Reached from step 1.5 when a worktree/branch exists but no PR. `/ship` continues the build, then falls through to step 4 to open the PR — it never restarts from scratch.
+Reached from step 1.5 when a worktree/branch exists but no PR. `/start` continues the build, then falls through to step 4 to open the PR — it never restarts from scratch.
 
 If the worktree is missing but the branch exists on the remote (paused on another machine), recreate it first:
 ```bash
@@ -134,9 +134,9 @@ Then fall through to **step 4** to open the PR. If a soft-reset rewrote an alrea
 
 ---
 
-## Pause checkpoint (`/ship pause`)
+## Pause checkpoint (`/start pause`)
 
-Reached from step 1 when `$ARGUMENTS` begins with `pause`. Stop work cleanly so a later `/ship <slug>` resumes without guessing. No state file — git carries the work.
+Reached from step 1 when `$ARGUMENTS` begins with `pause`. Stop work cleanly so a later `/start <slug>` resumes without guessing. No state file — git carries the work.
 
 1. **Resolve the WIP.** Parse the rest of `$ARGUMENTS` (a branch, or empty). Empty → the current branch or the single worktree under `WT_DIR` (ambiguous → list and ask; in `NONINTERACTIVE` mode there's no PR for a checkpoint to comment on — print the candidate worktrees and exit `blocked`, see **Non-interactive mode**). Resolve `WT_PATH` and `BRANCH`.
 2. **Capture `nextUp`.** In one or two concrete lines, what is done and what remains — name the next file/step, not "continue work". This becomes the `wip:` commit subject + body and the payload a resume reads back.
@@ -149,7 +149,7 @@ git -C <WT_PATH> status --porcelain      # anything staged?
    - Tree already clean → skip the commit; the branch state itself is the checkpoint.
    The `wip:` prefix is load-bearing: the resume path keys off it to soft-reset before continuing. Never name a real commit `wip:`. Commit per `guidelines/commit-conventions.md`; the body carries the remaining steps.
 4. **Push so the work survives:** `git -C <WT_PATH> push -u <REMOTE> <BRANCH>` (`--force-with-lease` only if it rewrote history).
-5. **Report:** *"Paused `<BRANCH>`. WIP committed + pushed, worktree kept. Resume with `/ship <BRANCH>`."* List `wip-commit` (sha or "tree clean") and `pushed`. Stop.
+5. **Report:** *"Paused `<BRANCH>`. WIP committed + pushed, worktree kept. Resume with `/start <BRANCH>`."* List `wip-commit` (sha or "tree clean") and `pushed`. Stop.
 
 ---
 
@@ -187,14 +187,14 @@ gh pr view <N> --json mergedAt -q .mergedAt                   # merge time
 
 ## Lifecycle controls
 
-`/ship` owns the whole ladder. Only `/pr-watch` lives outside it — `/ship` routes to it, never duplicates it. `/ship pause` is a sub-command, not a separate skill.
+`/start` owns the whole ladder. Only `/pr-watch` lives outside it — `/start` routes to it, never duplicates it. `/start pause` is a sub-command, not a separate skill.
 
 | Control | When | Owns |
 |---|---|---|
-| `/ship pause <branch>` | Need to stop mid-build | Commits + pushes a `wip:` checkpoint, **keeps** the worktree. |
-| `/ship <branch>` (re-run, `building`/`scaffolded`) | A ship didn't finish | Detects the phase, undoes a `wip:` checkpoint, re-delegates the remainder to `supera-engineer`, opens the PR. |
-| `/pr-watch <N>` | PR is open | Drives CI green + review threads to resolution. Hands merged PRs back to `/ship`. |
-| `/ship <branch>` (re-run, `merged`) | PR is merged | Posts the summary (goal · time · files), removes the worktree + local branch. The terminal step. |
+| `/start pause <branch>` | Need to stop mid-build | Commits + pushes a `wip:` checkpoint, **keeps** the worktree. |
+| `/start <branch>` (re-run, `building`/`scaffolded`) | A run didn't finish | Detects the phase, undoes a `wip:` checkpoint, re-delegates the remainder to `supera-engineer`, opens the PR. |
+| `/pr-watch <N>` | PR is open | Drives CI green + review threads to resolution. Hands merged PRs back to `/start`. |
+| `/start <branch>` (re-run, `merged`) | PR is merged | Posts the summary (goal · time · files), removes the worktree + local branch. The terminal step. |
 
 The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → building → built → pr-open → merged`. Every skill detects it the same way (git + GitHub, no state file).
 
@@ -224,4 +224,4 @@ The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → b
 - Read `.claude/supera.json` first — never hardcode commands, branches, or remotes.
 - Never remove `BASE` or its worktree.
 - **Idempotent:** run the step 1.5 phase routing before creating anything — never double-create a worktree or duplicate work.
-- Commit hygiene follows `guidelines/commit-conventions.md`; `/ship`'s only self-commit is the `wip:` pause checkpoint.
+- Commit hygiene follows `guidelines/commit-conventions.md`; `/start`'s only self-commit is the `wip:` pause checkpoint.

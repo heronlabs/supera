@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/heronlabs/supera/schema/audit-receipt.schema.json",
   "title": "supera auditor receipt",
-  "description": "The structured verdict an auditor agent (supera-supply-chain-auditor / supera-freshness-auditor) emits as its final message. Consumed by /audit, which renders the PR body and the headless signal deterministically instead of scraping the prose two-list report. One receipt per auditor; /audit merges the two.",
+  "description": "The structured verdict an auditor agent (supera-security-auditor / supera-freshness-auditor) emits as its final message. Consumed by /audit, which renders the PR body and the headless signal deterministically instead of scraping the prose two-list report. One receipt per auditor; /audit merges the two.",
   "type": "object",
   "required": ["auditor", "status"],
   "additionalProperties": false,
   "properties": {
     "auditor": {
       "type": "string",
-      "enum": ["supply-chain", "freshness"],
+      "enum": ["security", "freshness"],
       "description": "Which auditor produced this receipt."
     },
     "status": {
@@ -19,7 +19,7 @@
     },
     "applied": {
       "type": "array",
-      "description": "Safe fixes auto-applied this run. Empty when none. supply-chain leaves its edits uncommitted (so omits `commit` — /audit makes the single commit); freshness commits each as its own atomic per-package commit and fills `commit`.",
+      "description": "Safe fixes auto-applied this run. Empty when none. security leaves its edits uncommitted (so omits `commit` — /audit makes the single commit); freshness commits each as its own atomic per-package commit and fills `commit`.",
       "items": {
         "type": "object",
         "required": ["verdict", "target"],
@@ -28,12 +28,12 @@
           "verdict": {
             "type": "string",
             "enum": ["upgrade", "pin", "remove-pin"],
-            "description": "The applied remediation. supply-chain: upgrade (in-range) / pin (scoped override) / remove-pin (stale override). freshness: upgrade only."
+            "description": "The applied remediation. security: upgrade (in-range) / pin (scoped override) / remove-pin (stale override). freshness: upgrade only."
           },
           "target": { "type": "string", "description": "The dependency acted on, e.g. 'lodash' or 'serde@1.0.197'." },
           "from": { "type": "string", "description": "Version or range before the change." },
           "to": { "type": "string", "description": "Version or range after the change." },
-          "commit": { "type": "string", "description": "The atomic commit SHA carrying this single change. Filled by freshness; omitted by supply-chain (its edits ride /audit's single CVE-override commit)." },
+          "commit": { "type": "string", "description": "The atomic commit SHA carrying this single change. Filled by freshness; omitted by security (its edits ride /audit's single CVE-override commit)." },
           "verifiedBy": { "type": "string", "description": "Which verification check confirmed the change green, e.g. 'test' or 'build'." }
         }
       }

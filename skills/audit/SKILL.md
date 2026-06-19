@@ -1,17 +1,17 @@
 ---
 name: audit
-description: "Standalone dependency-audit orchestrator: branches its own worktree off a target branch, runs the repo's enabled auditors (supply-chain CVE overrides, then freshness currency bumps), carries their safe auto-fixes into a PR, and hands off to /pr-watch. Decoupled from /ship — runs standalone. Callable by a human or a headless CI cron via --non-interactive. Driven by .claude/supera.json so it works in any repo."
+description: "Standalone dependency-audit orchestrator: branches its own worktree off a target branch, runs the repo's enabled auditors (security CVE overrides, then freshness currency bumps), carries their safe auto-fixes into a PR, and hands off to /pr-watch. Decoupled from /start — runs standalone. Callable by a human or a headless CI cron via --non-interactive. Driven by .claude/supera.json so it works in any repo."
 allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI
 ---
 
-Run this repo's enabled dependency auditors against a target branch (default the base) **without** needing `/ship` first. `/audit` cuts its own worktree off the target, lets the auditor **agents** apply their bounded safe auto-fixes (CVE overrides, in-range currency bumps), opens a PR carrying those fixes, and hands off to `/pr-watch` to drive it green. Audits are recurring hygiene, not backlog work, and `--non-interactive` makes it CI-cron-ready. It **never** commits to base: `/audit` always ships via PR on its own branch, and it never edits dependency manifests/lockfiles itself — the auditor agents are the implementers, exactly as `/pr-watch` step 6c dispatches them.
+Run this repo's enabled dependency auditors against a target branch (default the base) **without** needing `/start` first. `/audit` cuts its own worktree off the target, lets the auditor **agents** apply their bounded safe auto-fixes (CVE overrides, in-range currency bumps), opens a PR carrying those fixes, and hands off to `/pr-watch` to drive it green. Audits are recurring hygiene, not backlog work, and `--non-interactive` makes it CI-cron-ready. It **never** commits to base: `/audit` always ships via PR on its own branch, and it never edits dependency manifests/lockfiles itself — the auditor agents are the implementers, exactly as `/pr-watch` step 6c dispatches them.
 
 ## 0 — Load config
 
 Read `.claude/supera.json` at the repo root into `CONFIG`.
 
-- **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /supera-init first."` Offer to run `/supera-init` now. Do not proceed without config.
-- `AUDIT_SC = CONFIG.audits?.supplyChain === true` — supply-chain auditor enabled.
+- **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /init first."` Offer to run `/init` now. Do not proceed without config.
+- `AUDIT_SEC = CONFIG.audits?.security === true` — security auditor enabled.
 - `AUDIT_FRESH = CONFIG.audits?.freshness?.level` is set **and** `!== "off"` — freshness auditor enabled.
 - `BASE = CONFIG.pr?.base ?? CONFIG.worktree?.base ?? <detected default branch>`.
 - `WT_DIR = CONFIG.worktree?.dir ?? ".worktrees"`. `REMOTE = CONFIG.pr?.remote ?? "origin"`.
@@ -20,14 +20,14 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 
 ## 1 — Parse arguments
 
-Grammar: `/audit [branch] [--non-interactive] [--supply-chain-only] [--freshness-only]` — flags in any order; strip every flag before reading the positional token.
+Grammar: `/audit [branch] [--non-interactive] [--security-only] [--freshness-only]` — flags in any order; strip every flag before reading the positional token.
 
 - `--non-interactive` → `NONINTERACTIVE=true` (headless CI run with no human to answer prompts — see **Non-interactive mode**). Preserve it on the `/pr-watch` hand-off (step 6).
-- `--supply-chain-only` → force `AUDIT_FRESH=false` (run only the supply-chain auditor this run).
-- `--freshness-only` → force `AUDIT_SC=false` (run only the freshness auditor this run).
+- `--security-only` → force `AUDIT_FRESH=false` (run only the security auditor this run).
+- `--freshness-only` → force `AUDIT_SEC=false` (run only the freshness auditor this run).
 - positional token → `TARGET` branch to audit; default `TARGET = BASE`.
 
-If, after the scope flags, **neither** auditor is enabled, report plainly — `"No auditors enabled — set audits.supplyChain and/or audits.freshness.level in .claude/supera.json."` — and exit cleanly. This is not an error.
+If, after the scope flags, **neither** auditor is enabled, report plainly — `"No auditors enabled — set audits.security and/or audits.freshness.level in .claude/supera.json."` — and exit cleanly. This is not an error.
 
 ## 2 — Idempotency probe
 
@@ -41,7 +41,7 @@ git worktree list | grep <auditBranch>                             # worktree pr
 Route, in this order:
 
 - **An OPEN (not merged) PR exists** → today's audit is already in flight. Invoke `/pr-watch <N>` (append `--non-interactive` when set) and **stop** — never double-create.
-- **A MERGED PR exists** → today's audit already shipped. Reclaim any residual worktree first — `/pr-watch` hands merged audit PRs to nobody (audits are out of the `/ship` ladder), so a stale `chore-audit-<date>` worktree would otherwise pile up per audit. Tear it down if present (guarded so a missing worktree/branch is a no-op), then report it and exit:
+- **A MERGED PR exists** → today's audit already shipped. Reclaim any residual worktree first — `/pr-watch` hands merged audit PRs to nobody (audits are out of the `/start` ladder), so a stale `chore-audit-<date>` worktree would otherwise pile up per audit. Tear it down if present (guarded so a missing worktree/branch is a no-op), then report it and exit:
   ```bash
   git worktree list | grep -q "<WT_DIR>/<auditBranch>" && git worktree remove <WT_DIR>/<auditBranch>          # --force only if it refuses on an unclean tree
   git rev-parse --verify --quiet <auditBranch> >/dev/null && git branch -D <auditBranch>                       # delete the branch if present
@@ -61,7 +61,7 @@ cd <WT_DIR>/<auditBranch> && <CONFIG.worktree.postCreate ?? CONFIG.verify.instal
 
 Run in **this order** so a CVE override isn't churned by a freshness bump and the freshness auditor sees the post-override lockfile. Each auditor runs **exactly once**.
 
-**a. Supply-chain** *(only if `AUDIT_SC`)* — dispatch the `supera-supply-chain-auditor` agent on the worktree (one pass). It applies safe, gated CVE remediations (in-range upgrade, scoped override, remove-stale-override), **leaving the edits in the tree**, and reports the rest. On return, if the tree is dirty, `/audit` stages and commits them as **one** commit (only if something is staged):
+**a. Security** *(only if `AUDIT_SEC`)* — dispatch the `supera-security-auditor` agent on the worktree (one pass). It applies safe, gated CVE remediations (in-range upgrade, scoped override, remove-stale-override), **leaving the edits in the tree**, and reports the rest. On return, if the tree is dirty, `/audit` stages and commits them as **one** commit (only if something is staged):
 ```bash
 git -C <WT_DIR>/<auditBranch> add -A
 git -C <WT_DIR>/<auditBranch> diff --cached --quiet || git -C <WT_DIR>/<auditBranch> commit -m "fix: apply safe CVE overrides"
@@ -142,7 +142,7 @@ For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) �
 
 ## Rules
 
-- Security-first order: supply-chain (CVE overrides) before freshness (currency bumps) — so a CVE fix isn't churned by a bump.
+- Security-first order: security (CVE overrides) before freshness (currency bumps) — so a CVE fix isn't churned by a bump.
 - Date-scoped audit branch `chore-audit-<date>` — idempotent within a day; a same-day re-run routes to the open PR via `/pr-watch`.
 - Deny-path match (step 5) is a hard abort — surface the offending paths, tear down, never push.
-- Commit hygiene follows `guidelines/commit-conventions.md` (`/audit` makes the single commit folding the supply-chain auditor's edits).
+- Commit hygiene follows `guidelines/commit-conventions.md` (`/audit` makes the single commit folding the security auditor's edits).

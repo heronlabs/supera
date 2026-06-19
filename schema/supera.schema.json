@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/heronlabs/supera/schema/supera.schema.json",
   "title": "supera per-repo config",
-  "description": "Lives at <repo>/.claude/supera.json. Tells supera's ship/pr-watch/auditors how to operate in THIS repo. Written by /supera-init; safe to hand-edit.",
+  "description": "Lives at <repo>/.claude/supera.json. Tells supera's start/pr-watch/auditors how to operate in THIS repo. Written by /init; safe to hand-edit.",
   "type": "object",
   "required": ["stack", "verify"],
   "additionalProperties": false,
@@ -25,7 +25,7 @@
     },
     "worktree": {
       "type": "object",
-      "description": "How ship creates its isolated workspace.",
+      "description": "How start creates its isolated workspace.",
       "additionalProperties": false,
       "properties": {
         "dir": { "type": "string", "default": ".worktrees", "description": "Directory (relative to repo root) holding feature worktrees." },
@@ -44,13 +44,13 @@
     },
     "audits": {
       "type": "object",
-      "description": "Optional audit agents /audit, /ship, and /pr-watch can run locally.",
+      "description": "Optional audit agents /audit, /start, and /pr-watch can run locally.",
       "additionalProperties": false,
       "properties": {
-        "supplyChain": { "type": "boolean", "default": false, "description": "Enable supera-supply-chain-auditor (works on npm/pnpm/yarn/cargo)." },
+        "security": { "type": "boolean", "default": false, "description": "Enable supera-security-auditor (works on npm/pnpm/yarn/cargo)." },
         "freshness": {
           "type": "object",
-          "description": "Enable supera-freshness-auditor (dependency CURRENCY, not security). Disjoint from audits.supplyChain: no CVE/secret/override logic.",
+          "description": "Enable supera-freshness-auditor (dependency CURRENCY, not security). Disjoint from audits.security: no CVE/secret/override logic.",
           "additionalProperties": false,
           "properties": {
             "level": {
