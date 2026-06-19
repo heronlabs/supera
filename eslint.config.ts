@@ -27,6 +27,6 @@ export default defineConfig([
     rules: {'yml/sort-keys': 'off'},
   },
   {
-    ignores: ['node_modules/', 'pnpm-lock.yaml', '.worktrees/', 'scripts/**'],
+    ignores: ['node_modules/', 'pnpm-lock.yaml', '.worktrees/'],
   },
 ]);

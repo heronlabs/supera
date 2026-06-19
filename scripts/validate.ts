@@ -9,40 +9,55 @@ const schemaDir = join(repoRoot, 'schema');
 const skillsDir = join(repoRoot, 'skills');
 const agentsDir = join(repoRoot, 'agents');
 
-const rel = absolutePath => relative(repoRoot, absolutePath);
-const readJson = absolutePath => JSON.parse(readFileSync(absolutePath, 'utf8'));
+const rel = (absolutePath: string) => relative(repoRoot, absolutePath);
+const readJson = (absolutePath: string): unknown =>
+  JSON.parse(readFileSync(absolutePath, 'utf8'));
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`FAIL: ${message}`);
   process.exit(1);
 }
 
-async function listFiles(directory, predicate) {
-  const entries = await readdir(directory, {recursive: true, withFileTypes: true});
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function listFiles(
+  directory: string,
+  predicate: (name: string) => boolean,
+): Promise<string[]> {
+  const entries = await readdir(directory, {
+    recursive: true,
+    withFileTypes: true,
+  });
   return entries
     .filter(entry => entry.isFile() && predicate(entry.name))
     .map(entry => join(entry.parentPath, entry.name))
     .sort();
 }
 
-function compileSchemas(schemaPathsToCheck) {
+function compileSchemas(schemaPathsToCheck: string[]) {
   const ajv = new Ajv({allErrors: true, strict: false});
 
   for (const path of schemaPathsToCheck) {
-    let schema;
+    let schema: unknown;
     try {
       schema = readJson(path);
     } catch (error) {
-      fail(`schema ${rel(path)} is not valid JSON: ${error.message}`);
+      fail(`schema ${rel(path)} is not valid JSON: ${messageOf(error)}`);
     }
     try {
       ajv.compile(schema);
     } catch (error) {
-      fail(`schema ${rel(path)} is not a valid JSON Schema: ${error.message}`);
+      fail(
+        `schema ${rel(path)} is not a valid JSON Schema: ${messageOf(error)}`,
+      );
     }
   }
 
-  console.log(`PASS schemas: compiled ${schemaPathsToCheck.length} JSON Schema(s)`);
+  console.log(
+    `PASS schemas: compiled ${schemaPathsToCheck.length} JSON Schema(s)`,
+  );
 }
 
 function validateRepoConfig() {
@@ -61,16 +76,19 @@ function validateRepoConfig() {
   console.log('PASS config: .claude/supera.json satisfies supera.schema.json');
 }
 
-function frontmatterOf(path) {
+function frontmatterOf(path: string): string | null {
   const source = readFileSync(path, 'utf8');
   const match = /^---\n([\s\S]*?)\n---/.exec(source);
   return match ? match[1] : null;
 }
 
-function fieldValue(frontmatter, field) {
+function fieldValue(frontmatter: string, field: string): string | null {
   const match = new RegExp(`^${field}:[ \\t]*(.*)$`, 'm').exec(frontmatter);
   if (!match) return null;
-  return match[1].trim().replace(/^['"]|['"]$/g, '').trim();
+  return match[1]
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .trim();
 }
 
 async function checkFrontmatter() {
@@ -78,7 +96,7 @@ async function checkFrontmatter() {
     ...(await listFiles(skillsDir, name => name === 'SKILL.md')),
     ...(await listFiles(agentsDir, name => name.endsWith('.md'))),
   ];
-  const offenders = [];
+  const offenders: string[] = [];
 
   for (const path of files) {
     const frontmatter = frontmatterOf(path);
@@ -94,10 +112,14 @@ async function checkFrontmatter() {
   }
 
   if (offenders.length > 0) {
-    fail(`frontmatter check found ${offenders.length} offender(s):\n${offenders.map(line => `  ${line}`).join('\n')}`);
+    fail(
+      `frontmatter check found ${offenders.length} offender(s):\n${offenders.map(line => `  ${line}`).join('\n')}`,
+    );
   }
 
-  console.log(`PASS frontmatter: ${files.length} skill/agent file(s) have name + description`);
+  console.log(
+    `PASS frontmatter: ${files.length} skill/agent file(s) have name + description`,
+  );
 }
 
 const schemaPaths = await listFiles(schemaDir, name => name.endsWith('.json'));
