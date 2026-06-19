@@ -15,21 +15,19 @@ Read `.claude/supera.json` at the repo root into `CONFIG` (for `verify.*` and `s
 ## 1 — Parse arguments
 
 `/refactor [path] [directive]`:
-
 - **path** — the scope: the repo root (default), a directory, or a single file. Resolve it to a concrete set of files.
-- **directive** — optional free-text intent, e.g. _"give these functions meaningful names"_, _"extract the duplicated validation"_, _"split this 300-line file by responsibility"_. Absent → apply the engineer's code-quality philosophy generally (names, dead code, oversized functions, comment rot) within the scope.
+- **directive** — optional free-text intent, e.g. *"give these functions meaningful names"*, *"extract the duplicated validation"*, *"split this 300-line file by responsibility"*. Absent → apply the engineer's code-quality philosophy generally (names, dead code, oversized functions, comment rot) within the scope.
 
 If `path` is empty and the intent is unclear, ask what to refactor and where — don't guess a repo-wide rewrite.
 
 ## 2 — Scope and restate
 
-State the blast radius in one line before dispatching — _"Refactoring `src/auth/` for clearer names; behaviour unchanged, tests must stay green."_ This is a **behaviour-preserving** change: no feature work, no change to public contracts callers depend on, no scope creep beyond `path`.
+State the blast radius in one line before dispatching — *"Refactoring `src/auth/` for clearer names; behaviour unchanged, tests must stay green."* This is a **behaviour-preserving** change: no feature work, no change to public contracts callers depend on, no scope creep beyond `path`.
 
 ## 3 — Delegate to supera-engineer
 
 Dispatch `supera-engineer` with:
-
-- the **task**: _"Refactor `<path>` — `<directive, or 'improve clarity per your code-quality philosophy'>`. Behaviour-preserving: the existing tests must still pass unchanged; do not alter observable behaviour or public contracts. Smallest viable change, in scope only."_
+- the **task**: *"Refactor `<path>` — `<directive, or 'improve clarity per your code-quality philosophy'>`. Behaviour-preserving: the existing tests must still pass unchanged; do not alter observable behaviour or public contracts. Smallest viable change, in scope only."*
 - the **worktree path**: the **repo root** — work in place, **do not create a worktree**.
 - the path to `.claude/supera.json`.
 - explicit: **do not commit** — leave the changes in the working tree for the user to review.
@@ -39,7 +37,6 @@ The engineer self-verifies (`verify.build` / `test` / `lint`) before returning �
 ## 4 — Report
 
 Surface `receipt.implemented`, the changed `files`, and the `verification` results, then:
-
 > "Refactored `<path>` — behaviour unchanged, checks green. Review the diff, then commit — or run `/start` to take it through a PR."
 
 If `receipt.status` is `needs-review` or `blocked`, surface the detail and **do not** present the refactor as clean.

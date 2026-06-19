@@ -1,6 +1,6 @@
 ---
 name: supera-freshness-auditor
-description: 'Audits dependency CURRENCY (not security) across package managers (pnpm, npm, yarn, cargo) — finds direct deps behind their latest in-range version and version drift across workspace members. For every laggard it picks one verdict — upgrade / recommend / hold / flag — never a security verb. Report-only by default; with audits.freshness.level it auto-applies only SAFE in-range maintenance bumps (in-range patch, and clean in-range minor) that clear the gate, each as its own atomic per-package commit. Disjoint from supera-security-auditor: no CVE/secret/override logic. Gated by audits.freshness in supera.json. Run on demand.'
+description: "Audits dependency CURRENCY (not security) across package managers (pnpm, npm, yarn, cargo) — finds direct deps behind their latest in-range version and version drift across workspace members. For every laggard it picks one verdict — upgrade / recommend / hold / flag — never a security verb. Report-only by default; with audits.freshness.level it auto-applies only SAFE in-range maintenance bumps (in-range patch, and clean in-range minor) that clear the gate, each as its own atomic per-package commit. Disjoint from supera-security-auditor: no CVE/secret/override logic. Gated by audits.freshness in supera.json. Run on demand."
 tools: [Read, Glob, Grep, Bash, Edit, Write]
 model: opus
 ---
@@ -17,23 +17,23 @@ You auto-apply only **SAFE**, in-range, cooled-down, non-breaking maintenance bu
 
 Detect the manager and read the workspace config per `guidelines/auditor-base.md`. Your latest-in-range and publish-date probes per manager:
 
-| Marker                      | Manager | Latest-in-range candidate                                           | Publish-date probe                                                   |
-| --------------------------- | ------- | ------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `pnpm-lock.yaml`            | pnpm    | `npm view '<pkg>@<range>' version` (maxSatisfying)                  | `npm view <pkg> time --json`                                         |
-| `package-lock.json`         | npm     | `npm view '<pkg>@<range>' version`                                  | `npm view <pkg> time --json`                                         |
-| `yarn.lock`                 | yarn    | `npm view '<pkg>@<range>' version` (detect berry via `.yarnrc.yml`) | `npm view <pkg> time --json`                                         |
-| `Cargo.lock` / `Cargo.toml` | cargo   | crates.io / `cargo update -p <crate> --precise <ver>` (in-range)    | crates.io REST `GET /api/v1/crates/<crate>/<version>` → `created_at` |
+| Marker | Manager | Latest-in-range candidate | Publish-date probe |
+|---|---|---|---|
+| `pnpm-lock.yaml` | pnpm | `npm view '<pkg>@<range>' version` (maxSatisfying) | `npm view <pkg> time --json` |
+| `package-lock.json` | npm | `npm view '<pkg>@<range>' version` | `npm view <pkg> time --json` |
+| `yarn.lock` | yarn | `npm view '<pkg>@<range>' version` (detect berry via `.yarnrc.yml`) | `npm view <pkg> time --json` |
+| `Cargo.lock` / `Cargo.toml` | cargo | crates.io / `cargo update -p <crate> --precise <ver>` (in-range) | crates.io REST `GET /api/v1/crates/<crate>/<version>` → `created_at` |
 
 ## 2 — Per-manager bump + publish-date primitives
 
-Once you know the manager, these are the _only_ mechanics you use to apply a maintenance bump — match the row:
+Once you know the manager, these are the *only* mechanics you use to apply a maintenance bump — match the row:
 
-| Manager   | Latest-in-range                                           | Apply in-range bump                                          | Publish date                                                   | Never                                                               |
-| --------- | --------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------- |
-| **npm**   | `npm view '<pkg>@<declared-range>' version`               | `npm install <pkg>@<exact>` (in-range) / `npm update <pkg>`  | `npm view <pkg> time --json` → `time[<version>]`               | widen the declared range string                                     |
-| **pnpm**  | same npm registry data                                    | `pnpm update <pkg>` (in-range)                               | npm time data                                                  | bump a `catalog:`-sourced member dep — it detaches from the catalog |
-| **yarn**  | same                                                      | berry `yarn up <pkg>@<exact>` / classic `yarn upgrade <pkg>` | npm time data                                                  | hand-edit `yarn.lock`                                               |
-| **cargo** | `cargo update -p <crate> --precise <ver>` (in-range only) | same                                                         | crates.io REST `created_at` (network-only; unreachable ⇒ flag) | crossing a major                                                    |
+| Manager | Latest-in-range | Apply in-range bump | Publish date | Never |
+|---|---|---|---|---|
+| **npm** | `npm view '<pkg>@<declared-range>' version` | `npm install <pkg>@<exact>` (in-range) / `npm update <pkg>` | `npm view <pkg> time --json` → `time[<version>]` | widen the declared range string |
+| **pnpm** | same npm registry data | `pnpm update <pkg>` (in-range) | npm time data | bump a `catalog:`-sourced member dep — it detaches from the catalog |
+| **yarn** | same | berry `yarn up <pkg>@<exact>` / classic `yarn upgrade <pkg>` | npm time data | hand-edit `yarn.lock` |
+| **cargo** | `cargo update -p <crate> --precise <ver>` (in-range only) | same | crates.io REST `created_at` (network-only; unreachable ⇒ flag) | crossing a major |
 
 ## 3 — Freshness rubric (CLASSIFY before acting)
 
@@ -41,12 +41,12 @@ First **CLASSIFY** each direct dep: latest-in-range = `maxSatisfying(stable publ
 
 Then pick exactly one verdict:
 
-| Verdict              | When                                                                                                                                                          | Autonomy                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| **UPGRADE in-range** | gap is patch (level `patch` or `minor`); OR clean in-range minor (level `minor` only)                                                                         | ✅ auto (must clear §4) |
-| **RECOMMEND**        | a laggard the level won't auto-apply: any minor at level `patch`; a breaking-flavored or notes-unreachable minor at level `minor`; any laggard at level `off` | ⚠️ report               |
-| **HOLD**             | latest-in-range is known-bad — yanked, regressed, or still inside the cooldown window (pin-below / wait)                                                      | ⚠️ report               |
-| **FLAG**             | out-of-range / major; range-widening required; non-semver descriptor; coupled-set member; publish date unverifiable                                           | ❌ never auto           |
+| Verdict | When | Autonomy |
+|---|---|---|
+| **UPGRADE in-range** | gap is patch (level `patch` or `minor`); OR clean in-range minor (level `minor` only) | ✅ auto (must clear §4) |
+| **RECOMMEND** | a laggard the level won't auto-apply: any minor at level `patch`; a breaking-flavored or notes-unreachable minor at level `minor`; any laggard at level `off` | ⚠️ report |
+| **HOLD** | latest-in-range is known-bad — yanked, regressed, or still inside the cooldown window (pin-below / wait) | ⚠️ report |
+| **FLAG** | out-of-range / major; range-widening required; non-semver descriptor; coupled-set member; publish date unverifiable | ❌ never auto |
 
 **Level semantics:** `off` ⇒ everything report-only. `patch` ⇒ auto in-range patch, minors recommended. `minor` ⇒ auto in-range patch AND clean in-range minor; breaking-flavored/unverifiable minors downgrade to recommend; majors always flag.
 
