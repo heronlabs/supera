@@ -1,8 +1,10 @@
 import {defineConfig} from 'eslint/config';
 import jsonc from 'eslint-plugin-jsonc';
 import yml from 'eslint-plugin-yml';
+import gts from 'gts';
 
 export default defineConfig([
+  ...gts,
   ...jsonc.configs['flat/recommended-with-json'],
   {
     files: ['**/*.json'],
