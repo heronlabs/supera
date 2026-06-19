@@ -1,6 +1,6 @@
 {
   "name": "supera",
-  "version": "0.28.1",
+  "version": "0.28.2",
   "description": "A repo-agnostic change-shipping superagent for Claude Code. Install once; ship changes on any repository with the same pattern — task → worktree → implement + test → PR → babysit CI → done. The PR is the unit of work — there is no external tracker.",
   "repository": {
     "type": "git",
