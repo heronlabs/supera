@@ -10,3 +10,4 @@
 
 # node, in case tooling is ever added here
 node_modules/
+.eslintcache

@@ -1,17 +1,17 @@
 # Auditor base — shared mechanics
 
-Shared detection, gate, and receipt conventions for `supera-security-auditor` (security) and `supera-freshness-auditor` (currency). Each auditor inherits this and adds **only** its own verdict rubric. The two are disjoint in *what* they judge; this is the *how* they share.
+Shared detection, gate, and receipt conventions for `supera-security-auditor` (security) and `supera-freshness-auditor` (currency). Each auditor inherits this and adds **only** its own verdict rubric. The two are disjoint in _what_ they judge; this is the _how_ they share.
 
 ## Ecosystem detection
 
 Inspect the repo root (and workspaces) for lockfile markers, in this priority:
 
-| Marker | Manager |
-|---|---|
-| `pnpm-lock.yaml` | pnpm |
-| `package-lock.json` | npm |
-| `yarn.lock` | yarn (detect berry via `.yarnrc.yml`) |
-| `Cargo.lock` / `Cargo.toml` | cargo |
+| Marker                      | Manager                               |
+| --------------------------- | ------------------------------------- |
+| `pnpm-lock.yaml`            | pnpm                                  |
+| `package-lock.json`         | npm                                   |
+| `yarn.lock`                 | yarn (detect berry via `.yarnrc.yml`) |
+| `Cargo.lock` / `Cargo.toml` | cargo                                 |
 
 - Multiple managers present ⇒ run each, and **label every finding by ecosystem**.
 - A required tool missing (e.g. `cargo-audit`) ⇒ note the gap, skip that probe, **never fail the whole run**.

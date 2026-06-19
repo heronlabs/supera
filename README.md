@@ -8,9 +8,9 @@
 
 > **task → worktree → implement + test → PR → babysit CI → merged → cleaned up**
 
-**Why supera?** Shipping a change means the same chore every time: cut a branch, write the code *and* the tests, open a PR, babysit CI until it's green, resolve review threads, then clean up — and you re-learn the build/test/lint commands for every repo and stack. supera does that loop for you with one command. Everything repo-specific lives in a tiny per-repo `.claude/supera.json`, so the **same** skills work across any stack you can express as install/build/test/lint commands (pnpm, npm, yarn, cargo, Strapi, Go, Python; `stack: mixed` for polyglot repos).
+**Why supera?** Shipping a change means the same chore every time: cut a branch, write the code _and_ the tests, open a PR, babysit CI until it's green, resolve review threads, then clean up — and you re-learn the build/test/lint commands for every repo and stack. supera does that loop for you with one command. Everything repo-specific lives in a tiny per-repo `.claude/supera.json`, so the **same** skills work across any stack you can express as install/build/test/lint commands (pnpm, npm, yarn, cargo, Strapi, Go, Python; `stack: mixed` for polyglot repos).
 
-supera is **git/GitHub-native: there is no external tracker.** The pull request *is* the unit of work — lifecycle, escalation, and history all live on the branch and the PR.
+supera is **git/GitHub-native: there is no external tracker.** The pull request _is_ the unit of work — lifecycle, escalation, and history all live on the branch and the PR.
 
 ---
 
@@ -49,7 +49,7 @@ flowchart LR
 ### Before you start
 
 - **[Claude Code](https://claude.com/claude-code)** with plugin support.
-- **`gh` CLI** installed and authenticated (`gh auth login`) — supera does *all* GitHub work through it.
+- **`gh` CLI** installed and authenticated (`gh auth login`) — supera does _all_ GitHub work through it.
 - A target repo that is a **git repo with a GitHub remote** (supera ships via GitHub PRs; default remote `origin`).
 
 ### 1. Install the plugin
@@ -85,7 +85,7 @@ Then, in Claude Code:
 /supera:start "add retry on timeout"
 ```
 
-This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a PR, and hands off to `/supera:pr-watch` to drive CI green. It runs a full implement → test → PR → CI cycle, so it takes as long as your build and tests do — the fast part is *time to PR opened*, not merged. When the PR merges, re-run `/supera:start <branch>` to record what shipped and tear the worktree down.
+This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a PR, and hands off to `/supera:pr-watch` to drive CI green. It runs a full implement → test → PR → CI cycle, so it takes as long as your build and tests do — the fast part is _time to PR opened_, not merged. When the PR merges, re-run `/supera:start <branch>` to record what shipped and tear the worktree down.
 
 > If `/supera:start` hits an ambiguity it can't safely resolve, it posts a `🚫 supera blocked:` comment on the PR — read it, address the cause, and re-run `/supera:start <branch>`.
 
@@ -93,21 +93,21 @@ This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a P
 
 ## Commands
 
-| Command | What it does | Args |
-|---|---|---|
-| `/supera:init` | Bootstrap a repo: detect the stack, ground install/build/test/lint in the repo's CI (or ask when there's none), and write `.claude/supera.json`. Run once per repo. | *(interactive — detect & confirm)* |
-| `/supera:start` | Full-lifecycle orchestrator: task → worktree → delegate to `supera-engineer` → PR → hand off to `/pr-watch`, and tear down on a merged PR. Idempotent — re-run to resume or close out. | `[task \| branch] [--non-interactive]` · `pause [branch]` |
-| `/supera:pr-watch` | PR babysitter: monitor CI, fix failures via `supera-engineer`, address review threads, run one code-review cycle (plus a security audit when enabled), exit when green, synced, and resolved. | `[PR#] [--non-interactive]` |
-| `/supera:refactor` | Improve existing code in place — dispatch `supera-engineer` against a repo/dir/file. Lightweight: no worktree, no PR, no commit — leaves changes in your working tree to review. | `[path] [directive]` |
-| `/supera:audit` | Standalone dependency-audit orchestrator: cut a worktree, run the enabled auditors (security CVE overrides, then freshness bumps), carry safe auto-fixes into a PR, hand off to `/pr-watch`. CI-cron-ready. | `[branch] [--non-interactive] [--security-only] [--freshness-only]` |
+| Command            | What it does                                                                                                                                                                                                | Args                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `/supera:init`     | Bootstrap a repo: detect the stack, ground install/build/test/lint in the repo's CI (or ask when there's none), and write `.claude/supera.json`. Run once per repo.                                         | _(interactive — detect & confirm)_                                  |
+| `/supera:start`    | Full-lifecycle orchestrator: task → worktree → delegate to `supera-engineer` → PR → hand off to `/pr-watch`, and tear down on a merged PR. Idempotent — re-run to resume or close out.                      | `[task \| branch] [--non-interactive]` · `pause [branch]`           |
+| `/supera:pr-watch` | PR babysitter: monitor CI, fix failures via `supera-engineer`, address review threads, run one code-review cycle (plus a security audit when enabled), exit when green, synced, and resolved.               | `[PR#] [--non-interactive]`                                         |
+| `/supera:refactor` | Improve existing code in place — dispatch `supera-engineer` against a repo/dir/file. Lightweight: no worktree, no PR, no commit — leaves changes in your working tree to review.                            | `[path] [directive]`                                                |
+| `/supera:audit`    | Standalone dependency-audit orchestrator: cut a worktree, run the enabled auditors (security CVE overrides, then freshness bumps), carry safe auto-fixes into a PR, hand off to `/pr-watch`. CI-cron-ready. | `[branch] [--non-interactive] [--security-only] [--freshness-only]` |
 
 ## Agents
 
-| Agent | Role |
-|---|---|
-| `supera-engineer` | **The single implementer.** Ships a well-scoped change end-to-end in an isolated worktree: orients on the repo's own conventions, writes code **and** tests, and self-verifies (build/test/lint) before returning a structured receipt. Dispatched by `/supera:start` and `/supera:refactor`. |
-| `supera-security-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo): CVEs, missing/stale overrides, typo-squats, provenance gaps, leaked secrets. Picks the *correct* remediation per CVE (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning. Report-only by default; auto-applies only bounded, gated fixes. Gated by `audits.security`. |
-| `supera-freshness-auditor` | Cross-ecosystem dependency **currency** (not security): direct deps behind their latest in-range version, and version drift across workspace members. Report-only by default; with `audits.freshness.level` it auto-applies only SAFE in-range bumps (cooldown-gated). Gated by `audits.freshness`. |
+| Agent                      | Role                                                                                                                                                                                                                                                                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `supera-engineer`          | **The single implementer.** Ships a well-scoped change end-to-end in an isolated worktree: orients on the repo's own conventions, writes code **and** tests, and self-verifies (build/test/lint) before returning a structured receipt. Dispatched by `/supera:start` and `/supera:refactor`.                                                                                |
+| `supera-security-auditor`  | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo): CVEs, missing/stale overrides, typo-squats, provenance gaps, leaked secrets. Picks the _correct_ remediation per CVE (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning. Report-only by default; auto-applies only bounded, gated fixes. Gated by `audits.security`. |
+| `supera-freshness-auditor` | Cross-ecosystem dependency **currency** (not security): direct deps behind their latest in-range version, and version drift across workspace members. Report-only by default; with `audits.freshness.level` it auto-applies only SAFE in-range bumps (cooldown-gated). Gated by `audits.freshness`.                                                                          |
 
 ---
 
@@ -121,14 +121,14 @@ fresh → scaffolded → building → built → pr-open → merged
 
 `/supera:start` owns the whole ladder and is **idempotent**: every run detects where the work already sits and drives the next step.
 
-| Phase | Signal | `/supera:start` does |
-|---|---|---|
-| `fresh` | no branch, no worktree | cut the worktree, plan, delegate to the engineer |
-| `scaffolded` | worktree exists, 0 commits | resume — delegate the full implementation |
-| `building` | commits, HEAD is a `wip:` checkpoint | resume — undo the checkpoint, finish from where it stopped |
-| `built` | commits, no PR | open the PR |
-| `pr-open` | PR open | hand to `/supera:pr-watch` |
-| `merged` | PR merged | post the shipped summary, tear down the worktree + branch |
+| Phase        | Signal                               | `/supera:start` does                                       |
+| ------------ | ------------------------------------ | ---------------------------------------------------------- |
+| `fresh`      | no branch, no worktree               | cut the worktree, plan, delegate to the engineer           |
+| `scaffolded` | worktree exists, 0 commits           | resume — delegate the full implementation                  |
+| `building`   | commits, HEAD is a `wip:` checkpoint | resume — undo the checkpoint, finish from where it stopped |
+| `built`      | commits, no PR                       | open the PR                                                |
+| `pr-open`    | PR open                              | hand to `/supera:pr-watch`                                 |
+| `merged`     | PR merged                            | post the shipped summary, tear down the worktree + branch  |
 
 Because the phase is read fresh from git + GitHub on every run, supera survives interruptions, machine switches, and headless CI restarts. `/supera:start pause <branch>` checkpoints mid-flight (a `wip:` commit carrying what's left); a later re-run resumes exactly where it stopped.
 
@@ -153,26 +153,26 @@ Written by `/supera:init` and safe to hand-edit. See [`schema/supera.schema.json
     "install": "cargo fetch",
     "build": "cargo build --workspace",
     "test": "cargo test --workspace",
-    "lint": "cargo clippy -- -D warnings"
+    "lint": "cargo clippy -- -D warnings",
   },
-  "worktree": { "dir": ".worktrees", "base": "main" },
-  "pr": { "base": "main", "remote": "origin" },
-  "audits": { "security": true }
+  "worktree": {"dir": ".worktrees", "base": "main"},
+  "pr": {"base": "main", "remote": "origin"},
+  "audits": {"security": true},
 }
 ```
 
-| Key | Meaning |
-|---|---|
-| `stack` | Primary toolchain (`pnpm`, `npm`, `yarn`, `cargo`, `strapi`, `go`, `python`, `mixed`). **Required.** |
-| `verify` | Commands the engineer self-verifies with and `/supera:pr-watch` reproduces CI from: `install` / `build` / `test` / `lint` (omit any step the stack lacks). **Required.** |
-| `worktree` | How `/supera:start` cuts its workspace: `dir` (default `.worktrees`), `base` (default `main`), `postCreate` (defaults to `verify.install`). |
-| `pr` | PR defaults: `base` (target branch, default `main`), `remote` (default `origin`). |
-| `audits.security` | `true`/`false` (default `false`). Enables `supera-security-auditor`. |
-| `audits.freshness.level` | `off` \| `patch` \| `minor` (default `off`). `patch` auto-applies in-range patch bumps; `minor` also auto-applies clean in-range minors; majors and range-widening always flag. |
-| `audits.freshness.minReleaseAgeDays` | Integer (default `7`). Cooldown — only auto-apply a version published at least this many days ago (defuses day-zero compromised/yanked releases). |
-| `review.consensus` | Optional pre-merge merge-readiness vote in `/supera:pr-watch`: `voters` (default `1` = off), `quorum`. |
-| `review.lenses` | Optional specialist review lenses in `/supera:pr-watch` (`silent-failures` \| `type-design` \| `test-coverage`). Default `[]`. |
-| `security.denyPaths` | Globs the engineer must never touch and `/supera:pr-watch` refuses into a PR (secrets / private keys). Defaults to common secret/key globs; `[]` disables. |
+| Key                                  | Meaning                                                                                                                                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stack`                              | Primary toolchain (`pnpm`, `npm`, `yarn`, `cargo`, `strapi`, `go`, `python`, `mixed`). **Required.**                                                                            |
+| `verify`                             | Commands the engineer self-verifies with and `/supera:pr-watch` reproduces CI from: `install` / `build` / `test` / `lint` (omit any step the stack lacks). **Required.**        |
+| `worktree`                           | How `/supera:start` cuts its workspace: `dir` (default `.worktrees`), `base` (default `main`), `postCreate` (defaults to `verify.install`).                                     |
+| `pr`                                 | PR defaults: `base` (target branch, default `main`), `remote` (default `origin`).                                                                                               |
+| `audits.security`                    | `true`/`false` (default `false`). Enables `supera-security-auditor`.                                                                                                            |
+| `audits.freshness.level`             | `off` \| `patch` \| `minor` (default `off`). `patch` auto-applies in-range patch bumps; `minor` also auto-applies clean in-range minors; majors and range-widening always flag. |
+| `audits.freshness.minReleaseAgeDays` | Integer (default `7`). Cooldown — only auto-apply a version published at least this many days ago (defuses day-zero compromised/yanked releases).                               |
+| `review.consensus`                   | Optional pre-merge merge-readiness vote in `/supera:pr-watch`: `voters` (default `1` = off), `quorum`.                                                                          |
+| `review.lenses`                      | Optional specialist review lenses in `/supera:pr-watch` (`silent-failures` \| `type-design` \| `test-coverage`). Default `[]`.                                                  |
+| `security.denyPaths`                 | Globs the engineer must never touch and `/supera:pr-watch` refuses into a PR (secrets / private keys). Defaults to common secret/key globs; `[]` disables.                      |
 
 ---
 
@@ -200,14 +200,14 @@ supera runs `git` and `gh` under your existing `gh` authentication — its reach
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---|---|
-| `command not found` after install | Commands are namespaced — type `/supera:start`, not `/start`. Confirm the plugin is installed via `/plugin`. |
-| GitHub / auth errors | Run `gh auth login`; all GitHub work goes through the `gh` CLI. |
-| `"This repo isn't set up for supera"` | Run `/supera:init` first, and commit the `.claude/supera.json` it writes. |
-| Wrong build/test/lint commands | Re-run `/supera:init`, or hand-edit `.claude/supera.json`. |
-| A PR shows `🚫 supera blocked` | Read the comment, fix the cause, re-run `/supera:start <branch>` (or `/supera:audit` for an audit PR). |
-| Update the plugin | `/plugin update`. |
+| Symptom                               | Fix                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `command not found` after install     | Commands are namespaced — type `/supera:start`, not `/start`. Confirm the plugin is installed via `/plugin`. |
+| GitHub / auth errors                  | Run `gh auth login`; all GitHub work goes through the `gh` CLI.                                              |
+| `"This repo isn't set up for supera"` | Run `/supera:init` first, and commit the `.claude/supera.json` it writes.                                    |
+| Wrong build/test/lint commands        | Re-run `/supera:init`, or hand-edit `.claude/supera.json`.                                                   |
+| A PR shows `🚫 supera blocked`        | Read the comment, fix the cause, re-run `/supera:start <branch>` (or `/supera:audit` for an audit PR).       |
+| Update the plugin                     | `/plugin update`.                                                                                            |
 
 ## How it's organized
 
@@ -221,7 +221,7 @@ Three layers, one rule — **single source of truth**:
 
 - **[Claude Code](https://claude.com/claude-code)** with plugin support.
 - **`gh` CLI** installed and authenticated (`gh auth login`).
-- **[superpowers](https://github.com/obra/superpowers)** plugin *(optional)* — when present, `supera-engineer` uses its TDD / systematic-debugging / verification skills; without it, the engineer follows the same discipline directly, minus the shared skill implementations. supera works without it; install it later if you want.
+- **[superpowers](https://github.com/obra/superpowers)** plugin _(optional)_ — when present, `supera-engineer` uses its TDD / systematic-debugging / verification skills; without it, the engineer follows the same discipline directly, minus the shared skill implementations. supera works without it; install it later if you want.
 
 ## Getting help
 
@@ -229,7 +229,7 @@ Questions, bugs, and feature requests → [GitHub Issues](https://github.com/her
 
 ## Contributing
 
-Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). In short: this repo *is* a Claude Code plugin, so editing it changes behaviour everywhere supera is installed. Versioning is automated — CD bumps, tags, and releases on merge to `main`, so don't hand-bump `version`; just keep `schema/supera.schema.json` in sync with what the skills read.
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). In short: this repo _is_ a Claude Code plugin, so editing it changes behaviour everywhere supera is installed. Versioning is automated — CD bumps, tags, and releases on merge to `main`, so don't hand-bump `version`; just keep `schema/supera.schema.json` in sync with what the skills read.
 
 ## License
 

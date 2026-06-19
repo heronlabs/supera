@@ -12,15 +12,15 @@ The config contract is `schema/supera.schema.json` in this plugin. Produce confi
 
 Inspect the repo root for marker files; `package.json`, when present, also names the stack. Set `stack` from the markers.
 
-| Markers found | `stack` | Candidate commands |
-|---|---|---|
-| `pnpm-lock.yaml` (+ `turbo.json`) | `pnpm` | install `pnpm install --frozen-lockfile`; build/test/lint from `turbo`/`scripts` |
-| `package-lock.json` | `npm` | install `npm ci`; build/test/lint from `scripts` |
-| `yarn.lock` | `yarn` | install `yarn install --immutable`; build/test/lint from `scripts` |
-| `Cargo.toml` | `cargo` | `cargo build --workspace` · `cargo test --workspace` · `cargo clippy -- -D warnings` |
-| `@strapi/strapi` in deps | `strapi` | `strapi build` · test script if any · lint script |
-| `go.mod` | `go` | `go build ./...` · `go test ./...` · `golangci-lint run` |
-| `pyproject.toml` / `requirements.txt` | `python` | from project scripts / `pytest` · `ruff`/`flake8` |
+| Markers found                         | `stack`  | Candidate commands                                                                   |
+| ------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `pnpm-lock.yaml` (+ `turbo.json`)     | `pnpm`   | install `pnpm install --frozen-lockfile`; build/test/lint from `turbo`/`scripts`     |
+| `package-lock.json`                   | `npm`    | install `npm ci`; build/test/lint from `scripts`                                     |
+| `yarn.lock`                           | `yarn`   | install `yarn install --immutable`; build/test/lint from `scripts`                   |
+| `Cargo.toml`                          | `cargo`  | `cargo build --workspace` · `cargo test --workspace` · `cargo clippy -- -D warnings` |
+| `@strapi/strapi` in deps              | `strapi` | `strapi build` · test script if any · lint script                                    |
+| `go.mod`                              | `go`     | `go build ./...` · `go test ./...` · `golangci-lint run`                             |
+| `pyproject.toml` / `requirements.txt` | `python` | from project scripts / `pytest` · `ruff`/`flake8`                                    |
 
 The build/test/lint entries above are **candidates only** — §2 grounds them in the repo's real commands before anything is written.
 
@@ -32,7 +32,7 @@ Ground each command in what the repo actually runs, in this order:
 2. **Declared scripts** — no CI, but `package.json` declares scripts: read them (build ← `build` / `compile` / `typecheck`, test ← `test:unit` / `test`, lint ← `lint:check` / `lint`) and show them to confirm.
 3. **Ask** — no CI and nothing declared to read (early-stage repos, fresh non-JS projects): converse with the user instead of guessing. Seed the question with §1's candidates so they confirm or correct rather than start blank:
 
-  > "No CI here, so I can't read the real commands. What builds, tests, and lints this repo? (e.g. `cargo build --workspace`, `cargo test --workspace`, `cargo clippy -- -D warnings` — or say which steps don't exist yet.)"
+> "No CI here, so I can't read the real commands. What builds, tests, and lints this repo? (e.g. `cargo build --workspace`, `cargo test --workspace`, `cargo clippy -- -D warnings` — or say which steps don't exist yet.)"
 
 ## 3 — Confirm and write
 
@@ -49,14 +49,14 @@ The `audits.security` auto-detect (lockfile presence) is independent of this pro
     "install": "<install cmd>",
     "build": "<build cmd>",
     "test": "<test cmd>",
-    "lint": "<lint cmd>"
+    "lint": "<lint cmd>",
   },
-  "worktree": { "dir": ".worktrees", "base": "<default branch>" },
-  "pr": { "base": "<default branch>", "remote": "origin" },
+  "worktree": {"dir": ".worktrees", "base": "<default branch>"},
+  "pr": {"base": "<default branch>", "remote": "origin"},
   // security is auto-detected from lockfile presence. freshness is emitted at its
   // default "off" so it's discoverable — flip level to "patch"/"minor" to enable
   // on-demand currency auto-bumps (via /audit, /start, /pr-watch).
-  "audits": { "security": false, "freshness": { "level": "off" } }
+  "audits": {"security": false, "freshness": {"level": "off"}},
   // Optional pr-watch rigor surfaces, off by default — uncomment to opt in.
   // "review": { "consensus": { "voters": 1 }, "lenses": [] },   // voters:1 disables the merge-readiness gate (default); lenses [] = no extra PR-review specialists ("silent-failures" | "type-design" | "test-coverage")
   // "security": { "denyPaths": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"] }
@@ -64,6 +64,7 @@ The `audits.security` auto-detect (lockfile presence) is independent of this pro
 ```
 
 Detect the default branch instead of assuming `main`:
+
 ```bash
 git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
@@ -74,8 +75,9 @@ Set `audits.security` to `true` if the repo has a lockfile, else `false`. Emit `
 
 Insert a small, repo-agnostic guardrail block into the target repo's root `CLAUDE.md` so the main thread here follows the same discipline `supera-engineer` carries. The block is marker-delimited so it is idempotent and never clobbers existing content:
 
-````md
+```md
 <!-- supera:guardrails -->
+
 ## Working with this repo (managed by /init — edits between these markers are overwritten on re-init)
 
 - **Edit, don't rewrite.** Change only the needed entry in a config/generated file (`package.json`, lockfiles, manifests, CI yaml); preserve the rest. Never regenerate a whole file to add one line.
@@ -83,9 +85,10 @@ Insert a small, repo-agnostic guardrail block into the target repo's root `CLAUD
 - **Ambiguous literals: flag, don't guess.** Config keys, IDs, and env names can be literal values, not mappings. State which reading you took.
 - **Scope a change to where it belongs** — most changes are localized to one area; touch other repos only when the change genuinely cuts across, and then update the related repos too.
 <!-- /supera:guardrails -->
-````
+```
 
 Apply it like this:
+
 - **No `CLAUDE.md`** → create it containing the block.
 - **`CLAUDE.md` exists without the markers** → show the block and confirm (same courtesy as overwriting `supera.json`), then **append** it after the existing content — never modify what is already there.
 - **Markers already present** → replace only the text between `<!-- supera:guardrails -->` and `<!-- /supera:guardrails -->`; leave everything else untouched (idempotent re-init).
@@ -97,19 +100,23 @@ Apply it like this:
 ## 6 — Report
 
 Print the written path and a compact summary of every field. Tell the user:
+
 > "`.claude/supera.json` written. Commit it so the config travels with the repo. Run `/start <task>` to ship."
 
 ## Rules
 
 **Stack detection**
+
 - The install command is fixed by the lockfile — take it as-is; don't ask the user to confirm it.
 - For a monorepo (`turbo.json` / workspaces), scope commands to the workspace (e.g. `pnpm turbo run build`), never a single package.
 
 **Verify commands**
+
 - A command CI runs is ground truth — it outranks a declared script or a canonical default.
 - With no CI, never write a blind guess: confirm a declared `package.json` script, or ask the user and take their answer as truth.
 - Omit a `verify` key for any step the repo doesn't have — never invent one.
 
 **Writing the config**
+
 - Detect the default branch; never hardcode `main`.
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
