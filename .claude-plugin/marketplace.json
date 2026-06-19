@@ -10,7 +10,7 @@
     {
       "name": "supera",
       "description": "Repo-agnostic change-shipping superagent: init, start (full lifecycle), pr-watch, refactor, and audit (security + freshness auditors), driven by a per-repo .claude/supera.json config.",
-      "version": "0.28.1",
+      "version": "0.28.2",
       "author": {
         "name": "Lucas Lacerda"
       },
