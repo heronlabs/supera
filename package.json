@@ -9,6 +9,7 @@
     "eslint-plugin-jsonc": "^3",
     "eslint-plugin-yml": "^3",
     "gts": "^7.0.0",
+    "jiti": "^2",
     "prettier": "^3"
   },
   "engines": {
