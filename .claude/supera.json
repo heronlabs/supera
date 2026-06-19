@@ -1,10 +1,12 @@
 {
   "audits": {"freshness": {"level": "off"}, "security": false},
   "pr": {"base": "main", "remote": "origin"},
+  "review": {"consensus": {"voters": 3}},
   "stack": "pnpm",
   "verify": {
     "install": "pnpm install --frozen-lockfile",
-    "lint": "pnpm lint:check"
+    "lint": "pnpm lint:check",
+    "test": "pnpm validate"
   },
   "worktree": {"base": "main", "dir": ".worktrees"}
 }
