@@ -33,12 +33,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: heronlabs/action-tag-release-build@v3
         id: version
         with:
-          github-token: ${{ secrets.PAT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           spec: ${{ inputs.spec || 'patch' }}
 
       - uses: heronlabs/action-claude-plugin-build@v1

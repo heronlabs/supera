@@ -36,7 +36,7 @@ Releases are automated — `.github/workflows/cd-tags.yml` runs on every merge t
 2. **Don't hand-bump `version`** — the CD owns it. For a `minor`/`major`, trigger the `[ CD ] | Tags` workflow via `workflow_dispatch` and choose the `spec`.
 3. Merge. The CD bumps, tags, releases, and keeps the three manifests in lockstep.
 
-Requires a `PAT` repo secret (a token with `contents: write`) for the tag/release push.
+No repo secret needed — the CD pushes tags/releases via the built-in `GITHUB_TOKEN` (the job grants it `contents: write`). A `PAT` is only required if `main` becomes a protected branch, or a downstream workflow must trigger on the release push.
 
 <!-- supera:guardrails -->
 ## Working with this repo (managed by /init — edits between these markers are overwritten on re-init)
