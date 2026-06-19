@@ -1,6 +1,6 @@
 # Auditor base — shared mechanics
 
-Shared detection, gate, and receipt conventions for `supera-supply-chain-auditor` (security) and `supera-freshness-auditor` (currency). Each auditor inherits this and adds **only** its own verdict rubric. The two are disjoint in *what* they judge; this is the *how* they share.
+Shared detection, gate, and receipt conventions for `supera-security-auditor` (security) and `supera-freshness-auditor` (currency). Each auditor inherits this and adds **only** its own verdict rubric. The two are disjoint in *what* they judge; this is the *how* they share.
 
 ## Ecosystem detection
 
@@ -51,4 +51,4 @@ Your final message is consumed by `/audit`, **not a human** — return **only** 
 
 ## Commit behaviour
 
-Commit per `guidelines/commit-conventions.md` — see its "Who commits what" table for the supply-chain vs freshness specifics.
+Commit per `guidelines/commit-conventions.md` — see its "Who commits what" table for the security vs freshness specifics.

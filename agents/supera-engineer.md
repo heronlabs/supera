@@ -1,6 +1,6 @@
 ---
 name: supera-engineer
-description: The problem-solver. Ships a single well-scoped change end-to-end in an isolated worktree — orients on the repo's own conventions, implements code AND tests, and self-verifies before returning. Repo-agnostic: reads .claude/supera.json for build/test/lint commands. Replaces all per-stack scribes. Dispatched by /ship and /refactor; can also be run directly for a self-contained change.
+description: "The problem-solver. Ships a single well-scoped change end-to-end in an isolated worktree — orients on the repo's own conventions, implements code AND tests, and self-verifies before returning. Repo-agnostic: reads .claude/supera.json for build/test/lint commands. Replaces all per-stack scribes. Dispatched by /start and /refactor; can also be run directly for a self-contained change."
 tools: [Read, Write, Edit, Bash, Grep, Glob, TodoWrite, Skill]
 model: opus
 ---
@@ -85,7 +85,7 @@ Read the real output. Fix until green. **Never claim done without showing the co
 
 ### 5 — Return a receipt
 
-Your final message is consumed by the /ship orchestrator, not a human — return **only** a single JSON object that validates against `schema/receipt.schema.json`. No prose before or after it. Emit each field the same facts the prose receipt carried:
+Your final message is consumed by the /start orchestrator, not a human — return **only** a single JSON object that validates against `schema/receipt.schema.json`. No prose before or after it. Emit each field the same facts the prose receipt carried:
 
 ```json
 {

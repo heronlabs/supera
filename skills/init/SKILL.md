@@ -1,10 +1,10 @@
 ---
-name: supera-init
-description: "Bootstrap a repo for supera: detect its stack, ground install/build/test/lint in the repo's CI (or ask when there's none), and write .claude/supera.json. Run once per repo before /ship. Triggers: 'supera init', 'set up supera here', 'configure supera for this repo'."
+name: init
+description: "Bootstrap a repo for supera: detect its stack, ground install/build/test/lint in the repo's CI (or ask when there's none), and write .claude/supera.json. Run once per repo before /start. Triggers: 'supera init', 'set up supera here', 'configure supera for this repo'."
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit, AskUserQuestion
 ---
 
-Detect this repository's toolchain and write `.claude/supera.json` so `/ship`, `/pr-watch`, and the auditors work here. Mostly automatic — you confirm the commands, and supply them directly when the repo has no CI to read.
+Detect this repository's toolchain and write `.claude/supera.json` so `/start`, `/pr-watch`, and the auditors work here. Mostly automatic — you confirm the commands, and supply them directly when the repo has no CI to read.
 
 The config contract is `schema/supera.schema.json` in this plugin. Produce config that validates against it.
 
@@ -38,9 +38,9 @@ Ground each command in what the repo actually runs, in this order:
 
 Show the proposed config and ask the user to confirm or tweak the commands (use `AskUserQuestion` if a command is ambiguous).
 
-Then offer the **freshness auditor** opt-in in one `AskUserQuestion` (default = off): dependency-currency auto-bumps run on demand via `/audit`, `/ship`, and `/pr-watch`. When chosen, emit `"audits": { "supplyChain": <detected>, "freshness": { "level": "patch", "minReleaseAgeDays": 7 } }`; when declined, emit `audits.freshness` inline at its default `{ "level": "off" }` so it stays discoverable and editable.
+Then offer the **freshness auditor** opt-in in one `AskUserQuestion` (default = off): dependency-currency auto-bumps run on demand via `/audit`, `/start`, and `/pr-watch`. When chosen, emit `"audits": { "security": <detected>, "freshness": { "level": "patch", "minReleaseAgeDays": 7 } }`; when declined, emit `audits.freshness` inline at its default `{ "level": "off" }` so it stays discoverable and editable.
 
-The `audits.supplyChain` auto-detect (lockfile presence) is independent of this prompt — keep it as below. Then write `.claude/supera.json` at the repo root:
+The `audits.security` auto-detect (lockfile presence) is independent of this prompt — keep it as below. Then write `.claude/supera.json` at the repo root:
 
 ```jsonc
 {
@@ -53,10 +53,10 @@ The `audits.supplyChain` auto-detect (lockfile presence) is independent of this 
   },
   "worktree": { "dir": ".worktrees", "base": "<default branch>" },
   "pr": { "base": "<default branch>", "remote": "origin" },
-  // supplyChain is auto-detected from lockfile presence. freshness is emitted at its
+  // security is auto-detected from lockfile presence. freshness is emitted at its
   // default "off" so it's discoverable — flip level to "patch"/"minor" to enable
-  // on-demand currency auto-bumps (via /audit, /ship, /pr-watch).
-  "audits": { "supplyChain": false, "freshness": { "level": "off" } }
+  // on-demand currency auto-bumps (via /audit, /start, /pr-watch).
+  "audits": { "security": false, "freshness": { "level": "off" } }
   // Optional pr-watch rigor surfaces, off by default — uncomment to opt in.
   // "review": { "consensus": { "voters": 1 }, "lenses": [] },   // voters:1 disables the merge-readiness gate (default); lenses [] = no extra PR-review specialists ("silent-failures" | "type-design" | "test-coverage")
   // "security": { "denyPaths": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"] }
@@ -68,7 +68,7 @@ Detect the default branch instead of assuming `main`:
 git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
 
-Set `audits.supplyChain` to `true` if the repo has a lockfile, else `false`. Emit `audits.freshness` inline at its default `{ "level": "off" }` when the user declines the freshness opt-in (step-3 prompt), so the field is discoverable and editable; set it to `{ "level": "patch", "minReleaseAgeDays": 7 }` when they accept. Both auditors run on demand via `/audit`, `/ship`, and `/pr-watch`.
+Set `audits.security` to `true` if the repo has a lockfile, else `false`. Emit `audits.freshness` inline at its default `{ "level": "off" }` when the user declines the freshness opt-in (step-3 prompt), so the field is discoverable and editable; set it to `{ "level": "patch", "minReleaseAgeDays": 7 }` when they accept. Both auditors run on demand via `/audit`, `/start`, and `/pr-watch`.
 
 ## 4 — Write the guardrails into the repo's CLAUDE.md
 
@@ -76,7 +76,7 @@ Insert a small, repo-agnostic guardrail block into the target repo's root `CLAUD
 
 ````md
 <!-- supera:guardrails -->
-## Working with this repo (managed by /supera-init — edits between these markers are overwritten on re-init)
+## Working with this repo (managed by /init — edits between these markers are overwritten on re-init)
 
 - **Edit, don't rewrite.** Change only the needed entry in a config/generated file (`package.json`, lockfiles, manifests, CI yaml); preserve the rest. Never regenerate a whole file to add one line.
 - **No scope creep.** Build only what was asked; no speculative abstractions, layers, or options. Prefer the simplest working solution.
@@ -92,12 +92,12 @@ Apply it like this:
 
 ## 5 — Local-first note
 
-/pr-watch and /ship run locally (interactive, or `--non-interactive`); CI emission is deferred until tested. supera writes no `.github/workflows/*.yml`.
+/pr-watch and /start run locally (interactive, or `--non-interactive`); CI emission is deferred until tested. supera writes no `.github/workflows/*.yml`.
 
 ## 6 — Report
 
 Print the written path and a compact summary of every field. Tell the user:
-> "`.claude/supera.json` written. Commit it so the config travels with the repo. Run `/ship <task>` to ship."
+> "`.claude/supera.json` written. Commit it so the config travels with the repo. Run `/start <task>` to ship."
 
 ## Rules
 
