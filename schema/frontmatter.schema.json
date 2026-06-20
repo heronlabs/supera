@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/heronlabs/supera/schema/frontmatter.schema.json",
+  "title": "supera skill/agent frontmatter",
+  "description": "Required YAML frontmatter for every skills/**/SKILL.md and agents/**/*.md. Claude Code's loader reads name + description from this block.",
+  "type": "object",
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Skill/agent identifier the loader registers."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line summary the loader uses to decide relevance."
+    }
+  }
+}
