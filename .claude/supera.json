@@ -1,5 +1,5 @@
 {
-  "audits": {"freshness": {"level": "off"}, "security": false},
+  "audits": {"freshness": {"level": "off"}, "security": true},
   "pr": {"base": "main", "remote": "origin"},
   "review": {"consensus": {"voters": 3}},
   "stack": "pnpm",
