@@ -1,5 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "gts/tsconfig-google.json",
-  "include": ["*.ts", "scripts/**/*.ts"]
+  "include": ["*.ts"]
 }

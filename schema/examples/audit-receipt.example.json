@@ -1,0 +1,22 @@
+{
+  "auditor": "security",
+  "status": "ok",
+  "applied": [
+    {
+      "verdict": "upgrade",
+      "target": "lodash",
+      "from": "4.17.20",
+      "to": "4.17.21",
+      "verifiedBy": "test"
+    }
+  ],
+  "findings": [],
+  "verification": {
+    "test": {
+      "command": "pnpm test",
+      "result": "PASS",
+      "output": "12 passed"
+    }
+  },
+  "degraded": []
+}

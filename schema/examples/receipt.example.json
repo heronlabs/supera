@@ -1,0 +1,21 @@
+{
+  "implemented": "Swap the custom validate script for declarative tooling checks.",
+  "files": [
+    {
+      "path": "package.json",
+      "note": "Repoint the validate script to remark; drop the now-unused ajv dep."
+    }
+  ],
+  "verification": {
+    "test": {
+      "command": "pnpm validate",
+      "result": "PASS",
+      "output": "all checks green"
+    }
+  },
+  "decisions": [
+    "Kept the frontmatter schema on draft-07 — remark-lint-frontmatter-schema rejects 2020-12."
+  ],
+  "outOfScope": [],
+  "status": "ok"
+}

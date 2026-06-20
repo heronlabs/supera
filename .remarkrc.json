@@ -1,0 +1,16 @@
+{
+  "plugins": [
+    "remark-frontmatter",
+    [
+      "remark-lint-frontmatter-schema",
+      {
+        "schemas": {
+          "./schema/frontmatter.schema.json": [
+            "skills/**/SKILL.md",
+            "agents/**/*.md"
+          ]
+        }
+      }
+    ]
+  ]
+}
