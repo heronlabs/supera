@@ -36,6 +36,15 @@
   "license": "MIT",
   "name": "supera",
   "packageManager": "pnpm@10.30.3",
+  "pnpm": {
+    "overrides": {
+      "@apidevtools/json-schema-ref-parser@<11.2.0": ">=11.2.0",
+      "ajv@>=7.0.0-alpha.0 <8.18.0": ">=8.18.0",
+      "minimatch@9.0.3": "9.0.9",
+      "tmp@<0.2.6": ">=0.2.6",
+      "yaml@>=2.0.0 <2.8.3": ">=2.8.3"
+    }
+  },
   "prettier": "gts/.prettierrc.json",
   "repository": {
     "type": "git",
