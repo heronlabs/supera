@@ -6,17 +6,15 @@
   "description": "A repo-agnostic change-shipping superagent for Claude Code. Install once; ship changes on any repository with the same pattern — task → worktree → implement + test → PR → babysit CI → done. The PR is the unit of work — there is no external tracker.",
   "devDependencies": {
     "@types/node": "^22",
+    "ajv": "^8",
     "eslint": "^9",
-    "eslint-plugin-json-schema-validator": "^6.2.0",
     "eslint-plugin-jsonc": "^3",
     "eslint-plugin-yml": "^3",
     "gts": "^7.0.0",
     "jiti": "^2",
-    "remark-cli": "^12.0.1",
-    "remark-frontmatter": "^5.0.0",
-    "remark-lint-frontmatter-schema": "^3.15.4",
     "typescript": "~5.8",
-    "typescript-eslint": "^8"
+    "typescript-eslint": "^8",
+    "yaml": "^2"
   },
   "engines": {
     "node": ">=22",
@@ -38,11 +36,7 @@
   "packageManager": "pnpm@10.30.3",
   "pnpm": {
     "overrides": {
-      "@apidevtools/json-schema-ref-parser@<11.2.0": ">=11.2.0",
-      "ajv@>=7.0.0-alpha.0 <8.18.0": ">=8.18.0",
-      "minimatch@9.0.3": "9.0.9",
-      "tmp@<0.2.6": ">=0.2.6",
-      "yaml@>=2.0.0 <2.8.3": ">=2.8.3"
+      "tmp@<0.2.6": ">=0.2.6 <0.3"
     }
   },
   "prettier": "gts/.prettierrc.json",
@@ -53,7 +47,7 @@
   "scripts": {
     "lint:check": "gts lint && eslint \"**/*.json\" \"**/*.yml\" \"**/*.yaml\" --no-error-on-unmatched-pattern",
     "lint:fix": "gts fix && eslint \"**/*.json\" \"**/*.yml\" \"**/*.yaml\" --fix --no-error-on-unmatched-pattern",
-    "validate": "remark skills/ agents/ --frail --quiet"
+    "validate": "jiti scripts/validate.ts"
   },
   "version": "0.28.2"
 }
