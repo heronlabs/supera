@@ -136,11 +136,31 @@ if (workflow.trim().length === 0) {
   );
 }
 
+// Same drift guard for the Dependabot template: /init inlines a
+// .github/dependabot.yml (the pnpm/npm + github-actions blocks), and it must
+// stay byte-identical to this repo's canonical dogfood .github/dependabot.yml.
+// A silent divergence ships consumers a stale Dependabot config, so fail loud.
+const canonicalDependabotPath = '.github/dependabot.yml';
+const dependabot = readFileSync(join(root, canonicalDependabotPath), 'utf8');
+if (dependabot.trim().length === 0) {
+  errors.push(
+    `${canonicalDependabotPath}: canonical Dependabot config is empty`,
+  );
+} else if (yamlBlocks.length === 0) {
+  errors.push(
+    `${initSkillPath}: no \`\`\`yaml block found to guard against ${canonicalDependabotPath}`,
+  );
+} else if (!yamlBlocks.includes(dependabot)) {
+  errors.push(
+    `${initSkillPath}: inlined Dependabot template has drifted from ${canonicalDependabotPath} — they must stay byte-identical (the dogfood config is the canonical base, the init template is the emitted copy)`,
+  );
+}
+
 if (errors.length > 0) {
   console.error(`✗ validation failed (${errors.length}):`);
   for (const e of errors) console.error(`  ${e}`);
   process.exit(1);
 }
 console.log(
-  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron template in sync`,
+  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot templates in sync`,
 );

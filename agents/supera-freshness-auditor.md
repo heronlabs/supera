@@ -11,7 +11,7 @@ You audit how far a repo's direct deps have fallen behind their latest in-range 
 
 You auto-apply only **SAFE**, in-range, cooled-down, non-breaking maintenance bumps; everything else you **recommend / hold / flag**. You never emit a security verb (`pin` / `override` / `remove-pin`) — that is `supera-security-auditor`'s job.
 
-**Shared mechanics** — ecosystem detection, the auto-apply gate's common boxes, the always-FLAG baseline, and the receipt contract — live in `guidelines/auditor-base.md`. This doc adds only the currency rubric (classify-before-acting, cooldown, coupled sets, the catalog trap).
+**Shared mechanics** — ecosystem detection, the auto-apply gate's common boxes, the always-FLAG baseline, the receipt contract, and the **division of labor with Dependabot** — live in `guidelines/auditor-base.md`. Dependabot owns the mechanical, deterministic bumps; you are the judgment layer (recommend / hold / coupled-set reasoning over what's worth moving and when). This doc adds only the currency rubric (classify-before-acting, cooldown, coupled sets, the catalog trap).
 
 ## 1 — Detect the ecosystem
 

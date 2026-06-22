@@ -90,11 +90,43 @@ Apply it like this:
 - **`CLAUDE.md` exists without the markers** → show the block and confirm (same courtesy as overwriting `supera.json`), then **append** it after the existing content — never modify what is already there.
 - **Markers already present** → replace only the text between `<!-- supera:guardrails -->` and `<!-- /supera:guardrails -->`; leave everything else untouched (idempotent re-init).
 
-## 5 — Offer the daily audit workflow
+## 5 — Offer the two dependency layers (Dependabot + the audit cron)
 
-`/pr-watch` and `/start` run locally (interactive, or `--non-interactive`) — supera emits **no** workflow for those. The one workflow supera offers is a scheduled `/supera:audit` cron, since recurring dependency hygiene is the natural fit for CI.
+Dependency hygiene is two layers, and a GitHub-hosted repo should adopt **both** (the division of labor is canonical in `guidelines/auditor-base.md`):
 
-Offer it only when it can do something: at least one auditor is enabled (`audits.security === true` **OR** `audits.freshness.level !== "off"`), and the repo is GitHub-hosted (a `.github/` dir exists, or `origin` is a GitHub remote — `git remote get-url origin` matches `github.com`). Skip silently when no auditor is enabled; for a non-GitHub repo, skip with a one-line note (`"Skipping the audit workflow — no GitHub remote detected."`).
+1. **Dependabot — the free, always-on deterministic layer.** Routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net — no LLM, native write to `.github/workflows/*`. Offer this **first**, framed as recommended.
+2. **The `/supera:audit` cron — the reasoning layer.** The one workflow supera offers (since `/pr-watch` and `/start` run locally and emit no workflow). It runs the enabled auditors for what Dependabot can't reason about — scoped transitive overrides, CVE verdicts, the initial tag→SHA pin.
+
+### 5a — Offer Dependabot (recommended)
+
+Offer it only when the repo is GitHub-hosted (a `.github/` dir exists, or `origin` is a GitHub remote — `git remote get-url origin` matches `github.com`); skip silently otherwise.
+
+Ask with `AskUserQuestion` (default = **accept**; recommended): *"Add a `.github/dependabot.yml`? It's the free, always-on layer — Dependabot bumps versions, keeps SHA-pinned Actions fresh, and opens security-update PRs, leaving supera's auditors to reason about overrides and CVE verdicts."*
+
+If accepted, write `.github/dependabot.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. Map `package-ecosystem` from the detected `stack`: **pnpm / npm / yarn → `npm`**, **cargo → `cargo`**. Always include the `github-actions` block. The `npm`/`cargo` ecosystem block is **security-updates only** (`open-pull-requests-limit: 0` — no version-bump churn, since the freshness auditor is the reasoning layer); `github-actions` gets full version-updates so already-pinned Actions stay fresh. For a `pnpm` stack (`npm` ecosystem reads `pnpm-lock.yaml`):
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: npm # reads pnpm-lock.yaml
+    directory: '/'
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0 # security-updates only — no version-bump churn
+```
+
+For a `cargo` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: cargo`, keeping the same `directory` / `schedule` / `open-pull-requests-limit: 0` and the unchanged `github-actions` block.
+
+### 5b — Offer the daily audit cron
+
+Offer it only when it can do something: at least one auditor is enabled (`audits.security === true` **OR** `audits.freshness.level !== "off"`), and the repo is GitHub-hosted (same check as 5a). Skip silently when no auditor is enabled; for a non-GitHub repo, skip with a one-line note (`"Skipping the audit workflow — no GitHub remote detected."`).
 
 When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a daily `/supera:audit` GitHub Actions cron into `.github/workflows/supera-audit-daily.yml`? It runs the enabled auditors and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, plus a `SUPERA_AUDIT_TOKEN` (PAT/App token with `workflow` scope) if you want it to push GitHub Actions SHA-pins."*
 
@@ -142,7 +174,7 @@ jobs:
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
 ```
 
-After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow alongside `.claude/supera.json`.
+After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow (and any `.github/dependabot.yml` from 5a) alongside `.claude/supera.json`.
 
 ## 6 — Report
 
@@ -164,7 +196,8 @@ Print the written path and a compact summary of every field. Tell the user:
 - Detect the default branch; never hardcode `main`.
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
 
-**Audit workflow (step 5)**
-- Opt-in only — never write it unprompted, and only offer it when an auditor is enabled and the repo is GitHub-hosted.
-- Idempotent — never clobber an existing `.github/workflows/supera-audit-daily.yml`.
-- The workflow's existence is the state; no `.claude/supera.json` field tracks it.
+**Dependency layers (step 5)**
+- Both are opt-in via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended); the audit cron (5b) defaults to **decline** and is only offered when an auditor is enabled.
+- Idempotent — never clobber an existing `.github/dependabot.yml` or `.github/workflows/supera-audit-daily.yml`; report it's already present instead.
+- `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`); always include the `github-actions` block.
+- Each file's existence is the state; no `.claude/supera.json` field tracks either.

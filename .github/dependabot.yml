@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: npm # reads pnpm-lock.yaml
+    directory: '/'
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0 # security-updates only — no version-bump churn
