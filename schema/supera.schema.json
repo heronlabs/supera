@@ -116,6 +116,12 @@
               "description": "Cooldown: only auto-apply a version whose exact-resolved publish date is at least this many days old (defuses day-zero compromised/yanked releases). If the publish date is unreachable (e.g. crates.io REST down) => UNVERIFIED => FLAG, never auto."
             }
           }
+        },
+        "actionPinAllowlist": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [],
+          "description": "Glob patterns of `owner/repo` whose unpinned GitHub Actions the security auditor must leave FLOATING (not auto-pin); each matched `uses:` ref is reported once as informational, never flagged. Empty (default) = pin everything (current behaviour)."
         }
       }
     },

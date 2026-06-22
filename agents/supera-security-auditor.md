@@ -79,12 +79,15 @@ The shared always-FLAG baseline in `guidelines/auditor-base.md` applies (majors 
 
 A mutable `uses:` ref (tag, semver, or branch) lets an upstream owner — or anyone who compromises the upstream repo — silently change what runs in your CI. Pinning to a 40-hex commit SHA freezes the exact tree. This is a supply-chain/provenance hardening measure (it extends §6's provenance scope to the CI surface), and **PIN-ACTION** is a bounded ✅ auto-apply remediation with its own gate below — **not** the package-centric §3 gate.
 
+Read the allowlist from CONFIG as `audits.actionPinAllowlist` (default `[]`): glob patterns of `owner/repo` whose unpinned Actions stay FLOATING. Default `[]` matches nothing, preserving today's pin-everything behaviour.
+
 **Scan surface.** Parse the `uses:` step refs in `.github/workflows/*.yml` + `*.yaml`, and in composite-action `action.yml` / `action.yaml`.
 
 **Target** — `uses: owner/repo@<ref>` and `uses: owner/repo/path@<ref>`. **Skip / normalize first:**
 - Local actions (`uses: ./...`) and Docker actions (`uses: docker://...`) — never touch.
 - A full **40-hex** ref — already pinned, no-op skip.
 - A **short-hex** ref (e.g. `@8ade135`) — already a pin, just abbreviated. Expand it to the full 40-hex commit via `gh api repos/<owner>/<repo>/commits/<ref> -q .sha` (NOT a tag to flag); leave any existing trailing comment as-is.
+- An **allowlisted** `owner/repo` — its `owner/repo` (a `path` subpath ignored for the match) matches ANY glob in `audits.actionPinAllowlist`. Leave the ref UNTOUCHED (intentionally floating) and report it ONCE as an informational note ("floating by allowlist"), NOT a FLAG — never nag it every run.
 
 **Classify the ref BEFORE deciding (tag vs branch).** The commits API returns a sha for a branch too, so namespace-classify first — only a **tag/semver** is ✅ auto; a **branch** is always FLAG (never auto-pin a moving HEAD). Match the **fully-qualified** ref exactly: a bare-ref glob is unreliable — `git ls-remote` suffix-globs, so `<ref>` like `v4` also matches `refs/heads/releases/v4` and would misclassify a tag as a branch.
 
