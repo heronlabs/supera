@@ -169,7 +169,8 @@ gh pr view <N> --json state,mergeable,statusCheckRollup
    - **`MERGED` already** → run the **Closing out a merged PR** flow below (summary + teardown). No merge step.
    - **`CLOSED` (not merged)** → the PR was abandoned; nothing to finish. Report it and stop — do not merge, do not tear down (abandoning is a manual `git worktree remove`, same stance as elsewhere).
    - **`OPEN`, every `statusCheckRollup` check `SUCCESS`/`SKIPPED`, and `mergeable == MERGEABLE`** → announce *"Merging PR #<N> (`<MERGE_METHOD>`)…"*, then `gh pr merge <N> --<MERGE_METHOD>`, then run the **Closing out a merged PR** flow below. If `gh pr merge` is refused by branch protection (required reviews etc.), surface the gh error **verbatim** and stop — do not retry.
-   - **`OPEN` but a check is failing/pending, or `mergeable == CONFLICTING`** → refuse, do **not** merge: surface *"PR #<N> not ready (<reason>) — run `/pr-watch <N>` first."* (in `NONINTERACTIVE` mode post that as the block comment + exit `blocked`, see **Non-interactive mode**).
+   - **`OPEN` and `mergeable == UNKNOWN`** (GitHub hasn't finished computing mergeability yet) → do **not** refuse-as-conflicting and do **not** advise `/pr-watch`: tell the user *"PR #<N> mergeability is still being computed by GitHub — retry `/start finish` in a moment."* and stop (in `NONINTERACTIVE` mode post that as the block comment + exit `blocked`, see **Non-interactive mode**).
+   - **`OPEN` but a check is failing/pending, or `mergeable == CONFLICTING`** (genuine not-ready, distinct from the transient `UNKNOWN` above) → refuse, do **not** merge: surface *"PR #<N> not ready (<reason>) — run `/pr-watch <N>` first."* (in `NONINTERACTIVE` mode post that as the block comment + exit `blocked`, see **Non-interactive mode**).
 
 ---
 
