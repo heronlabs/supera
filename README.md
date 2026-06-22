@@ -186,7 +186,7 @@ Enable them in `.claude/supera.json` (`audits.security`, `audits.freshness.level
 
 ### Scheduling it in CI
 
-`/supera:init` offers to write a daily `/supera:audit` cron into `.github/workflows/supera-audit-daily.yml` (opt-in, only when an auditor is enabled and the repo is GitHub-hosted). It runs the auditors via [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action), loading supera from the public marketplace, and opens an audit PR — add an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret for it. supera's own repo runs the same cron from [`.github/workflows/audit-daily.yml`](.github/workflows/audit-daily.yml), the canonical reference for the emitted one.
+`/supera:init` offers to write a daily `/supera:audit` cron into `.github/workflows/supera-audit-daily.yml` (opt-in, only when an auditor is enabled and the repo is GitHub-hosted). It runs the auditors via [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action), loading supera from the public marketplace, and opens an audit PR. Add an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret for it, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope): the default `GITHUB_TOKEN` lacks `workflow` scope, so with only it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes. supera's own repo runs the same cron from [`.github/workflows/audit-daily.yml`](.github/workflows/audit-daily.yml), the canonical reference for the emitted one.
 
 ## Headless / CI
 

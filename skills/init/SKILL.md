@@ -96,13 +96,19 @@ Apply it like this:
 
 Offer it only when it can do something: at least one auditor is enabled (`audits.security === true` **OR** `audits.freshness.level !== "off"`), and the repo is GitHub-hosted (a `.github/` dir exists, or `origin` is a GitHub remote — `git remote get-url origin` matches `github.com`). Skip silently when no auditor is enabled; for a non-GitHub repo, skip with a one-line note (`"Skipping the audit workflow — no GitHub remote detected."`).
 
-When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a daily `/supera:audit` GitHub Actions cron into `.github/workflows/supera-audit-daily.yml`? It runs the enabled auditors and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret."*
+When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a daily `/supera:audit` GitHub Actions cron into `.github/workflows/supera-audit-daily.yml`? It runs the enabled auditors and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, plus a `SUPERA_AUDIT_TOKEN` (PAT/App token with `workflow` scope) if you want it to push GitHub Actions SHA-pins."*
 
 If declined, do nothing. If accepted, write `.github/workflows/supera-audit-daily.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. The template (supera installs from the public marketplace — those two values identify the plugin itself, not repo-specific config):
 
 ```yaml
-# Prerequisite: set the `ANTHROPIC_API_KEY` repo secret (or swap it for
-# `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+# Prerequisites:
+#   - `ANTHROPIC_API_KEY` repo secret (or swap it for
+#     `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+#   - `SUPERA_AUDIT_TOKEN`: a PAT/App token with `contents` + `pull-requests` +
+#     `workflow` scope, so the auditor can push GitHub Actions SHA-pins. The
+#     default `GITHUB_TOKEN` lacks `workflow` scope and cannot push changes to
+#     `.github/workflows/*` — with only it, the audit still runs and pins
+#     dependencies, but action-pins cannot be pushed.
 name: '[ Audit ] | Daily'
 
 on:
@@ -129,14 +135,14 @@ jobs:
       - uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
           plugin_marketplaces: https://github.com/heronlabs/supera.git
           plugins: supera@supera-marketplace
           prompt: /supera:audit --non-interactive
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
 ```
 
-After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and to commit the workflow alongside `.claude/supera.json`.
+After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow alongside `.claude/supera.json`.
 
 ## 6 — Report
 

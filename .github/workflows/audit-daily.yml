@@ -1,5 +1,11 @@
-# Prerequisite: set the `ANTHROPIC_API_KEY` repo secret (or swap it for
-# `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+# Prerequisites:
+#   - `ANTHROPIC_API_KEY` repo secret (or swap it for
+#     `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+#   - `SUPERA_AUDIT_TOKEN`: a PAT/App token with `contents` + `pull-requests` +
+#     `workflow` scope, so the auditor can push GitHub Actions SHA-pins. The
+#     default `GITHUB_TOKEN` lacks `workflow` scope and cannot push changes to
+#     `.github/workflows/*` — with only it, the audit still runs and pins
+#     dependencies, but action-pins cannot be pushed.
 name: '[ Audit ] | Daily'
 
 on:
@@ -26,7 +32,7 @@ jobs:
       - uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
           plugin_marketplaces: https://github.com/heronlabs/supera.git
           plugins: supera@supera-marketplace
           prompt: /supera:audit --non-interactive

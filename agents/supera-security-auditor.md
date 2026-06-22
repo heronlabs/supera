@@ -86,12 +86,13 @@ A mutable `uses:` ref (tag, semver, or branch) lets an upstream owner — or any
 - A full **40-hex** ref — already pinned, no-op skip.
 - A **short-hex** ref (e.g. `@8ade135`) — already a pin, just abbreviated. Expand it to the full 40-hex commit via `gh api repos/<owner>/<repo>/commits/<ref> -q .sha` (NOT a tag to flag); leave any existing trailing comment as-is.
 
-**Classify the ref BEFORE deciding (tag vs branch).** The commits API returns a sha for a branch too, so namespace-classify first — only a **tag/semver** is ✅ auto; a **branch** is always FLAG (never auto-pin a moving HEAD):
+**Classify the ref BEFORE deciding (tag vs branch).** The commits API returns a sha for a branch too, so namespace-classify first — only a **tag/semver** is ✅ auto; a **branch** is always FLAG (never auto-pin a moving HEAD). Match the **fully-qualified** ref exactly: a bare-ref glob is unreliable — `git ls-remote` suffix-globs, so `<ref>` like `v4` also matches `refs/heads/releases/v4` and would misclassify a tag as a branch.
 
 ```bash
-git ls-remote --tags  https://github.com/<owner>/<repo> <ref>          # match ⇒ tag → ✅ auto-pin
-git ls-remote --heads https://github.com/<owner>/<repo> <ref>          # match ⇒ branch → FLAG
-# or: gh api repos/<owner>/<repo>/git/matching-refs/tags/<ref>
+gh api repos/<owner>/<repo>/git/ref/tags/<ref>                          # 200 ⇒ tag → ✅ auto-pin; 404 ⇒ not a tag
+# or exact fully-qualified match (the returned refname must equal the qualified ref):
+git ls-remote --tags  https://github.com/<owner>/<repo> "refs/tags/<ref>"     # exact refs/tags/<ref> ⇒ tag
+git ls-remote --heads https://github.com/<owner>/<repo> "refs/heads/<ref>"    # exact refs/heads/<ref> ⇒ branch → FLAG
 ```
 
 **Auto-apply (✅) — tag/semver only.** Resolve the tag to its **commit** SHA, then rewrite to `uses: owner/repo/<path?>@<40-hex-commit-sha> # <ref>` — keep the full `owner/repo/path`, never collapse the subpath. If the line **already has** a trailing `# …` comment, **replace** it with the single `# <ref>` pin comment — never append a second `#`. Resolve via:
