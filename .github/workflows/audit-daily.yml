@@ -1,0 +1,33 @@
+# Prerequisite: set the `ANTHROPIC_API_KEY` repo secret (or swap it for
+# `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+name: '[ Audit ] | Daily'
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: 'Dependency audit'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          plugin_marketplaces: https://github.com/heronlabs/supera.git
+          plugins: supera@supera-marketplace
+          prompt: /supera:audit --non-interactive
+          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'

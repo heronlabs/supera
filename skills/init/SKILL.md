@@ -90,9 +90,53 @@ Apply it like this:
 - **`CLAUDE.md` exists without the markers** → show the block and confirm (same courtesy as overwriting `supera.json`), then **append** it after the existing content — never modify what is already there.
 - **Markers already present** → replace only the text between `<!-- supera:guardrails -->` and `<!-- /supera:guardrails -->`; leave everything else untouched (idempotent re-init).
 
-## 5 — Local-first note
+## 5 — Offer the daily audit workflow
 
-/pr-watch and /start run locally (interactive, or `--non-interactive`); CI emission is deferred until tested. supera writes no `.github/workflows/*.yml`.
+`/pr-watch` and `/start` run locally (interactive, or `--non-interactive`) — supera emits **no** workflow for those. The one workflow supera offers is a scheduled `/supera:audit` cron, since recurring dependency hygiene is the natural fit for CI.
+
+Offer it only when it can do something: at least one auditor is enabled (`audits.security === true` **OR** `audits.freshness.level !== "off"`), and the repo is GitHub-hosted (a `.github/` dir exists, or `origin` is a GitHub remote — `git remote get-url origin` matches `github.com`). Skip silently when no auditor is enabled; for a non-GitHub repo, skip with a one-line note (`"Skipping the audit workflow — no GitHub remote detected."`).
+
+When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a daily `/supera:audit` GitHub Actions cron into `.github/workflows/supera-audit-daily.yml`? It runs the enabled auditors and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret."*
+
+If declined, do nothing. If accepted, write `.github/workflows/supera-audit-daily.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. The template (supera installs from the public marketplace — those two values identify the plugin itself, not repo-specific config):
+
+```yaml
+# Prerequisite: set the `ANTHROPIC_API_KEY` repo secret (or swap it for
+# `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+name: '[ Audit ] | Daily'
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: 'Dependency audit'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          plugin_marketplaces: https://github.com/heronlabs/supera.git
+          plugins: supera@supera-marketplace
+          prompt: /supera:audit --non-interactive
+          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
+```
+
+After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and to commit the workflow alongside `.claude/supera.json`.
 
 ## 6 — Report
 
@@ -113,3 +157,8 @@ Print the written path and a compact summary of every field. Tell the user:
 **Writing the config**
 - Detect the default branch; never hardcode `main`.
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
+
+**Audit workflow (step 5)**
+- Opt-in only — never write it unprompted, and only offer it when an auditor is enabled and the repo is GitHub-hosted.
+- Idempotent — never clobber an existing `.github/workflows/supera-audit-daily.yml`.
+- The workflow's existence is the state; no `.claude/supera.json` field tracks it.

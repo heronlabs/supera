@@ -61,10 +61,10 @@ cd <WT_DIR>/<auditBranch> && <CONFIG.worktree.postCreate ?? CONFIG.verify.instal
 
 Run in **this order** so a CVE override isn't churned by a freshness bump and the freshness auditor sees the post-override lockfile. Each auditor runs **exactly once**.
 
-**a. Security** *(only if `AUDIT_SEC`)* — dispatch the `supera-security-auditor` agent on the worktree (one pass). It applies safe, gated CVE remediations (in-range upgrade, scoped override, remove-stale-override), **leaving the edits in the tree**, and reports the rest. On return, if the tree is dirty, `/audit` stages and commits them as **one** commit (only if something is staged):
+**a. Security** *(only if `AUDIT_SEC`)* — dispatch the `supera-security-auditor` agent on the worktree (one pass). It applies safe, gated remediations — CVE fixes (in-range upgrade, scoped override, remove-stale-override) **and** action-pins (unpinned GitHub Actions pinned to their commit SHA) — **leaving the edits in the tree**, and reports the rest. On return, if the tree is dirty, `/audit` folds them all into **one** commit (only if something is staged):
 ```bash
 git -C <WT_DIR>/<auditBranch> add -A
-git -C <WT_DIR>/<auditBranch> diff --cached --quiet || git -C <WT_DIR>/<auditBranch> commit -m "fix: apply safe CVE overrides"
+git -C <WT_DIR>/<auditBranch> diff --cached --quiet || git -C <WT_DIR>/<auditBranch> commit -m "fix: apply safe supply-chain remediations"
 ```
 Parse its JSON receipt (`schema/audit-receipt.schema.json`): `applied[]` (each omits `commit` — the single commit above carries them), `findings[]`, `verification`, `degraded[]`, `status`.
 
@@ -119,7 +119,7 @@ EOF
 Build the PR body **from both receipts** (no prose relay) — `applied[]` → first section, `findings[]` → second, `degraded[]` → Notes:
 ```
 ## Applied autonomously
-- <applied.verdict> <applied.target> <applied.from→applied.to> — <applied.commit, or "in the CVE-override commit" when omitted> — verified by <applied.verifiedBy>
+- <applied.verdict> <applied.target> <applied.from→applied.to> — <applied.commit, or "in the security remediations commit" when omitted> — verified by <applied.verifiedBy>
 
 ## Needs your call
 - <finding.verdict> <finding.target> @ <finding.file>:<finding.line> — <finding.action>

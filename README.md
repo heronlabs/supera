@@ -95,7 +95,7 @@ This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a P
 
 | Command | What it does | Args |
 |---|---|---|
-| `/supera:init` | Bootstrap a repo: detect the stack, ground install/build/test/lint in the repo's CI (or ask when there's none), and write `.claude/supera.json`. Run once per repo. | *(interactive — detect & confirm)* |
+| `/supera:init` | Bootstrap a repo: detect the stack, ground install/build/test/lint in the repo's CI (or ask when there's none), write `.claude/supera.json`, and offer a daily audit cron workflow. Run once per repo. | *(interactive — detect & confirm)* |
 | `/supera:start` | Full-lifecycle orchestrator: task → worktree → delegate to `supera-engineer` → PR → hand off to `/pr-watch`, and tear down on a merged PR. Idempotent — re-run to resume or close out. | `[task \| branch] [--non-interactive]` · `pause [branch]` |
 | `/supera:pr-watch` | PR babysitter: monitor CI, fix failures via `supera-engineer`, address review threads, run one code-review cycle (plus a security audit when enabled), exit when green, synced, and resolved. | `[PR#] [--non-interactive]` |
 | `/supera:refactor` | Improve existing code in place — dispatch `supera-engineer` against a repo/dir/file. Lightweight: no worktree, no PR, no commit — leaves changes in your working tree to review. | `[path] [directive]` |
@@ -106,7 +106,7 @@ This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a P
 | Agent | Role |
 |---|---|
 | `supera-engineer` | **The single implementer.** Ships a well-scoped change end-to-end in an isolated worktree: orients on the repo's own conventions, writes code **and** tests, and self-verifies (build/test/lint) before returning a structured receipt. Dispatched by `/supera:start` and `/supera:refactor`. |
-| `supera-security-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo): CVEs, missing/stale overrides, typo-squats, provenance gaps, leaked secrets. Picks the *correct* remediation per CVE (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning. Report-only by default; auto-applies only bounded, gated fixes. Gated by `audits.security`. |
+| `supera-security-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo) plus GitHub Actions: CVEs, missing/stale overrides, typo-squats, provenance gaps, unpinned Actions, leaked secrets. Picks the *correct* remediation per CVE (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning, and auto-pins unpinned Actions to their commit SHA. Report-only by default; auto-applies only bounded, gated fixes. Gated by `audits.security`. |
 | `supera-freshness-auditor` | Cross-ecosystem dependency **currency** (not security): direct deps behind their latest in-range version, and version drift across workspace members. Report-only by default; with `audits.freshness.level` it auto-applies only SAFE in-range bumps (cooldown-gated). Gated by `audits.freshness`. |
 
 ---
@@ -180,11 +180,17 @@ Written by `/supera:init` and safe to hand-edit. See [`schema/supera.schema.json
 
 `/supera:audit` is a standalone, recurring-hygiene orchestrator, decoupled from the feature lifecycle. It runs the enabled auditors **security-first** (so a CVE fix isn't churned by a freshness bump), folds their safe auto-fixes into a date-scoped PR (`chore-audit-<date>`), and hands off to `/pr-watch`. Both auditors are **report-only by default** and only ever auto-apply bounded, gated, verified fixes — everything else is surfaced for a human to decide.
 
+The security audit also hardens your CI supply chain: it flags every GitHub Actions `uses:` ref that isn't pinned to a commit SHA and **auto-pins tag/semver refs** (e.g. `actions/checkout@v4` → `actions/checkout@<40-hex-sha> # v4`), preserving the original ref as a trailing comment. Branch refs and unresolvable/unreachable ones are flagged, never auto-pinned.
+
 Enable them in `.claude/supera.json` (`audits.security`, `audits.freshness.level`), then run `/supera:audit` on demand, or schedule it in CI.
+
+### Scheduling it in CI
+
+`/supera:init` offers to write a daily `/supera:audit` cron into `.github/workflows/supera-audit-daily.yml` (opt-in, only when an auditor is enabled and the repo is GitHub-hosted). It runs the auditors via [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action), loading supera from the public marketplace, and opens an audit PR — add an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret for it. supera's own repo runs the same cron from [`.github/workflows/audit-daily.yml`](.github/workflows/audit-daily.yml), the canonical reference for the emitted one.
 
 ## Headless / CI
 
-Every orchestrator accepts `--non-interactive` for headless runs (e.g. GitHub Actions via `anthropics/claude-code-action`). The pipeline is unchanged; only the prompt points differ — instead of asking a human, an ambiguous fork surfaces as a PR comment and the run exits `blocked`. A weekly `/supera:audit --non-interactive` cron is a common setup.
+Every orchestrator accepts `--non-interactive` for headless runs (e.g. GitHub Actions via `anthropics/claude-code-action`). The pipeline is unchanged; only the prompt points differ — instead of asking a human, an ambiguous fork surfaces as a PR comment and the run exits `blocked`. A daily `/supera:audit --non-interactive` cron is the common setup — `/supera:init` offers to emit it for you (see [Scheduling it in CI](#scheduling-it-in-ci)).
 
 ---
 
