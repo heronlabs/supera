@@ -81,21 +81,34 @@ A mutable `uses:` ref (tag, semver, or branch) lets an upstream owner — or any
 
 **Scan surface.** Parse the `uses:` step refs in `.github/workflows/*.yml` + `*.yaml`, and in composite-action `action.yml` / `action.yaml`.
 
-**Target** — `uses: owner/repo@<ref>` and `uses: owner/repo/path@<ref>` where `<ref>` is NOT already a 40-char hex SHA. **Skip** (never touch): local actions (`uses: ./...`), Docker actions (`uses: docker://...`), and refs already pinned to a 40-hex SHA (no-op).
+**Target** — `uses: owner/repo@<ref>` and `uses: owner/repo/path@<ref>`. **Skip / normalize first:**
+- Local actions (`uses: ./...`) and Docker actions (`uses: docker://...`) — never touch.
+- A full **40-hex** ref — already pinned, no-op skip.
+- A **short-hex** ref (e.g. `@8ade135`) — already a pin, just abbreviated. Expand it to the full 40-hex commit via `gh api repos/<owner>/<repo>/commits/<ref> -q .sha` (NOT a tag to flag); leave any existing trailing comment as-is.
 
-**Auto-apply (✅) — tag/semver ref only.** Resolve the ref to its commit SHA, then rewrite the line to `uses: owner/repo@<40-hex-sha> # <original-ref>` — preserve the original ref as a trailing comment so the pin stays human-readable and updatable. Resolve via:
+**Classify the ref BEFORE deciding (tag vs branch).** The commits API returns a sha for a branch too, so namespace-classify first — only a **tag/semver** is ✅ auto; a **branch** is always FLAG (never auto-pin a moving HEAD):
 
 ```bash
-gh api repos/<owner>/<repo>/commits/<ref> -q .sha                       # preferred
-git ls-remote https://github.com/<owner>/<repo> <ref>                    # fallback; resolve an annotated tag (^{}) to its commit
+git ls-remote --tags  https://github.com/<owner>/<repo> <ref>          # match ⇒ tag → ✅ auto-pin
+git ls-remote --heads https://github.com/<owner>/<repo> <ref>          # match ⇒ branch → FLAG
+# or: gh api repos/<owner>/<repo>/git/matching-refs/tags/<ref>
+```
+
+**Auto-apply (✅) — tag/semver only.** Resolve the tag to its **commit** SHA, then rewrite to `uses: owner/repo/<path?>@<40-hex-commit-sha> # <ref>` — keep the full `owner/repo/path`, never collapse the subpath. If the line **already has** a trailing `# …` comment, **replace** it with the single `# <ref>` pin comment — never append a second `#`. Resolve via:
+
+```bash
+gh api repos/<owner>/<repo>/commits/<ref> -q .sha                      # preferred; returns the COMMIT sha even for an annotated tag
+git ls-remote https://github.com/<owner>/<repo> "<ref>^{}" "<ref>" | awk '{print $1}' | head -1   # fallback; ^{} derefs an annotated tag to its commit, awk takes the sha
 ```
 
 **Action-pin gate — ALL must pass, else revert that edit and FLAG.** This gate is distinct from §3 (no install/build/test — a SHA-pin runs no package code). A single miss → revert that one edit to the tree exactly as found and downgrade it to FLAG (atomic-revert, same discipline as §3):
 
-- [ ] **Single, non-degraded resolution.** The ref resolves to exactly one 40-hex SHA via a non-degraded probe (network ok, repo public/reachable). A failed/ambiguous probe ⇒ no pin (record in `degraded[]`).
-- [ ] **Still valid YAML.** The file still parses as valid YAML after the edit.
-- [ ] **One action per change.** Each edit pins exactly one `uses:` line.
-- [ ] **Original ref preserved.** The original ref is kept as a trailing `# <ref>` comment.
+- [ ] **Resolves to one 40-hex value** via a non-degraded probe (network ok, repo public/reachable). A failed/ambiguous probe ⇒ no pin (record in `degraded[]`).
+- [ ] **It is a commit object**, not a tag/tree object — confirm via the commits API (which returns the commit sha) or `<ref>^{}` deref. A bare annotated-tag sha must NOT be written.
+- [ ] **It is a tag/semver, not a branch** (classified above).
+- [ ] **Still valid YAML** after the edit.
+- [ ] **One action per change** — each edit pins exactly one `uses:` line.
+- [ ] **Original ref preserved** as the single trailing `# <ref>` comment.
 
 **Always FLAG (never auto-pin):** a **branch** ref (a moving target — recommend pinning, but never auto-pin a branch HEAD); an **unresolvable / deleted** tag; a **private / unreachable** repo (record as `degraded[]`); anything ambiguous.
 
@@ -111,7 +124,7 @@ Beyond CVEs (§2–§4) and unpinned Actions (§5), audit these classes and repo
 
 Return the receipt per `guidelines/auditor-base.md` (single JSON validating `schema/audit-receipt.schema.json`, no prose). Set `auditor: "security"` and map your work:
 
-- **`applied[]`** — every change you auto-remediated. For a CVE: verdict `upgrade` / `pin` / `remove-pin`, with `target`, `from`/`to`, and the `verifiedBy` check. For an action-pin (§5): verdict `pin-action`, `target` = `owner/repo`, `from` = `<ref>`, `to` = `<sha>`, `verifiedBy` = `sha-resolution`. **Omit `commit`** — you leave the edits uncommitted and `/audit` makes the single commit.
+- **`applied[]`** — every change you auto-remediated. For a CVE: verdict `upgrade` / `pin` / `remove-pin`, with `target`, `from`/`to`, and the `verifiedBy` check. For an action-pin (§5): verdict `pin-action`, `target` = the full `owner/repo` or `owner/repo/path` (keep the subpath), `from` = `<ref>`, `to` = `<sha>`, `verifiedBy` = `sha-resolution`. **Omit `commit`** — you leave the edits uncommitted and `/audit` makes the single commit.
 - **`findings[]`** — everything that needs a human, **most-severe first** (unfixable/flagged CVEs → leaked secrets → typo-squat/provenance → unpinnable Action): verdict `flag` or `hold`, each with `target`, `file`/`line` when locatable, and the recommended `action`.
 - **`verification`** — the CVE gate run (install/build/test mirroring CI) that proved the applied CVE set green. (Action-pins carry their proof in `applied[].verifiedBy`, not here.)
 - **`degraded[]`** — any degraded probe (missing native audit, network failure, unresolvable/unreachable action ref) that blocked an auto-apply.
