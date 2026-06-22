@@ -6,6 +6,8 @@ allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI
 
 Run this repo's enabled dependency auditors against a target branch (default the base) **without** needing `/start` first. `/audit` cuts its own worktree off the target, lets the auditor **agents** apply their bounded safe auto-fixes (CVE overrides, in-range currency bumps), opens a PR carrying those fixes, and hands off to `/pr-watch` to drive it green. Audits are recurring hygiene, not backlog work, and `--non-interactive` makes it CI-cron-ready. It **never** commits to base: `/audit` always ships via PR on its own branch, and it never edits dependency manifests/lockfiles itself — the auditor agents are the implementers, exactly as `/pr-watch` step 6c dispatches them.
 
+`/audit` fills the gaps the mechanical layer can't: Dependabot owns the deterministic version bumps and SHA-currency, while the auditors reason about scoped transitive overrides, CVE verdicts, and the initial tag→SHA pin (the division of labor is canonical in `guidelines/auditor-base.md`).
+
 ## 0 — Load config
 
 Read `.claude/supera.json` at the repo root into `CONFIG`.
