@@ -97,7 +97,7 @@ Save the PR number.
 
 Invoke `/pr-watch <PR-number>` — append `--non-interactive` when `NONINTERACTIVE` is set (so the headless run stays prompt-free through the PR cycle).
 
-Announce: *"PR #<N> is open. Handing off to `/pr-watch <PR-number>`. Once it reports the PR merged, re-run `/start <slug>` to close out and clean up."*
+Announce: *"PR #<N> is open. Handing off to `/pr-watch <PR-number>`. On merge, `/pr-watch` auto-hands-off to `/start <slug>` to close out and tear down — no manual re-run needed (a manual `/start <slug>` still works as a fallback to close out later)."*
 
 ---
 
@@ -163,10 +163,11 @@ Reached from step 1 when `$ARGUMENTS` begins with `finish`. Merge a ready PR and
 1. **Resolve `BRANCH`/`PR`.** Parse the rest of `$ARGUMENTS` (a branch, or empty) the same way the **Pause checkpoint** flow resolves its WIP: an arg → that branch; empty → the current branch or the single worktree under `WT_DIR` (ambiguous → list and ask; in `NONINTERACTIVE` mode there's a PR to comment on only if one exists — if a PR exists post the block comment, else print the candidates and exit `blocked`, see **Non-interactive mode**). Then find the PR for the branch: `gh pr list --head <BRANCH> --state all --json number,state`. **No PR for the branch** → nothing to finish; report it and stop.
 2. **Read the PR state:**
 ```bash
-gh pr view <N> --json state,mergeable,statusCheckRollup,reviewDecision
+gh pr view <N> --json state,mergeable,statusCheckRollup
 ```
 3. **Route on `state`:**
    - **`MERGED` already** → run the **Closing out a merged PR** flow below (summary + teardown). No merge step.
+   - **`CLOSED` (not merged)** → the PR was abandoned; nothing to finish. Report it and stop — do not merge, do not tear down (abandoning is a manual `git worktree remove`, same stance as elsewhere).
    - **`OPEN`, every `statusCheckRollup` check `SUCCESS`/`SKIPPED`, and `mergeable == MERGEABLE`** → announce *"Merging PR #<N> (`<MERGE_METHOD>`)…"*, then `gh pr merge <N> --<MERGE_METHOD>`, then run the **Closing out a merged PR** flow below. If `gh pr merge` is refused by branch protection (required reviews etc.), surface the gh error **verbatim** and stop — do not retry.
    - **`OPEN` but a check is failing/pending, or `mergeable == CONFLICTING`** → refuse, do **not** merge: surface *"PR #<N> not ready (<reason>) — run `/pr-watch <N>` first."* (in `NONINTERACTIVE` mode post that as the block comment + exit `blocked`, see **Non-interactive mode**).
 

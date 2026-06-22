@@ -85,7 +85,7 @@ Then, in Claude Code:
 /supera:start "add retry on timeout"
 ```
 
-This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a PR, and hands off to `/supera:pr-watch` to drive CI green. It runs a full implement → test → PR → CI cycle, so it takes as long as your build and tests do — the fast part is *time to PR opened*, not merged. When the PR merges, re-run `/supera:start <branch>` to record what shipped and tear the worktree down.
+This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a PR, and hands off to `/supera:pr-watch` to drive CI green. It runs a full implement → test → PR → CI cycle, so it takes as long as your build and tests do — the fast part is *time to PR opened*, not merged. When the PR merges, `/supera:pr-watch` auto-hands-off to `/supera:start` to record what shipped and tear the worktree down — no manual step.
 
 > If `/supera:start` hits an ambiguity it can't safely resolve, it posts a `🚫 supera blocked:` comment on the PR — read it, address the cause, and re-run `/supera:start <branch>`.
 
@@ -96,7 +96,7 @@ This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a P
 | Command | What it does | Args |
 |---|---|---|
 | `/supera:init` | Bootstrap a repo: detect the stack, ground install/build/test/lint in the repo's CI (or ask when there's none), write `.claude/supera.json`, and offer a daily audit cron workflow. Run once per repo. | *(interactive — detect & confirm)* |
-| `/supera:start` | Full-lifecycle orchestrator: task → worktree → delegate to `supera-engineer` → PR → hand off to `/pr-watch`, and tear down on a merged PR. Idempotent — re-run to resume or close out. | `[task \| branch] [--non-interactive]` · `pause [branch]` |
+| `/supera:start` | Full-lifecycle orchestrator: task → worktree → delegate to `supera-engineer` → PR → hand off to `/pr-watch`, and tear down on a merged PR. Idempotent — re-run to resume or close out; `finish` merges a green PR then closes out. | `[task \| branch] [--non-interactive]` · `pause [branch]` · `finish [branch]` |
 | `/supera:pr-watch` | PR babysitter: monitor CI, fix failures via `supera-engineer`, address review threads, run one code-review cycle (plus a security audit when enabled), exit when green, synced, and resolved. | `[PR#] [--non-interactive]` |
 | `/supera:refactor` | Improve existing code in place — dispatch `supera-engineer` against a repo/dir/file. Lightweight: no worktree, no PR, no commit — leaves changes in your working tree to review. | `[path] [directive]` |
 | `/supera:audit` | Standalone dependency-audit orchestrator: cut a worktree, run the enabled auditors (security CVE overrides, then freshness bumps), carry safe auto-fixes into a PR, hand off to `/pr-watch`. CI-cron-ready. | `[branch] [--non-interactive] [--security-only] [--freshness-only]` |
@@ -134,7 +134,7 @@ Because the phase is read fresh from git + GitHub on every run, supera survives 
 
 ### The round-trip
 
-`/supera:start` opens the PR and hands to `/supera:pr-watch`, which drives the PR green — delegating every fix back to `supera-engineer`, resolving review threads and conflicts, running one code-review cycle, and (optionally) a security audit and a merge-readiness consensus vote. It **never** closes out a merged PR itself: on merge it hands back to `/supera:start <branch>`, which records what shipped and cleans up. `/supera:pr-watch` is the only piece living outside the ladder — `/supera:start` routes to it, never duplicates it.
+`/supera:start` opens the PR and hands to `/supera:pr-watch`, which drives the PR green — delegating every fix back to `supera-engineer`, resolving review threads and conflicts, running one code-review cycle, and (optionally) a security audit and a merge-readiness consensus vote. It **never** closes out a merged PR itself: on merge it auto-invokes `/supera:start <branch>` (or `/supera:audit` for an audit PR), which records what shipped and cleans up. `/supera:pr-watch` is the only piece living outside the ladder — `/supera:start` routes to it, never duplicates it.
 
 ### Escalation lives on the PR
 
