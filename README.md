@@ -134,7 +134,7 @@ Because the phase is read fresh from git + GitHub on every run, supera survives 
 
 ### The round-trip
 
-`/supera:start` opens the PR and hands to `/supera:pr-watch`, which drives the PR green — delegating every fix back to `supera-engineer`, resolving review threads and conflicts, running one code-review cycle, and (optionally) a security audit and a merge-readiness consensus vote. It **never** closes out a merged PR itself: on merge it auto-invokes `/supera:start <branch>` (or `/supera:audit` for an audit PR), which records what shipped and cleans up. `/supera:pr-watch` is the only piece living outside the ladder — `/supera:start` routes to it, never duplicates it.
+`/supera:start` opens the PR and hands to `/supera:pr-watch`, which drives the PR green — delegating every fix back to `supera-engineer`, resolving review threads and conflicts, running one code-review cycle, and (optionally) a security audit and a merge-readiness consensus vote. It **never** closes out a merged PR itself: on merge it auto-hands-off the normal PR to `/supera:start <branch>`, which records what shipped and cleans up; for a `supera:audit` PR it announces a `/supera:audit` re-run instead of auto-invoking (since `/supera:audit` is date-scoped). `/supera:pr-watch` is the only piece living outside the ladder — `/supera:start` routes to it, never duplicates it.
 
 ### Escalation lives on the PR
 
