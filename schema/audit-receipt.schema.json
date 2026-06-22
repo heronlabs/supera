@@ -63,8 +63,8 @@
         "properties": {
           "verdict": {
             "type": "string",
-            "enum": ["hold", "flag"],
-            "description": "hold = latest-in-range is known-bad (yanked / regressed / inside cooldown). flag = needs a human decision (major, unverifiable, coupled set, or an unfixable CVE)."
+            "enum": ["recommend", "hold", "flag"],
+            "description": "recommend = a non-blocking advisory / informational note that needs no action (e.g. an allowlisted GitHub Action left intentionally floating). hold = latest-in-range is known-bad (yanked / regressed). flag = needs a human decision (major, unverifiable, coupled set, or an unfixable CVE)."
           },
           "target": {
             "type": "string",
