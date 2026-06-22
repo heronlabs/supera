@@ -1,6 +1,6 @@
 # Commit conventions
 
-Canonical commit hygiene for **every** supera committer — the engineer, the auditors, and the skills that make their own commits. Referenced, not restated: if you commit, follow this.
+Canonical commit hygiene for **every** supera committer — the engineer, the auditor, and the skills that make their own commits. Referenced, not restated: if you commit, follow this.
 
 ## The subject
 
@@ -21,6 +21,5 @@ The rules above hold for all committers; these are the only per-actor specifics:
 |---|---|
 | `supera-engineer` | the application change on the feature branch (code **and** tests). |
 | `/start` | only its `wip:` pause checkpoint. |
-| `supera-freshness-auditor` | one atomic `chore:` commit **per package** bumped — never a mixed lockfile diff. |
 | `supera-security-auditor` | **nothing** — leaves its edits uncommitted; `/audit` makes the single commit. |
 | `/audit` | the single commit folding the security auditor's applied edits. |

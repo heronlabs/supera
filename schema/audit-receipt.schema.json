@@ -2,24 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/heronlabs/supera/schema/audit-receipt.schema.json",
   "title": "supera auditor receipt",
-  "description": "The structured verdict an auditor agent (supera-security-auditor / supera-freshness-auditor) emits as its final message. Consumed by /audit, which renders the PR body and the headless signal deterministically instead of scraping the prose two-list report. One receipt per auditor; /audit merges the two.",
+  "description": "The structured verdict the supera-security-auditor agent emits as its final message. Consumed by /audit, which renders the PR body and the headless signal deterministically instead of scraping the prose two-list report.",
   "type": "object",
   "required": ["auditor", "status"],
   "additionalProperties": false,
   "properties": {
     "auditor": {
       "type": "string",
-      "enum": ["security", "freshness"],
+      "enum": ["security"],
       "description": "Which auditor produced this receipt."
     },
     "status": {
       "type": "string",
       "enum": ["ok", "needs-review", "blocked"],
-      "description": "Machine-readable verdict /audit reads first. 'ok' = ran clean, every safe fix applied (or nothing found), nothing needs a human. 'needs-review' = advisory findings (recommend/hold/flag) a human should see; non-blocking, the PR still opens. 'blocked' = could not audit at all (no lockfile, manager/probe missing) — the run is incomplete."
+      "description": "Machine-readable verdict /audit reads first. 'ok' = ran clean, every safe fix applied (or nothing found), nothing needs a human. 'needs-review' = advisory findings (hold/flag) a human should see; non-blocking, the PR still opens. 'blocked' = could not audit at all (no lockfile, manager/probe missing) — the run is incomplete."
     },
     "applied": {
       "type": "array",
-      "description": "Safe fixes auto-applied this run. Empty when none. security leaves its edits uncommitted (so omits `commit` — /audit makes the single commit); freshness commits each as its own atomic per-package commit and fills `commit`.",
+      "description": "Safe fixes auto-applied this run. Empty when none. security leaves its edits uncommitted (so omits `commit` — /audit makes the single commit).",
       "items": {
         "type": "object",
         "required": ["verdict", "target"],
@@ -28,7 +28,7 @@
           "verdict": {
             "type": "string",
             "enum": ["upgrade", "pin", "remove-pin", "pin-action"],
-            "description": "The applied remediation. security: upgrade (in-range) / pin (scoped override) / remove-pin (stale override) / pin-action (pin an unpinned GitHub Action to its commit SHA). freshness: upgrade only."
+            "description": "The applied remediation. security: upgrade (in-range) / pin (scoped override) / remove-pin (stale override) / pin-action (pin an unpinned GitHub Action to its commit SHA)."
           },
           "target": {
             "type": "string",
@@ -44,7 +44,7 @@
           },
           "commit": {
             "type": "string",
-            "description": "The atomic commit SHA carrying this single change. Filled by freshness; omitted by security (its edits ride /audit's single CVE-override commit)."
+            "description": "The atomic commit SHA carrying this single change. Omitted by security (its edits ride /audit's single CVE-override commit)."
           },
           "verifiedBy": {
             "type": "string",
@@ -63,8 +63,8 @@
         "properties": {
           "verdict": {
             "type": "string",
-            "enum": ["recommend", "hold", "flag"],
-            "description": "recommend = a safe but out-of-level bump to consider. hold = latest-in-range is known-bad (yanked / regressed / inside cooldown). flag = needs a human decision (major, unverifiable, coupled set, or an unfixable CVE)."
+            "enum": ["hold", "flag"],
+            "description": "hold = latest-in-range is known-bad (yanked / regressed / inside cooldown). flag = needs a human decision (major, unverifiable, coupled set, or an unfixable CVE)."
           },
           "target": {
             "type": "string",

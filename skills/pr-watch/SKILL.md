@@ -72,10 +72,11 @@ BASE=${CONFIG.pr.base:-$(gh pr view $PR --json baseRefName -q .baseRefName)}
 gh pr view $PR --json number,title,state,mergeable,reviewThreads,statusCheckRollup,headRefName,baseRefName
 ```
 Parse `state`:
-- `MERGED` → **do not close here** — the originating skill owns the close, teardown, and summary; pr-watch never tears down itself. Detect the owner by label:
+- `MERGED` → **do not close here** — the originating skill owns the close, teardown, and summary; pr-watch never tears down itself. Detect the owner by author, then label:
 ```bash
-gh pr view $PR --json labels -q '.labels[].name'
+gh pr view $PR --json author,labels -q '{author: .author.login, labels: [.labels[].name]}'
 ```
+   - Author is `dependabot[bot]` → **announce only, do not hand off.** A Dependabot PR has no supera worktree/branch to close out, so `/start` has nothing to do. Announce: *"PR #<N> (Dependabot) is merged."* Then exit. (In `NONINTERACTIVE` mode the announcement is the only surface.)
    - Carries the `supera:audit` label → **announce only, do not auto-invoke.** `/audit` is date-scoped and self-orients on re-run, so pr-watch must not auto-invoke it — auto-invoking on a cross-day merge would start a spurious fresh audit instead of reclaiming. Announce: *"PR #<N> (audit) is merged — re-run `/audit` to reclaim its `chore-audit-<date>` worktree."* Then exit. (Nothing to invoke here — it's announce-and-exit; in `NONINTERACTIVE` mode the announcement is the only surface.)
    - Otherwise → auto-invoke `/start <branch>` (routes to the `merged` phase → close-out + teardown). Preserve `--non-interactive` on the hand-off when set. Announce: *"PR #<N> is merged — handing off to `/start <branch>` to close out and clean up."* Then invoke `/start` and exit.
 - `CLOSED` (not merged) → surface that the PR was closed without merging; announce; exit. (Tearing down an abandoned branch is a manual `git worktree remove`.)
@@ -108,6 +109,8 @@ Classify and fix:
 | Migration / runtime error | Delegate to `supera-engineer` with the full stack trace. |
 | Clearly transient (network, runner OOM) | Note it; a re-run is acceptable here only. |
 | Unknown | Show the user; ask for guidance (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**). |
+
+On a **Dependabot (non-supera-authored) PR** — the author is `dependabot[bot]`, e.g. driven here by the `supera-dependabot-pr-watch.yml` workflow on a CI failure — the fix target is: **make the code/tests pass with the bumped version**. Delegate that to `supera-engineer` (adapt call sites, types, and tests to the new version) exactly as a normal CI failure; if the bump genuinely can't be accommodated in-scope, surface it / **block** (terminal block signal, §0a) rather than reverting the bump.
 
 Compute the failure signature `SIG` (failing job name + first error line). Dispatch `supera-engineer` with the exact log excerpt; wait for its JSON receipt (`schema/receipt.schema.json`) and branch on `receipt.status` — `ok` → record the attempt (`STATE.attempts += 1`, `STATE.lastFailure = SIG`), persist the marker (step 0a), push the fix; `needs-review`/`blocked` → surface `receipt.implemented` and any FAIL in `receipt.verification`, don't push a red fix (in `NONINTERACTIVE` mode, **block** instead — see **Non-interactive mode**). **Track attempts via the persisted marker so a fresh CI invocation resumes the count:** if this `SIG` equals `STATE.lastFailure` and `STATE.attempts >= 2` (the same failure has already survived 2 fix attempts): post the **terminal block signal** (§0a) with the failing-job detail, show the full log, and exit the turn (interactive: also ask for guidance).
 
@@ -220,7 +223,7 @@ For any test case carrying **more than one assertion** → delegate to `supera-e
 
 Skip this entire subsection when `AUDIT` is false. When true, dispatch the `supera-security-auditor` agent on the worktree (one pass). It detects the manager, runs the native audit, and is report-only **except** safe, mechanical supply-chain remediations it applies autonomously — CVE overrides **and** GitHub Actions SHA-pins. On return:
 - **Safe remediations applied** (lockfile / `package.json` / `Cargo.toml` / `.github/workflows/*` — any tracked edit the auditor left) → these ride out with the push below; reply on the PR referencing the commit: `gh pr review $PR --comment --body "Security: applied safe supply-chain remediations in <commit-sha>: <one-line summary>"`.
-- **Report-only findings** (unfixable CVEs, leaked secrets, drift, freshness, typo-squat/provenance) → do **not** auto-fix. Surface the prioritized report to the user. A leaked-secret or critical-CVE finding is a **merge blocker** — flag it loudly and do not present the PR as ready until the user clears it (in `NONINTERACTIVE` mode, a merge-blocker finding **blocks** — see **Non-interactive mode**).
+- **Report-only findings** (unfixable CVEs, leaked secrets, drift, typo-squat/provenance) → do **not** auto-fix. Surface the prioritized report to the user. A leaked-secret or critical-CVE finding is a **merge blocker** — flag it loudly and do not present the PR as ready until the user clears it (in `NONINTERACTIVE` mode, a merge-blocker finding **blocks** — see **Non-interactive mode**).
 - Never block on a degraded probe (missing `cargo-audit`, network failure) — the auditor notes the gap and continues; relay it.
 
 ### 6d — Secret / deny-path gate
@@ -271,7 +274,7 @@ gh pr comment $PR --body "🚫 supera /pr-watch blocked (non-interactive): <what
 
 - Read `.claude/supera.json` for the commands used to reproduce failures — don't assume pnpm/npm.
 - **Don't spin-poll** — at every wait, `ScheduleWakeup` and exit the turn; preserve `--reviewed` and `--non-interactive` on every reschedule.
-- On `MERGED`, auto-hand-off the normal case to `/start <branch>`; for a `supera:audit` PR, announce a `/audit` re-run (do **not** auto-invoke — `/audit` is date-scoped and would start a spurious fresh audit) — never close out or remove the worktree here; the owning skill owns the terminal step.
+- On `MERGED`, auto-hand-off the normal case to `/start <branch>`; for a `supera:audit` PR, announce a `/audit` re-run (do **not** auto-invoke — `/audit` is date-scoped and would start a spurious fresh audit); for a `dependabot[bot]` PR, announce merged and exit (no supera worktree/branch to close out) — never close out or remove the worktree here; the owning skill owns the terminal step.
 - Exit and announce when the PR is green, synced, and all threads resolved — merging is the user's decision.
 - Never push `--force` — only `--force-with-lease` after a rebase.
 - A **terminal block** posts the `<!-- supera:blocked -->` PR comment and stops (§0a) — that comment is the escalation signal; supera has no tracker.

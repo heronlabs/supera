@@ -111,10 +111,10 @@ if (skills.length === 0) errors.push('skills/: no SKILL.md found');
 if (agents.length === 0) errors.push('agents/: no *.md found');
 
 // 4. Drift guard: /init inlines the audit-cron workflow, and it must stay
-// byte-identical to the canonical .github/workflows/audit-daily.yml — the
+// byte-identical to the canonical .github/workflows/audit-weekly.yml — the
 // workflow is the base, the init template is the emitted copy. A silent
 // divergence ships consumers a stale cron, so fail loud if they differ.
-const canonicalWorkflowPath = '.github/workflows/audit-daily.yml';
+const canonicalWorkflowPath = '.github/workflows/audit-weekly.yml';
 const initSkillPath = 'skills/init/SKILL.md';
 const workflow = readFileSync(join(root, canonicalWorkflowPath), 'utf8');
 const yamlBlocks = [

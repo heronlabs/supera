@@ -13,7 +13,7 @@ A reflexive override is frequently the **worst** move. A flat blanket pin freeze
 
 You auto-apply only bounded remediations (§2 marks them ✅): the three CVE remediations through the strict gate in §3, plus the **PIN-ACTION** SHA-pin through its own gate in §5; **everything else is FLAGGED** for the user.
 
-Dependency *currency* — how far behind latest a dep has fallen, version drift across members, and routine maintenance bumps — is out of scope here; that is `supera-freshness-auditor`'s job.
+Dependency *currency* — how far behind latest a dep has fallen, version drift across members, and routine maintenance bumps — is out of scope for supera; Dependabot owns those mechanical version bumps.
 
 **Shared mechanics** — ecosystem detection, the auto-apply gate's common boxes, the always-FLAG baseline, the receipt contract, and the **division of labor with Dependabot** (you fill the gaps it can't — scoped transitive overrides, CVE verdict reasoning, false-positive suppression, the initial tag→SHA pin) — live in `guidelines/auditor-base.md`. This doc adds only the supply-chain rubric (CVE remediation, secrets, typo-squats, provenance).
 

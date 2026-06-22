@@ -4,7 +4,7 @@ description: "Bootstrap a repo for supera: detect its stack, ground install/buil
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit, AskUserQuestion
 ---
 
-Detect this repository's toolchain and write `.claude/supera.json` so `/start`, `/pr-watch`, and the auditors work here. Mostly automatic — you confirm the commands, and supply them directly when the repo has no CI to read.
+Detect this repository's toolchain and write `.claude/supera.json` so `/start`, `/pr-watch`, and the security auditor work here. Mostly automatic — you confirm the commands, and supply them directly when the repo has no CI to read.
 
 The config contract is `schema/supera.schema.json` in this plugin. Produce config that validates against it.
 
@@ -38,9 +38,7 @@ Ground each command in what the repo actually runs, in this order:
 
 Show the proposed config and ask the user to confirm or tweak the commands (use `AskUserQuestion` if a command is ambiguous).
 
-Then offer the **freshness auditor** opt-in in one `AskUserQuestion` (default = off): dependency-currency auto-bumps run on demand via `/audit`, `/start`, and `/pr-watch`. When chosen, emit `"audits": { "security": <detected>, "freshness": { "level": "patch", "minReleaseAgeDays": 7 } }`; when declined, emit `audits.freshness` inline at its default `{ "level": "off" }` so it stays discoverable and editable.
-
-The `audits.security` auto-detect (lockfile presence) is independent of this prompt — keep it as below. Then write `.claude/supera.json` at the repo root:
+The `audits.security` auto-detect (lockfile presence) is independent of any prompt — keep it as below. Then write `.claude/supera.json` at the repo root:
 
 ```jsonc
 {
@@ -53,10 +51,8 @@ The `audits.security` auto-detect (lockfile presence) is independent of this pro
   },
   "worktree": { "dir": ".worktrees", "base": "<default branch>" },
   "pr": { "base": "<default branch>", "remote": "origin" },
-  // security is auto-detected from lockfile presence. freshness is emitted at its
-  // default "off" so it's discoverable — flip level to "patch"/"minor" to enable
-  // on-demand currency auto-bumps (via /audit, /start, /pr-watch).
-  "audits": { "security": false, "freshness": { "level": "off" } }
+  // security is auto-detected from lockfile presence.
+  "audits": { "security": false }
   // Optional pr-watch rigor surfaces, off by default — uncomment to opt in.
   // "review": { "consensus": { "voters": 1 }, "lenses": [] },   // voters:1 disables the merge-readiness gate (default); lenses [] = no extra PR-review specialists ("silent-failures" | "type-design" | "test-coverage")
   // "security": { "denyPaths": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"] }
@@ -68,7 +64,7 @@ Detect the default branch instead of assuming `main`:
 git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
 
-Set `audits.security` to `true` if the repo has a lockfile, else `false`. Emit `audits.freshness` inline at its default `{ "level": "off" }` when the user declines the freshness opt-in (step-3 prompt), so the field is discoverable and editable; set it to `{ "level": "patch", "minReleaseAgeDays": 7 }` when they accept. Both auditors run on demand via `/audit`, `/start`, and `/pr-watch`.
+Set `audits.security` to `true` if the repo has a lockfile, else `false`. The security auditor runs on demand via `/audit`, `/start`, and `/pr-watch`.
 
 ## 4 — Write the guardrails into the repo's CLAUDE.md
 
@@ -90,20 +86,21 @@ Apply it like this:
 - **`CLAUDE.md` exists without the markers** → show the block and confirm (same courtesy as overwriting `supera.json`), then **append** it after the existing content — never modify what is already there.
 - **Markers already present** → replace only the text between `<!-- supera:guardrails -->` and `<!-- /supera:guardrails -->`; leave everything else untouched (idempotent re-init).
 
-## 5 — Offer the two dependency layers (Dependabot + the audit cron)
+## 5 — Offer the dependency layers (Dependabot + the audit cron + the Dependabot→pr-watch auto-fix)
 
-Dependency hygiene is two layers, and a GitHub-hosted repo should adopt **both** (the division of labor is canonical in `guidelines/auditor-base.md`):
+Dependency hygiene is layered, and a GitHub-hosted repo should adopt them (the division of labor is canonical in `guidelines/auditor-base.md`):
 
 1. **Dependabot — the free, always-on deterministic layer.** Routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net — no LLM, native write to `.github/workflows/*`. Offer this **first**, framed as recommended.
-2. **The `/supera:audit` cron — the reasoning layer.** The one workflow supera offers (since `/pr-watch` and `/start` run locally and emit no workflow). It runs the enabled auditors for what Dependabot can't reason about — scoped transitive overrides, CVE verdicts, the initial tag→SHA pin.
+2. **The `/supera:audit` cron — the reasoning layer.** The workflow supera offers for the audit (since `/pr-watch` and `/start` run locally and emit no workflow). It runs the security auditor for what Dependabot can't reason about — scoped transitive overrides, CVE verdicts, the initial tag→SHA pin.
+3. **The Dependabot→`/supera:pr-watch` auto-fix (5c).** When a Dependabot bump breaks CI, this workflow runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version — only offered when Dependabot was accepted (5a).
 
 ### 5a — Offer Dependabot (recommended)
 
 Offer it only when the repo is GitHub-hosted (a `.github/` dir exists, or `origin` is a GitHub remote — `git remote get-url origin` matches `github.com`); skip silently otherwise.
 
-Ask with `AskUserQuestion` (default = **accept**; recommended): *"Add a `.github/dependabot.yml`? It's the free, always-on layer — Dependabot bumps versions, keeps SHA-pinned Actions fresh, and opens security-update PRs, leaving supera's auditors to reason about overrides and CVE verdicts."*
+Ask with `AskUserQuestion` (default = **accept**; recommended): *"Add a `.github/dependabot.yml`? It's the free, always-on layer — Dependabot bumps versions, keeps SHA-pinned Actions fresh, and opens security-update PRs, leaving supera's security auditor to reason about overrides and CVE verdicts."*
 
-If accepted, write `.github/dependabot.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. Map `package-ecosystem` from the detected `stack`: **pnpm / npm / yarn → `npm`**, **cargo → `cargo`**. Always include the `github-actions` block. The `npm`/`cargo` ecosystem block is **security-updates only** (`open-pull-requests-limit: 0` — no version-bump churn, since the freshness auditor is the reasoning layer); `github-actions` gets full version-updates so already-pinned Actions stay fresh. For a `pnpm` stack (`npm` ecosystem reads `pnpm-lock.yaml`):
+If accepted, write `.github/dependabot.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. Map `package-ecosystem` from the detected `stack`: **pnpm / npm / yarn → `npm`**, **cargo → `cargo`**. Always include the `github-actions` block. Both the `npm`/`cargo` and `github-actions` blocks run **full version-updates**, each grouped so a week's bumps land in one PR — Dependabot now owns the routine version bumps supera no longer reasons about. For a `pnpm` stack (`npm` ecosystem reads `pnpm-lock.yaml`):
 
 ```yaml
 version: 2
@@ -119,18 +116,20 @@ updates:
     directory: '/'
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0 # security-updates only — no version-bump churn
+    groups:
+      npm:
+        patterns: ['*']
 ```
 
-For a `cargo` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: cargo`, keeping the same `directory` / `schedule` / `open-pull-requests-limit: 0` and the unchanged `github-actions` block.
+For a `cargo` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: cargo` and its `npm:` group key for `cargo:`, keeping the same `directory` / `schedule` / `patterns: ['*']` and the unchanged `github-actions` block.
 
-### 5b — Offer the daily audit cron
+### 5b — Offer the weekly audit cron
 
-Offer it only when it can do something: at least one auditor is enabled (`audits.security === true` **OR** `audits.freshness.level !== "off"`), and the repo is GitHub-hosted (same check as 5a). Skip silently when no auditor is enabled; for a non-GitHub repo, skip with a one-line note (`"Skipping the audit workflow — no GitHub remote detected."`).
+Offer it only when it can do something: the security auditor is enabled (`audits.security === true`), and the repo is GitHub-hosted (same check as 5a). Skip silently when the auditor is not enabled; for a non-GitHub repo, skip with a one-line note (`"Skipping the audit workflow — no GitHub remote detected."`).
 
-When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a daily `/supera:audit` GitHub Actions cron into `.github/workflows/supera-audit-daily.yml`? It runs the enabled auditors and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, plus a `SUPERA_AUDIT_TOKEN` (PAT/App token with `workflow` scope) if you want it to push GitHub Actions SHA-pins."*
+When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a weekly `/supera:audit` GitHub Actions cron into `.github/workflows/supera-audit-weekly.yml`? It runs the security auditor and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, plus a `SUPERA_AUDIT_TOKEN` (PAT/App token with `workflow` scope) if you want it to push GitHub Actions SHA-pins."*
 
-If declined, do nothing. If accepted, write `.github/workflows/supera-audit-daily.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. The template (supera installs from the public marketplace — those two values identify the plugin itself, not repo-specific config):
+If declined, do nothing. If accepted, write `.github/workflows/supera-audit-weekly.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. The template (supera installs from the public marketplace — those two values identify the plugin itself, not repo-specific config):
 
 ```yaml
 # Prerequisites:
@@ -141,11 +140,11 @@ If declined, do nothing. If accepted, write `.github/workflows/supera-audit-dail
 #     default `GITHUB_TOKEN` lacks `workflow` scope and cannot push changes to
 #     `.github/workflows/*` — with only it, the audit still runs and pins
 #     dependencies, but action-pins cannot be pushed.
-name: '[ Audit ] | Daily'
+name: '[ Audit ] | Weekly'
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 6 * * 1'
   workflow_dispatch: {}
 
 permissions:
@@ -176,6 +175,84 @@ jobs:
 
 After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow (and any `.github/dependabot.yml` from 5a) alongside `.claude/supera.json`.
 
+### 5c — Offer the Dependabot→pr-watch auto-fix (recommended)
+
+Offer it only when **all three** hold: Dependabot was accepted in **5a**, a CI workflow was **detected in step 2**, and the repo is GitHub-hosted (same check as 5a). Skip silently otherwise.
+
+When eligible, ask with `AskUserQuestion` (default = **accept**; recommended): *"Emit a `.github/workflows/supera-dependabot-pr-watch.yml`? When a Dependabot bump breaks CI, it runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version. Requires the same `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) and `SUPERA_AUDIT_TOKEN` secrets as 5b."*
+
+If declined, do nothing. If accepted, write `.github/workflows/supera-dependabot-pr-watch.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present.
+
+This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim:
+
+```yaml
+# Prerequisites:
+#   - `ANTHROPIC_API_KEY` repo secret (or swap it for
+#     `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+#   - `SUPERA_AUDIT_TOKEN`: a PAT/App token with `contents` + `pull-requests`
+#     scope so supera can push the fix and reply on the PR; add `workflow` scope
+#     only if a fix may touch `.github/workflows/*`. The default `GITHUB_TOKEN`
+#     works for non-workflow fixes.
+#
+# Security note: this runs the bumped dependency's tests with repo secrets in
+# scope — an accepted risk for auto-fixing a Dependabot bump. Keep the
+# `SUPERA_AUDIT_TOKEN` minimally scoped. It fires only on a FAILED CI run of a
+# Dependabot pull_request.
+name: '[ Dependabot ] | PR Watch'
+
+on:
+  workflow_run:
+    workflows: ['<CI WORKFLOW NAME>'] # the consumer's CI workflow name (step-2 detected)
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  pr-watch:
+    name: 'Auto-fix Dependabot bump'
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - id: pr
+        env:
+          GH_TOKEN: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          NUMBER=$(gh pr list --head "$HEAD_BRANCH" --state open --json number -q '.[0].number')
+          if [ -z "$NUMBER" ]; then
+            echo "No open PR for $HEAD_BRANCH — nothing to watch."
+            echo "number=" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.pr.outputs.number != ''
+        uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          plugin_marketplaces: https://github.com/heronlabs/supera.git
+          plugins: supera@supera-marketplace
+          prompt: /supera:pr-watch ${{ steps.pr.outputs.number }} --non-interactive
+          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
+```
+
+After writing it, tell the user the same two secrets cover it (`ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` + `SUPERA_AUDIT_TOKEN`). Then commit it alongside the other 5a/5b files.
+
 ## 6 — Report
 
 Print the written path and a compact summary of every field. Tell the user:
@@ -197,7 +274,8 @@ Print the written path and a compact summary of every field. Tell the user:
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
 
 **Dependency layers (step 5)**
-- Both are opt-in via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended); the audit cron (5b) defaults to **decline** and is only offered when an auditor is enabled.
-- Idempotent — never clobber an existing `.github/dependabot.yml` or `.github/workflows/supera-audit-daily.yml`; report it's already present instead.
+- All three are opt-in via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended); the audit cron (5b) defaults to **decline** and is only offered when the security auditor is enabled; the Dependabot→pr-watch auto-fix (5c) defaults to **accept** (recommended) and is only offered when 5a was accepted and a CI workflow was detected in step 2.
+- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-audit-weekly.yml`, or `.github/workflows/supera-dependabot-pr-watch.yml`; report it's already present instead.
 - `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`); always include the `github-actions` block.
-- Each file's existence is the state; no `.claude/supera.json` field tracks either.
+- The 5c template is per-repo parameterized (`workflow_run.workflows` carries the consumer's CI workflow `name`), so it's NOT in the validate.ts byte-identical drift guard — substitute the step-2 detected CI workflow name.
+- Each file's existence is the state; no `.claude/supera.json` field tracks any of them.

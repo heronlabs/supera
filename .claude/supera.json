@@ -1,7 +1,6 @@
 {
   "audits": {
     "actionPinAllowlist": ["heronlabs/*"],
-    "freshness": {"level": "off"},
     "security": true
   },
   "pr": {"base": "main", "remote": "origin"},
