@@ -213,8 +213,8 @@ For any test case carrying **more than one assertion** → delegate to `supera-e
 
 ### 6c — Security audit
 
-Skip this entire subsection when `AUDIT` is false. When true, dispatch the `supera-security-auditor` agent on the worktree (one pass). It detects the manager, runs the native audit, and is report-only **except** safe, mechanical CVE overrides it applies autonomously. On return:
-- **Safe CVE overrides applied** (lockfile / `package.json` / `Cargo.toml` changed) → these ride out with the push below; reply on the PR referencing the commit: `gh pr review $PR --comment --body "Security: applied safe CVE overrides in <commit-sha>: <one-line summary>"`.
+Skip this entire subsection when `AUDIT` is false. When true, dispatch the `supera-security-auditor` agent on the worktree (one pass). It detects the manager, runs the native audit, and is report-only **except** safe, mechanical supply-chain remediations it applies autonomously — CVE overrides **and** GitHub Actions SHA-pins. On return:
+- **Safe remediations applied** (lockfile / `package.json` / `Cargo.toml` / `.github/workflows/*` — any tracked edit the auditor left) → these ride out with the push below; reply on the PR referencing the commit: `gh pr review $PR --comment --body "Security: applied safe supply-chain remediations in <commit-sha>: <one-line summary>"`.
 - **Report-only findings** (unfixable CVEs, leaked secrets, drift, freshness, typo-squat/provenance) → do **not** auto-fix. Surface the prioritized report to the user. A leaked-secret or critical-CVE finding is a **merge blocker** — flag it loudly and do not present the PR as ready until the user clears it (in `NONINTERACTIVE` mode, a merge-blocker finding **blocks** — see **Non-interactive mode**).
 - Never block on a degraded probe (missing `cargo-audit`, network failure) — the auditor notes the gap and continues; relay it.
 
