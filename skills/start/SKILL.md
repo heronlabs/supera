@@ -13,12 +13,15 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 - **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /init first."` Offer to run `/init` now. Do not proceed without config.
 - `BASE = CONFIG.worktree?.base ?? CONFIG.pr?.base ?? <detected default branch>`.
 - `WT_DIR = CONFIG.worktree?.dir ?? ".worktrees"`. `REMOTE = CONFIG.pr?.remote ?? "origin"`.
+- `MERGE_METHOD = CONFIG.pr?.mergeMethod ?? "squash"` — the method `/start finish` merges a green PR with.
 
 ## 1 — Parse arguments
 
 **`--non-interactive` flag:** set `NONINTERACTIVE=true` if `$ARGUMENTS` contains `--non-interactive` (strip it before parsing the rest); else `false`. This is the headless mode for CI runs with no human to answer prompts — see **Non-interactive mode** below. Interactive (`false`) is the default. Preserve the flag when handing off to `/pr-watch` (step 5).
 
 **Pause sub-command:** if `$ARGUMENTS` begins with `pause` (e.g. `pause`, `pause feat-add-payment-retry`), run the **Pause checkpoint** flow at the end of this skill and stop — do not run the pipeline below.
+
+**Finish sub-command:** if `$ARGUMENTS` begins with `finish` (e.g. `finish`, `finish feat-add-payment-retry`), run the **Finish (merge + close)** flow at the end of this skill and stop — do not run the pipeline below.
 
 Otherwise `$ARGUMENTS` may be:
 - A free-text task description — e.g. `"add payment retry on timeout"`
@@ -153,6 +156,22 @@ git -C <WT_PATH> status --porcelain      # anything staged?
 
 ---
 
+## Finish (merge + close) (`/start finish`)
+
+Reached from step 1 when `$ARGUMENTS` begins with `finish`. Merge a ready PR and close out in one step. Invoking `/start finish` **is** the merge authorization — there is no extra confirm prompt, just the one-line announce before the merge. Idempotent: the worktree may already be gone (close-out builds its summary from `gh`), so finish still works.
+
+1. **Resolve `BRANCH`/`PR`.** Parse the rest of `$ARGUMENTS` (a branch, or empty) the same way the **Pause checkpoint** flow resolves its WIP: an arg → that branch; empty → the current branch or the single worktree under `WT_DIR` (ambiguous → list and ask; in `NONINTERACTIVE` mode there's a PR to comment on only if one exists — if a PR exists post the block comment, else print the candidates and exit `blocked`, see **Non-interactive mode**). Then find the PR for the branch: `gh pr list --head <BRANCH> --state all --json number,state`. **No PR for the branch** → nothing to finish; report it and stop.
+2. **Read the PR state:**
+```bash
+gh pr view <N> --json state,mergeable,statusCheckRollup,reviewDecision
+```
+3. **Route on `state`:**
+   - **`MERGED` already** → run the **Closing out a merged PR** flow below (summary + teardown). No merge step.
+   - **`OPEN`, every `statusCheckRollup` check `SUCCESS`/`SKIPPED`, and `mergeable == MERGEABLE`** → announce *"Merging PR #<N> (`<MERGE_METHOD>`)…"*, then `gh pr merge <N> --<MERGE_METHOD>`, then run the **Closing out a merged PR** flow below. If `gh pr merge` is refused by branch protection (required reviews etc.), surface the gh error **verbatim** and stop — do not retry.
+   - **`OPEN` but a check is failing/pending, or `mergeable == CONFLICTING`** → refuse, do **not** merge: surface *"PR #<N> not ready (<reason>) — run `/pr-watch <N>` first."* (in `NONINTERACTIVE` mode post that as the block comment + exit `blocked`, see **Non-interactive mode**).
+
+---
+
 ## Closing out a merged PR (phase `merged`)
 
 Reached from step 1.5 when the PR is `MERGED`. Record what shipped and tear down the workspace. Only merged work is closed here — abandoning unmerged work is a manual `gh pr close` + `git worktree remove`. **The worktree may already be gone** (close-out partially ran, or it was paused/removed on another machine), so build the summary from `gh` — which works from the repo root — not from `git -C <WT_PATH>`.
@@ -194,6 +213,7 @@ gh pr view <N> --json mergedAt -q .mergedAt                   # merge time
 | `/start pause <branch>` | Need to stop mid-build | Commits + pushes a `wip:` checkpoint, **keeps** the worktree. |
 | `/start <branch>` (re-run, `building`/`scaffolded`) | A run didn't finish | Detects the phase, undoes a `wip:` checkpoint, re-delegates the remainder to `supera-engineer`, opens the PR. |
 | `/pr-watch <N>` | PR is open | Drives CI green + review threads to resolution. Hands merged PRs back to `/start`. |
+| `/start finish <branch>` | A green PR is ready to merge | Merge a green PR (`gh pr merge --<mergeMethod>`) then close out; an already-merged PR just closes out; a not-ready PR is refused. |
 | `/start <branch>` (re-run, `merged`) | PR is merged | Posts the summary (goal · time · files), removes the worktree + local branch. The terminal step. |
 
 The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → building → built → pr-open → merged`. Every skill detects it the same way (git + GitHub, no state file).
@@ -224,4 +244,5 @@ The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → b
 - Read `.claude/supera.json` first — never hardcode commands, branches, or remotes.
 - Never remove `BASE` or its worktree.
 - **Idempotent:** run the step 1.5 phase routing before creating anything — never double-create a worktree or duplicate work.
+- `/start finish` merges via `CONFIG.pr.mergeMethod` (default `squash`) and refuses to merge a non-green or `CONFLICTING` PR — it never forces a merge past CI.
 - Commit hygiene follows `guidelines/commit-conventions.md`; `/start`'s only self-commit is the `wip:` pause checkpoint.

@@ -72,7 +72,13 @@ BASE=${CONFIG.pr.base:-$(gh pr view $PR --json baseRefName -q .baseRefName)}
 gh pr view $PR --json number,title,state,mergeable,reviewThreads,statusCheckRollup,headRefName,baseRefName
 ```
 Parse `state`:
-- `MERGED` → **do not close here** — the originating skill owns the close, teardown, and summary. For a normal ship PR that's `/start`; for a `supera:audit`-labelled PR it's a `/audit` re-run, which reclaims the audit worktree. Announce: *"PR #<N> is merged — run `/start <branch>` to close out and clean up the worktree (or re-run `/audit` if this is a `supera:audit` PR)."* Exit.
+- `MERGED` → **do not close here** — the originating skill owns the close, teardown, and summary; pr-watch never tears down itself, it auto-hands-off to the owning skill, which owns teardown. Detect the owner by label:
+```bash
+gh pr view $PR --json labels -q '.labels[].name'
+```
+   - Carries the `supera:audit` label → invoke `/audit` (its merged reclaim path, which reclaims the audit worktree).
+   - Otherwise → invoke `/start <branch>` (routes to the `merged` phase → close-out).
+   Preserve `--non-interactive` on the handoff when set. Announce: *"PR #<N> is merged — handing off to `/start <branch>` to close out and clean up (or `/audit` if this is a `supera:audit` PR)."* Then invoke the owning skill and exit.
 - `CLOSED` (not merged) → surface that the PR was closed without merging; announce; exit. (Tearing down an abandoned branch is a manual `git worktree remove`.)
 - Otherwise continue with `statusCheckRollup` (step 3) and `reviewThreads` (step 4).
 
@@ -266,7 +272,7 @@ gh pr comment $PR --body "🚫 supera /pr-watch blocked (non-interactive): <what
 
 - Read `.claude/supera.json` for the commands used to reproduce failures — don't assume pnpm/npm.
 - **Don't spin-poll** — at every wait, `ScheduleWakeup` and exit the turn; preserve `--reviewed` and `--non-interactive` on every reschedule.
-- On `MERGED`, defer close-out to `/start` — never close out or remove the worktree here; `/start` owns the terminal step.
+- On `MERGED`, auto-hand-off to the owning skill (`/start`, or `/audit` for a `supera:audit` PR) — never close out or remove the worktree here; the owning skill owns the terminal step.
 - Exit and announce when the PR is green, synced, and all threads resolved — merging is the user's decision.
 - Never push `--force` — only `--force-with-lease` after a rebase.
 - A **terminal block** posts the `<!-- supera:blocked -->` PR comment and stops (§0a) — that comment is the escalation signal; supera has no tracker.
