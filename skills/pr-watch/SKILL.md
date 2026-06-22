@@ -6,7 +6,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent, Workflow  # also requires the gh C
 
 Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failures, address review comments, run one code review — exit when everything is green and resolved. Reads `.claude/supera.json` for the install/build/test/lint commands used to reproduce failures.
 
-`/pr-watch` **monitors without blocking**: at every wait (CI running, a re-run after a fix) it reschedules via `ScheduleWakeup` and exits the turn, then resumes on the next wake — it never spins inline. It is one half of an intentional round-trip — `/start` opens the PR and hands here; `/pr-watch` drives it green and hands the merged PR back to `/start` to close out.
+`/pr-watch` **monitors without blocking**: at every wait (CI running, a re-run after a fix) it reschedules via `ScheduleWakeup` and exits the turn, then resumes on the next wake — it never spins inline. It is one half of an intentional round-trip — `/start` opens the PR and hands here; `/pr-watch` drives it green and, on merge, auto-hands-off to `/start` to close out (a `supera:audit` PR is announced for a `/audit` re-run instead).
 
 ## 0 — Load config
 
