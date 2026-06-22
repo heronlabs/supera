@@ -79,6 +79,12 @@
           "type": "string",
           "default": "origin",
           "description": "Git remote to push to."
+        },
+        "mergeMethod": {
+          "type": "string",
+          "enum": ["squash", "merge", "rebase"],
+          "default": "squash",
+          "description": "Merge method `/start finish` uses to merge a green PR (gh pr merge --<method>) before close-out. Default squash."
         }
       }
     },
