@@ -110,11 +110,37 @@ for (const file of markdown) {
 if (skills.length === 0) errors.push('skills/: no SKILL.md found');
 if (agents.length === 0) errors.push('agents/: no *.md found');
 
+// 4. Drift guard: /init inlines the audit-cron workflow, and it must stay
+// byte-identical to the canonical .github/workflows/audit-daily.yml — the
+// workflow is the base, the init template is the emitted copy. A silent
+// divergence ships consumers a stale cron, so fail loud if they differ.
+const canonicalWorkflowPath = '.github/workflows/audit-daily.yml';
+const initSkillPath = 'skills/init/SKILL.md';
+const workflow = readFileSync(join(root, canonicalWorkflowPath), 'utf8');
+const yamlBlocks = [
+  ...readFileSync(join(root, initSkillPath), 'utf8').matchAll(
+    /```yaml\r?\n(.*?)\r?\n```/gs,
+  ),
+].map(m => `${m[1]}\n`);
+if (workflow.trim().length === 0) {
+  errors.push(
+    `${canonicalWorkflowPath}: canonical audit-cron workflow is empty`,
+  );
+} else if (yamlBlocks.length === 0) {
+  errors.push(
+    `${initSkillPath}: no \`\`\`yaml block found to guard against ${canonicalWorkflowPath}`,
+  );
+} else if (!yamlBlocks.includes(workflow)) {
+  errors.push(
+    `${initSkillPath}: inlined audit-cron template has drifted from ${canonicalWorkflowPath} — they must stay byte-identical (the workflow is the canonical base, the init template is the emitted copy)`,
+  );
+}
+
 if (errors.length > 0) {
   console.error(`✗ validation failed (${errors.length}):`);
   for (const e of errors) console.error(`  ${e}`);
   process.exit(1);
 }
 console.log(
-  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid`,
+  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron template in sync`,
 );
