@@ -41,7 +41,7 @@ git worktree list | grep <auditBranch>                             # worktree pr
 Route, in this order:
 
 - **An OPEN (not merged) PR exists** → today's audit is already in flight. Invoke `/pr-watch <N>` (append `--non-interactive` when set) and **stop** — never double-create.
-- **A MERGED PR exists** → today's audit already shipped. Reclaim any residual worktree first — a re-run of `/audit` (manual, or auto-invoked by `/pr-watch` on merge of a `supera:audit` PR) reclaims any residual `chore-audit-<date>` worktree; audits are out of the `/start` ladder, so `/audit` owns its own close-out/reclaim. Tear it down if present (guarded so a missing worktree/branch is a no-op), then report it and exit:
+- **A MERGED PR exists** → today's audit already shipped. Reclaim any residual worktree first — `/pr-watch` does **not** auto-invoke `/audit` on a merged audit PR (it only announces, because `/audit` is date-scoped); a re-run of `/audit` (manual, or the daily cron) reclaims any residual `chore-audit-<date>` worktree. Audits are out of the `/start` ladder, so `/audit` owns its own close-out/reclaim. Tear it down if present (guarded so a missing worktree/branch is a no-op), then report it and exit:
   ```bash
   git worktree list | grep -q "<WT_DIR>/<auditBranch>" && git worktree remove <WT_DIR>/<auditBranch>          # --force only if it refuses on an unclean tree
   git rev-parse --verify --quiet <auditBranch> >/dev/null && git branch -D <auditBranch>                       # delete the branch if present
