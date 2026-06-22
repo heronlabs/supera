@@ -79,7 +79,7 @@ The shared always-FLAG baseline in `guidelines/auditor-base.md` applies (majors 
 
 A mutable `uses:` ref (tag, semver, or branch) lets an upstream owner — or anyone who compromises the upstream repo — silently change what runs in your CI. Pinning to a 40-hex commit SHA freezes the exact tree. This is a supply-chain/provenance hardening measure (it extends §6's provenance scope to the CI surface), and **PIN-ACTION** is a bounded ✅ auto-apply remediation with its own gate below — **not** the package-centric §3 gate.
 
-This is the initial tag→SHA conversion that Dependabot won't do (it preserves an action's existing pin style); once you've pinned, Dependabot keeps that SHA fresh afterward (see the Dependabot division in `guidelines/auditor-base.md`).
+This initial tag→SHA conversion is one of the gaps Dependabot can't fill — see the Dependabot division in `guidelines/auditor-base.md` for how this pin and Dependabot's ongoing SHA currency hand off.
 
 Read the allowlist from CONFIG as `audits.actionPinAllowlist` (default `[]`): glob patterns of `owner/repo` whose unpinned Actions stay FLOATING. Default `[]` matches nothing, preserving today's pin-everything behaviour.
 
