@@ -98,13 +98,19 @@ git ls-remote --heads https://github.com/<owner>/<repo> <ref>          # match �
 
 ```bash
 gh api repos/<owner>/<repo>/commits/<ref> -q .sha                      # preferred; returns the COMMIT sha even for an annotated tag
-git ls-remote https://github.com/<owner>/<repo> "<ref>^{}" "<ref>" | awk '{print $1}' | head -1   # fallback; ^{} derefs an annotated tag to its commit, awk takes the sha
+
+# fallback — query the ^{} peel FIRST and alone (ls-remote sorts by refname, so a combined
+# query would surface the bare tag-object line; the peel only returns a line for an annotated
+# tag, and that line IS the commit). Fall back to the plain ref for a lightweight tag/branch.
+url=https://github.com/<owner>/<repo>
+sha=$(git ls-remote "$url" "<ref>^{}" | awk 'NR==1{print $1}')         # annotated tag → commit
+[ -z "$sha" ] && sha=$(git ls-remote "$url" "<ref>" | awk 'NR==1{print $1}')   # lightweight tag
 ```
 
 **Action-pin gate — ALL must pass, else revert that edit and FLAG.** This gate is distinct from §3 (no install/build/test — a SHA-pin runs no package code). A single miss → revert that one edit to the tree exactly as found and downgrade it to FLAG (atomic-revert, same discipline as §3):
 
 - [ ] **Resolves to one 40-hex value** via a non-degraded probe (network ok, repo public/reachable). A failed/ambiguous probe ⇒ no pin (record in `degraded[]`).
-- [ ] **It is a commit object**, not a tag/tree object — confirm via the commits API (which returns the commit sha) or `<ref>^{}` deref. A bare annotated-tag sha must NOT be written.
+- [ ] **It is a commit object**, not a tag/tree object — confirm via the commits API (which returns the commit sha), or by peeling `<ref>^{}` **alone** (a returned sha is the commit). Never take a bare annotated-tag sha — that is what `<ref>` returns unpeeled, and the runner can't resolve it.
 - [ ] **It is a tag/semver, not a branch** (classified above).
 - [ ] **Still valid YAML** after the edit.
 - [ ] **One action per change** — each edit pins exactly one `uses:` line.
