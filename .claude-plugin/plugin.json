@@ -6,12 +6,5 @@
     "name": "Lucas Lacerda"
   },
   "license": "MIT",
-  "keywords": [
-    "workflow",
-    "agents",
-    "shipping",
-    "ci",
-    "refactor",
-    "heronlabs"
-  ]
+  "keywords": ["workflow", "agents", "shipping", "ci", "refactor", "heronlabs"]
 }
