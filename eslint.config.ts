@@ -8,7 +8,7 @@ export default defineConfig([
   ...jsonc.configs['flat/recommended-with-json'],
   {
     files: ['**/*.json'],
-    ignores: ['schema/**', '.claude-plugin/**'],
+    ignores: ['schema/**'],
     rules: {
       'jsonc/sort-keys': [
         'error',
@@ -27,6 +27,11 @@ export default defineConfig([
     rules: {'yml/sort-keys': 'off'},
   },
   {
-    ignores: ['node_modules/', 'pnpm-lock.yaml', '.worktrees/'],
+    ignores: [
+      'node_modules/',
+      'pnpm-lock.yaml',
+      '.worktrees/',
+      '.claude-plugin/',
+    ],
   },
 ]);
