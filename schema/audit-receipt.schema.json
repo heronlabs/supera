@@ -27,8 +27,8 @@
         "properties": {
           "verdict": {
             "type": "string",
-            "enum": ["upgrade", "pin", "remove-pin"],
-            "description": "The applied remediation. security: upgrade (in-range) / pin (scoped override) / remove-pin (stale override). freshness: upgrade only."
+            "enum": ["upgrade", "pin", "remove-pin", "pin-action"],
+            "description": "The applied remediation. security: upgrade (in-range) / pin (scoped override) / remove-pin (stale override) / pin-action (pin an unpinned GitHub Action to its commit SHA). freshness: upgrade only."
           },
           "target": {
             "type": "string",
