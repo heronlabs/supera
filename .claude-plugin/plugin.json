@@ -1,10 +1,17 @@
 {
   "name": "supera",
   "description": "Repo-agnostic change-shipping superagent: init, start (full lifecycle — resume, pause, close-out), pr-watch, refactor, and audit (security + freshness auditors). One strong engineer agent does code + tests; behaviour is driven by a per-repo .claude/supera.json so the same skills work across pnpm, npm, cargo, Strapi, and more.",
-  "version": "0.29.2",
+  "version": "0.29.3",
   "author": {
     "name": "Lucas Lacerda"
   },
   "license": "MIT",
-  "keywords": ["workflow", "agents", "shipping", "ci", "refactor", "heronlabs"]
+  "keywords": [
+    "workflow",
+    "agents",
+    "shipping",
+    "ci",
+    "refactor",
+    "heronlabs"
+  ]
 }
