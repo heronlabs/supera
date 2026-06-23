@@ -15,7 +15,7 @@ name: 'Skill | pr-watch'
 
 on:
   workflow_run:
-    workflows: ['CI | Continuous Integration']
+    workflows: ['Continuous Integration']
     types: [completed]
 
 permissions:

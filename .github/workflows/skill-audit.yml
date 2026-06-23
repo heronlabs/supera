@@ -36,4 +36,5 @@ jobs:
           plugin_marketplaces: https://github.com/heronlabs/supera.git
           plugins: supera@supera-marketplace
           prompt: /supera:audit --non-interactive
+          show_full_output: true
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'

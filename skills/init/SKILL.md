@@ -127,9 +127,9 @@ For a `cargo` stack, swap the second block's `package-ecosystem: npm # reads pnp
 
 Offer it only when it can do something: the security auditor is enabled (`audits.security === true`), and the repo is GitHub-hosted (same check as 5a). Skip silently when the auditor is not enabled; for a non-GitHub repo, skip with a one-line note (`"Skipping the audit workflow — no GitHub remote detected."`).
 
-When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a weekly `/supera:audit` GitHub Actions cron into `.github/workflows/supera-audit-weekly.yml`? It runs the security auditor and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, plus a `SUPERA_AUDIT_TOKEN` (PAT/App token with `workflow` scope) if you want it to push GitHub Actions SHA-pins."*
+When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a weekly `/supera:audit` GitHub Actions cron into `.github/workflows/supera-skill-audit.yml`? It runs the security auditor and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, plus a `SUPERA_AUDIT_TOKEN` (PAT/App token with `workflow` scope) if you want it to push GitHub Actions SHA-pins."*
 
-If declined, do nothing. If accepted, write `.github/workflows/supera-audit-weekly.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. The template (supera installs from the public marketplace — those two values identify the plugin itself, not repo-specific config):
+If declined, do nothing. If accepted, write `.github/workflows/supera-skill-audit.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. The template (supera installs from the public marketplace — those two values identify the plugin itself, not repo-specific config):
 
 ```yaml
 # Prerequisites:
@@ -170,6 +170,7 @@ jobs:
           plugin_marketplaces: https://github.com/heronlabs/supera.git
           plugins: supera@supera-marketplace
           prompt: /supera:audit --non-interactive
+          show_full_output: true
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
 ```
 
@@ -179,9 +180,9 @@ After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_
 
 Offer it only when **all three** hold: Dependabot was accepted in **5a**, a CI workflow was **detected in step 2**, and the repo is GitHub-hosted (same check as 5a). Skip silently otherwise.
 
-When eligible, ask with `AskUserQuestion` (default = **accept**; recommended): *"Emit a `.github/workflows/supera-dependabot-pr-watch.yml`? When a Dependabot bump breaks CI, it runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version. Requires the same `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) and `SUPERA_AUDIT_TOKEN` secrets as 5b."*
+When eligible, ask with `AskUserQuestion` (default = **accept**; recommended): *"Emit a `.github/workflows/supera-skill-pr-watch.yml`? When a Dependabot bump breaks CI, it runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version. Requires the same `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) and `SUPERA_AUDIT_TOKEN` secrets as 5b."*
 
-If declined, do nothing. If accepted, write `.github/workflows/supera-dependabot-pr-watch.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present.
+If declined, do nothing. If accepted, write `.github/workflows/supera-skill-pr-watch.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present.
 
 This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim — but **strip any `[`/`]`**: `workflow_run.workflows` is glob-matched, so square brackets break trigger parsing and the watcher dies at startup before its `if:` ever runs (the pipe `|` and other characters are safe). If the detected CI name has brackets, drop them here and in the CI workflow's own `name:`.
 
@@ -300,7 +301,7 @@ Print the written path and a compact summary of every field. Tell the user:
 
 **Dependency layers (step 5)**
 - All three are opt-in via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended); the audit cron (5b) defaults to **decline** and is only offered when the security auditor is enabled; the Dependabot→pr-watch auto-fix (5c) defaults to **accept** (recommended) and is only offered when 5a was accepted and a CI workflow was detected in step 2.
-- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-audit-weekly.yml`, or `.github/workflows/supera-dependabot-pr-watch.yml`; report it's already present instead.
+- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, or `.github/workflows/supera-skill-pr-watch.yml`; report it's already present instead.
 - `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`); always include the `github-actions` block.
 - The 5c template is per-repo parameterized (`workflow_run.workflows` carries the consumer's CI workflow `name`), so it's NOT in the validate.ts byte-identical drift guard — substitute the step-2 detected CI workflow name.
 - Each file's existence is the state; no `.claude/supera.json` field tracks any of them.
