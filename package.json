@@ -5,15 +5,15 @@
   },
   "description": "A repo-agnostic change-shipping superagent for Claude Code. Install once; ship changes on any repository with the same pattern — task → worktree → implement + test → PR → babysit CI → done. The PR is the unit of work — there is no external tracker.",
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^26",
     "ajv": "^8",
     "ajv-formats": "^3",
-    "eslint": "^9",
+    "eslint": "^10",
     "eslint-plugin-jsonc": "^3",
     "eslint-plugin-yml": "^3",
     "gts": "^7.0.0",
     "jiti": "^2",
-    "typescript": "~5.8",
+    "typescript": "~6.0",
     "typescript-eslint": "^8",
     "yaml": "^2"
   },
