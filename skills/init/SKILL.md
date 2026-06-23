@@ -274,7 +274,7 @@ jobs:
             Drive it green using the supera pr-watch skill — run the command below. This is a headless run with no human present, so never stop to ask; surface any block as a PR comment.
             /supera:pr-watch ${{ steps.pr.outputs.number }} --non-interactive
           show_full_output: true
-          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
+          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
 ```
 
 After writing it, tell the user the same two secrets cover it (`ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` + `SUPERA_AUDIT_TOKEN`). Then commit it alongside the other 5a/5b files.

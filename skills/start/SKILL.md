@@ -84,8 +84,9 @@ If it's **empty**, do **not** push: the branch has no commits over base (the eng
 git -C <WT_DIR>/<slug> push -u <REMOTE> <slug>
 ```
 
-Write the PR body (template below), then create the PR assigned to `@me` so it lands in the user's review queue. Do **not** add `--reviewer` (GitHub blocks self-review; the gh-CLI user is the author):
+Write the PR body (template below). First best-effort ensure the `supera` label exists (the standalone pr-watch workflow gates on it to recognise a `/start` PR), then create the PR assigned to `@me` so it lands in the user's review queue. Do **not** add `--reviewer` (GitHub blocks self-review; the gh-CLI user is the author), and do **not** add `--label` inline — labelling is decoupled below so a label/permission hiccup never blocks the PR:
 ```bash
+gh label create supera --color ededed --description "Opened by supera /start" 2>/dev/null || true
 gh pr create \
    --base <BASE> \
    --title "<short human summary, <70 chars, no conventional-commit prefix>" \
@@ -95,7 +96,10 @@ EOF
 )" \
    --assignee @me
 ```
-Save the PR number.
+Save the PR number, then best-effort apply the `supera` label so the pr-watch workflow can pick the PR up:
+```bash
+gh pr edit <PR-number> --add-label supera 2>/dev/null || true
+```
 
 ## 5 — Hand off to /pr-watch
 

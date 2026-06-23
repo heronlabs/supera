@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.task }}
@@ -60,4 +61,4 @@ jobs:
             Deliver the task below using the supera start skill — run the command at the end. This is a headless run with no human present, so never stop to ask; if you hit a block, surface it as a comment on the PR once one exists, or print it to the run output if no PR exists yet.
             /supera:start ${{ github.event.inputs.task }} --non-interactive
           show_full_output: true
-          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
+          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
