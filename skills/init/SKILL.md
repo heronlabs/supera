@@ -229,6 +229,12 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
           token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # supera-engineer commits the fix via raw git, so give it an identity
+      # (claude-code-action only auto-configures git in its tag mode, not prompt mode).
+      - run: |
+          git config --global user.name 'supera-bot'
+          git config --global user.email 'supera-bot@users.noreply.github.com'
+
       # supera-engineer runs the repo's verify commands here, so set up the toolchain
       # (swap these for your stack's equivalent — npm ci, cargo, etc.).
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
