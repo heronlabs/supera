@@ -243,6 +243,7 @@ jobs:
       - if: steps.pr.outputs.number != ''
         uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
         with:
+          allowed_bots: 'dependabot' # this workflow is Dependabot-triggered (a bot)
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
           plugin_marketplaces: https://github.com/heronlabs/supera.git
