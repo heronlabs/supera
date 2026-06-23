@@ -176,6 +176,7 @@ jobs:
       # the auditor runs the repo's verify commands in the worktree /audit
       # creates, so set up the toolchain. /audit runs install inside that
       # worktree — no root-level `pnpm install` step here.
+      # (swap these for your stack's equivalent — npm ci, cargo, etc.).
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -191,7 +192,7 @@ jobs:
           plugins: supera@supera-marketplace
           prompt: /supera:audit --non-interactive
           show_full_output: true
-          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
+          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
 ```
 
 After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow (and any `.github/dependabot.yml` from 5a) alongside `.claude/supera.json`.
@@ -241,7 +242,7 @@ jobs:
     name: 'Auto-fix Dependabot bump'
     if: >-
       github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'failure' &&
+      contains(fromJSON('["failure","timed_out"]'), github.event.workflow_run.conclusion) &&
       github.event.workflow_run.actor.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
