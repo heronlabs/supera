@@ -262,12 +262,16 @@ jobs:
       - if: steps.pr.outputs.number != ''
         uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
         with:
-          allowed_bots: 'dependabot' # this workflow is Dependabot-triggered (a bot)
+          allowed_bots: '*' # job-level `if:` already gates to dependabot[bot]; '*' avoids the brittle 'dependabot' vs 'dependabot[bot]' login mismatch
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
           plugin_marketplaces: https://github.com/heronlabs/supera.git
           plugins: supera@supera-marketplace
-          prompt: /supera:pr-watch ${{ steps.pr.outputs.number }} --non-interactive
+          prompt: |
+            A Dependabot pull request (#${{ steps.pr.outputs.number }}) has a failing CI run.
+            Drive it green using the supera pr-watch skill — run the command below. This is a headless run with no human present, so never stop to ask; surface any block as a PR comment.
+            /supera:pr-watch ${{ steps.pr.outputs.number }} --non-interactive
+          show_full_output: true
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write'
 ```
 
