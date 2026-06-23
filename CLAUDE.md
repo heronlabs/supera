@@ -30,10 +30,10 @@ This repo **is** a Claude Code plugin. It ships skills + agents that run in *oth
 
 ## Releasing a change
 
-Releases are automated — `.github/workflows/continuous-deployment.yml` runs on every merge to `main`: `heronlabs/action-tag-release-build` bumps the version (`patch` by default) in `package.json`, tags `v<version>`, and cuts a GitHub release, then `heronlabs/action-claude-plugin-build` syncs `plugin.json` + `marketplace.json` to match — the three manifests stay in lockstep. Consumers pick it up on the next `/plugin update`.
+Releases are automated — `.github/workflows/continuous-deployment.yml` runs on every merge to `main`: `heronlabs/action-tag-release-build` bumps the version (inferred from the merge commit via Conventional Commits) in `package.json`, tags `v<version>`, and cuts a GitHub release, then `heronlabs/action-claude-plugin-build` syncs `plugin.json` + `marketplace.json` to match — the three manifests stay in lockstep. Consumers pick it up on the next `/plugin update`.
 
 1. Edit the skill/agent/schema and open a PR.
-2. **Don't hand-bump `version`** — the CD owns it. For a `minor`/`major`, trigger the `Continuous Deployment` workflow via `workflow_dispatch` and choose the `spec`.
+2. **Don't hand-bump `version`** — the CD owns it. The bump type is inferred from the merge commit via Conventional Commits: `feat:` → minor, a breaking change (`!` / `BREAKING CHANGE`) → major, anything else → patch (the default when unclear). PRs squash-merge, so the squash commit's subject is what's read — give it the right type. To force a specific bump regardless of the commit, trigger the `Continuous Deployment` workflow via `workflow_dispatch` and pick the `spec`.
 3. Merge. The CD bumps, tags, releases, and keeps the three manifests in lockstep.
 
 No repo secret needed — the CD pushes tags/releases via the built-in `GITHUB_TOKEN` (the job grants it `contents: write`). A `PAT` is only required if `main` becomes a protected branch, or a downstream workflow must trigger on the release push.

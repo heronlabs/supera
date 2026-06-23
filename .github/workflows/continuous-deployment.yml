@@ -39,7 +39,7 @@ jobs:
         id: version
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          spec: ${{ inputs.spec || 'patch' }}
+          spec: ${{ inputs.spec }}
 
       - uses: heronlabs/action-claude-plugin-build@v2
         with:
