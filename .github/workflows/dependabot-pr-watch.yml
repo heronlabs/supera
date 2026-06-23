@@ -11,7 +11,7 @@
 # scope — an accepted risk for auto-fixing a Dependabot bump. Keep the
 # `SUPERA_AUDIT_TOKEN` minimally scoped (contents + pull-requests, workflow only
 # if needed). It fires only on a FAILED CI run of a Dependabot pull_request.
-name: '[ Dependabot ] | PR Watch'
+name: 'Skill | pr-watch'
 
 on:
   workflow_run:
