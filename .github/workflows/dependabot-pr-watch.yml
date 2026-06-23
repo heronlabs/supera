@@ -15,7 +15,7 @@ name: '[ Dependabot ] | PR Watch'
 
 on:
   workflow_run:
-    workflows: ['[ CI ] | Continuous Integration']
+    workflows: ['CI | Continuous Integration']
     types: [completed]
 
 permissions:
