@@ -183,7 +183,7 @@ When eligible, ask with `AskUserQuestion` (default = **accept**; recommended): *
 
 If declined, do nothing. If accepted, write `.github/workflows/supera-dependabot-pr-watch.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present.
 
-This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim:
+This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim — but **strip any `[`/`]`**: `workflow_run.workflows` is glob-matched, so square brackets break trigger parsing and the watcher dies at startup before its `if:` ever runs (the pipe `|` and other characters are safe). If the detected CI name has brackets, drop them here and in the CI workflow's own `name:`.
 
 ```yaml
 # Prerequisites:
