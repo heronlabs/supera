@@ -6,11 +6,11 @@
 #     default `GITHUB_TOKEN` lacks `workflow` scope and cannot push changes to
 #     `.github/workflows/*` — with only it, the audit still runs and pins
 #     dependencies, but action-pins cannot be pushed.
-name: '[ Audit ] | Daily'
+name: '[ Audit ] | Weekly'
 
 on:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 6 * * 1'
   workflow_dispatch: {}
 
 permissions:

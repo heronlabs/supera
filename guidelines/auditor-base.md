@@ -1,13 +1,13 @@
 # Auditor base — shared mechanics
 
-Shared detection, gate, and receipt conventions for `supera-security-auditor` (security) and `supera-freshness-auditor` (currency). Each auditor inherits this and adds **only** its own verdict rubric. The two are disjoint in *what* they judge; this is the *how* they share.
+Detection, gate, and receipt conventions for `supera-security-auditor`. The auditor inherits this and adds **only** its own verdict rubric (the supply-chain rubric in its own doc).
 
 ## Relationship to Dependabot
 
-Dependabot and the auditors are layers, not rivals — and the auditors are **not** the mechanical-bump tool. Let Dependabot own the deterministic floor; the auditors own the judgment Dependabot can't make.
+Dependabot and the auditor are layers, not rivals — and the auditor is **not** the mechanical-bump tool. Let Dependabot own the deterministic floor; the auditor owns the judgment Dependabot can't make.
 
 - **Dependabot owns the mechanical, deterministic layer.** Routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net — free, no LLM, with native write access to `.github/workflows/*` (no PAT needed). A repo that adopts supera should adopt Dependabot for this layer first.
-- **The auditors fill what Dependabot can't.** Scoped transitive **overrides** (pnpm/npm `overrides` for a transitive CVE with no direct upgrade path); **CVE verdict reasoning** (upgrade vs scoped-override vs remove-stale-override vs hold vs flag, not a reflex pin); **false-positive suppression** (no churned noise PR); **SHA-pinning *unpinned* actions** (the initial `@v4`→`@<sha>` conversion — Dependabot preserves an action's existing pin style and won't make this change); and the **consolidated reasoning PR** that carries the verdicts.
+- **The auditor fills what Dependabot can't.** Scoped transitive **overrides** (pnpm/npm `overrides` for a transitive CVE with no direct upgrade path); **CVE verdict reasoning** (upgrade vs scoped-override vs remove-stale-override vs hold vs flag, not a reflex pin); **false-positive suppression** (no churned noise PR); **SHA-pinning *unpinned* actions** (the initial `@v4`→`@<sha>` conversion — Dependabot preserves an action's existing pin style and won't make this change); and the **consolidated reasoning PR** that carries the verdicts.
 
 The handoff: the auditor does the one-time tag→SHA pin Dependabot can't; Dependabot then keeps that SHA fresh afterward.
 
@@ -26,11 +26,11 @@ Inspect the repo root (and workspaces) for lockfile markers, in this priority:
 - A required tool missing (e.g. `cargo-audit`) ⇒ note the gap, skip that probe, **never fail the whole run**.
 - **JS workspaces:** read `pnpm-workspace.yaml` (catalog + `pnpm.overrides`) and the root `package.json` `overrides`/`resolutions`; collect every `package.json` (root + members) and every `dependencies` / `devDependencies` / `peerDependencies` entry.
 
-Your domain probe per manager (native audit, or latest-in-range + publish-date) and your apply primitives live in your own doc.
+Your domain probe per manager (the native audit) and your apply primitives live in your own doc.
 
 ## Auto-apply gate — shared boxes
 
-These boxes are common to **both** auditors and gate every ✅ change; your own doc adds domain-specific boxes (peer-range / re-audit for supply-chain; cooldown / coupled-set / catalog / level for freshness). **A single miss ⇒ revert the tree to exactly as found and downgrade the finding to FLAG/RECOMMEND** — never a half-applied change.
+These boxes gate every ✅ change; your own doc adds domain-specific boxes (peer-range / re-audit for supply-chain). **A single miss ⇒ revert the tree to exactly as found and downgrade the finding to FLAG** — never a half-applied change.
 
 - [ ] **One `name@version` per change.** The change targets a single package; the lockfile diff touches only that package.
 - [ ] **Version actually moved.** Re-read the lockfile and prove the resolved version changed — a no-op edit is not a fix.
@@ -40,7 +40,7 @@ These boxes are common to **both** auditors and gate every ✅ change; your own 
 
 ## Always FLAG — shared baseline
 
-Out of bounds for auto-apply in **both** auditors, however mechanical they look — recommend the action and hand the decision to the user. Your own doc adds domain cases.
+Out of bounds for auto-apply, however mechanical they look — recommend the action and hand the decision to the user. Your own doc adds domain cases.
 
 - A **major / out-of-range** bump.
 - **Range-widening** required.
@@ -56,8 +56,8 @@ A failed or degraded probe (missing native tool, network failure, unreachable pu
 
 ## Receipt
 
-Your final message is consumed by `/audit`, **not a human** — return **only** a single JSON object that validates against `schema/audit-receipt.schema.json`, no prose before or after it. Set `auditor` to your kind and map `applied[]` / `findings[]` / `verification` / `degraded[]` per your own doc. `status` is the tristate `ok` / `needs-review` / `blocked` defined by the schema.
+Your final message is consumed by `/audit`, **not a human** — return **only** a single JSON object that validates against `schema/audit-receipt.schema.json`, no prose before or after it. Set `auditor: "security"` and map `applied[]` / `findings[]` / `verification` / `degraded[]` per your own doc. `status` is the tristate `ok` / `needs-review` / `blocked` defined by the schema.
 
 ## Commit behaviour
 
-Commit per `guidelines/commit-conventions.md` — see its "Who commits what" table for the security vs freshness specifics.
+Commit per `guidelines/commit-conventions.md` — see its "Who commits what" table for the security-auditor specifics (it leaves its edits uncommitted; `/audit` makes the single commit).

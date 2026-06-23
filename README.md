@@ -32,15 +32,15 @@ flowchart LR
     prwatch -->|"on merged: close out + teardown"| start
     prwatch -->|"security audit (when audits.security)"| sec["security auditor"]
     refactor["/refactor"] -->|"dispatch in place (no PR)"| engineer
-    audit["/audit"] -->|"security-first pass"| sec
-    audit -->|"freshness pass"| fresh["freshness auditor"]
+    audit["/audit"] -->|"security pass"| sec
     audit -->|"open audit PR, hand off"| auditPR["PR"]
     auditPR <-->|"drive CI green"| prwatch
+    dependabot["Dependabot bump"] -->|"CI fails → auto-fix"| prwatch
 ```
 
 > Commands are invoked namespaced — `/supera:start`, `/supera:init`, and so on. The diagrams use the short name for readability.
 
-**Skills orchestrate, agents implement.** The skills route lifecycle and PR mechanics and delegate every line of application code to the single implementer, `supera-engineer` (the auditor agents are the implementers for `/supera:audit`). Nothing commits to base directly — every path ships via a branch/worktree and, except `/supera:refactor`, via a PR, with **CI as the gate**.
+**Skills orchestrate, agents implement.** The skills route lifecycle and PR mechanics and delegate every line of application code to the single implementer, `supera-engineer` (the security auditor is the implementer for `/supera:audit`). Nothing commits to base directly — every path ships via a branch/worktree and, except `/supera:refactor`, via a PR, with **CI as the gate**.
 
 ---
 
@@ -95,19 +95,18 @@ This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a P
 
 | Command | What it does | Args |
 |---|---|---|
-| `/supera:init` | Bootstrap a repo: detect the stack, ground install/build/test/lint in the repo's CI (or ask when there's none), write `.claude/supera.json`, and offer a daily audit cron workflow. Run once per repo. | *(interactive — detect & confirm)* |
+| `/supera:init` | Bootstrap a repo: detect the stack, ground install/build/test/lint in the repo's CI (or ask when there's none), write `.claude/supera.json`, and offer Dependabot, a weekly audit cron, and the Dependabot→pr-watch auto-fix workflow. Run once per repo. | *(interactive — detect & confirm)* |
 | `/supera:start` | Full-lifecycle orchestrator: task → worktree → delegate to `supera-engineer` → PR → hand off to `/pr-watch`, and tear down on a merged PR. Idempotent — re-run to resume or close out; `finish` merges a green PR then closes out. | `[task \| branch] [--non-interactive]` · `pause [branch]` · `finish [branch]` |
 | `/supera:pr-watch` | PR babysitter: monitor CI, fix failures via `supera-engineer`, address review threads, run one code-review cycle (plus a security audit when enabled), exit when green, synced, and resolved. | `[PR#] [--non-interactive]` |
 | `/supera:refactor` | Improve existing code in place — dispatch `supera-engineer` against a repo/dir/file. Lightweight: no worktree, no PR, no commit — leaves changes in your working tree to review. | `[path] [directive]` |
-| `/supera:audit` | Standalone dependency-audit orchestrator: cut a worktree, run the enabled auditors (security CVE overrides, then freshness bumps), carry safe auto-fixes into a PR, hand off to `/pr-watch`. CI-cron-ready. | `[branch] [--non-interactive] [--security-only] [--freshness-only]` |
+| `/supera:audit` | Standalone dependency-audit orchestrator: cut a worktree, run the security auditor (CVE overrides, action-pins), carry safe auto-fixes into a PR, hand off to `/pr-watch`. CI-cron-ready. | `[branch] [--non-interactive]` |
 
 ## Agents
 
 | Agent | Role |
 |---|---|
 | `supera-engineer` | **The single implementer.** Ships a well-scoped change end-to-end in an isolated worktree: orients on the repo's own conventions, writes code **and** tests, and self-verifies (build/test/lint) before returning a structured receipt. Dispatched by `/supera:start` and `/supera:refactor`. |
-| `supera-security-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo) plus GitHub Actions: CVEs, missing/stale overrides, typo-squats, provenance gaps, unpinned Actions, leaked secrets. Picks the *correct* remediation per CVE (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning, and auto-pins unpinned Actions to their commit SHA. Report-only by default; auto-applies only bounded, gated fixes. Gated by `audits.security`. |
-| `supera-freshness-auditor` | Cross-ecosystem dependency **currency** (not security): direct deps behind their latest in-range version, and version drift across workspace members. Report-only by default; with `audits.freshness.level` it auto-applies only SAFE in-range bumps (cooldown-gated). Gated by `audits.freshness`. |
+| `supera-security-auditor` | Cross-ecosystem supply-chain audit (npm/pnpm/yarn/cargo) plus GitHub Actions: CVEs, missing/stale overrides, typo-squats, provenance gaps, unpinned Actions, leaked secrets. Picks the *correct* remediation per CVE (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning, and auto-pins unpinned Actions to their commit SHA. Report-only by default; auto-applies only bounded, gated fixes. Gated by `audits.security`. Dependency currency (routine version bumps) is owned by Dependabot, not supera. |
 
 ---
 
@@ -168,8 +167,7 @@ Written by `/supera:init` and safe to hand-edit. See [`schema/supera.schema.json
 | `worktree` | How `/supera:start` cuts its workspace: `dir` (default `.worktrees`), `base` (default `main`), `postCreate` (defaults to `verify.install`). |
 | `pr` | PR defaults: `base` (target branch, default `main`), `remote` (default `origin`). |
 | `audits.security` | `true`/`false` (default `false`). Enables `supera-security-auditor`. |
-| `audits.freshness.level` | `off` \| `patch` \| `minor` (default `off`). `patch` auto-applies in-range patch bumps; `minor` also auto-applies clean in-range minors; majors and range-widening always flag. |
-| `audits.freshness.minReleaseAgeDays` | Integer (default `7`). Cooldown — only auto-apply a version published at least this many days ago (defuses day-zero compromised/yanked releases). |
+| `audits.actionPinAllowlist` | Globs of `owner/repo` whose unpinned GitHub Actions the security auditor leaves floating (default `[]` = pin everything). |
 | `review.consensus` | Optional pre-merge merge-readiness vote in `/supera:pr-watch`: `voters` (default `1` = off), `quorum`. |
 | `review.lenses` | Optional specialist review lenses in `/supera:pr-watch` (`silent-failures` \| `type-design` \| `test-coverage`). Default `[]`. |
 | `security.denyPaths` | Globs the engineer must never touch and `/supera:pr-watch` refuses into a PR (secrets / private keys). Defaults to common secret/key globs; `[]` disables. |
@@ -178,19 +176,25 @@ Written by `/supera:init` and safe to hand-edit. See [`schema/supera.schema.json
 
 ## Dependency audits
 
-`/supera:audit` is a standalone, recurring-hygiene orchestrator, decoupled from the feature lifecycle. It runs the enabled auditors **security-first** (so a CVE fix isn't churned by a freshness bump), folds their safe auto-fixes into a date-scoped PR (`chore-audit-<date>`), and hands off to `/pr-watch`. Both auditors are **report-only by default** and only ever auto-apply bounded, gated, verified fixes — everything else is surfaced for a human to decide.
+Dependency hygiene is layered. **Dependabot** owns the mechanical, deterministic floor — routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net. supera's **security auditor** owns the judgment Dependabot can't make. `/supera:init` offers to wire up Dependabot for you.
+
+`/supera:audit` is a standalone, recurring-hygiene orchestrator, decoupled from the feature lifecycle. It runs the security auditor, folds its safe auto-fixes into a date-scoped PR (`chore-audit-<date>`), and hands off to `/pr-watch`. The auditor is **report-only by default** and only ever auto-applies bounded, gated, verified fixes — everything else is surfaced for a human to decide.
 
 The security audit also hardens your CI supply chain: it flags every GitHub Actions `uses:` ref that isn't pinned to a commit SHA and **auto-pins tag/semver refs** (e.g. `actions/checkout@v4` → `actions/checkout@<40-hex-sha> # v4`), preserving the original ref as a trailing comment. Branch refs and unresolvable/unreachable ones are flagged, never auto-pinned.
 
-Enable them in `.claude/supera.json` (`audits.security`, `audits.freshness.level`), then run `/supera:audit` on demand, or schedule it in CI.
+Enable it in `.claude/supera.json` (`audits.security`), then run `/supera:audit` on demand, or schedule it in CI.
+
+### Auto-fixing Dependabot bumps
+
+When a Dependabot bump breaks CI, `/supera:init` can emit a `.github/workflows/supera-dependabot-pr-watch.yml` that fires on **CI completion** (`workflow_run`) for failed Dependabot PRs and runs `/supera:pr-watch --non-interactive` on the PR — so `supera-engineer` makes the code and tests work with the bumped version instead of leaving the PR red. It's offered (recommended) only when Dependabot was accepted and a CI workflow was detected. supera dogfoods it in [`.github/workflows/dependabot-pr-watch.yml`](.github/workflows/dependabot-pr-watch.yml).
 
 ### Scheduling it in CI
 
-`/supera:init` offers to write a daily `/supera:audit` cron into `.github/workflows/supera-audit-daily.yml` (opt-in, only when an auditor is enabled and the repo is GitHub-hosted). It runs the auditors via [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action), loading supera from the public marketplace, and opens an audit PR. Add an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret for it, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope): the default `GITHUB_TOKEN` lacks `workflow` scope, so with only it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes. supera's own repo runs the same cron from [`.github/workflows/audit-daily.yml`](.github/workflows/audit-daily.yml), the canonical reference for the emitted one.
+`/supera:init` offers to write a weekly `/supera:audit` cron into `.github/workflows/supera-audit-weekly.yml` (opt-in, only when the security auditor is enabled and the repo is GitHub-hosted). It runs the auditor via [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action), loading supera from the public marketplace, and opens an audit PR. Add an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret for it, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope): the default `GITHUB_TOKEN` lacks `workflow` scope, so with only it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes. supera's own repo runs the same cron from [`.github/workflows/audit-weekly.yml`](.github/workflows/audit-weekly.yml), the canonical reference for the emitted one.
 
 ## Headless / CI
 
-Every orchestrator accepts `--non-interactive` for headless runs (e.g. GitHub Actions via `anthropics/claude-code-action`). The pipeline is unchanged; only the prompt points differ — instead of asking a human, an ambiguous fork surfaces as a PR comment and the run exits `blocked`. A daily `/supera:audit --non-interactive` cron is the common setup — `/supera:init` offers to emit it for you (see [Scheduling it in CI](#scheduling-it-in-ci)).
+Every orchestrator accepts `--non-interactive` for headless runs (e.g. GitHub Actions via `anthropics/claude-code-action`). The pipeline is unchanged; only the prompt points differ — instead of asking a human, an ambiguous fork surfaces as a PR comment and the run exits `blocked`. A weekly `/supera:audit --non-interactive` cron is the common setup — `/supera:init` offers to emit it for you (see [Scheduling it in CI](#scheduling-it-in-ci)).
 
 ---
 
@@ -220,7 +224,7 @@ supera runs `git` and `gh` under your existing `gh` authentication — its reach
 Three layers, one rule — **single source of truth**:
 
 - **Skills orchestrate** (`/supera:init`, `/supera:start`, `/supera:pr-watch`, `/supera:refactor`, `/supera:audit`) — lifecycle, phase routing, PR mechanics. They delegate; they don't implement.
-- **Agents implement** (`supera-engineer`, the two auditors) — the engineer writes code and tests; the auditors analyse and apply bounded fixes.
+- **Agents implement** (`supera-engineer`, the security auditor) — the engineer writes code and tests; the auditor analyses and applies bounded fixes.
 - **Shared guidelines are canonical** (`guidelines/`) — cross-cutting conventions (commit hygiene, auditor mechanics) live once and are referenced, never restated.
 
 ## Requirements

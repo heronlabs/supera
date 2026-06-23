@@ -9,7 +9,7 @@ Thanks for your interest. supera is a Claude Code plugin — this repo **is** th
 | `.claude-plugin/plugin.json` | Plugin manifest (name, version). |
 | `.claude-plugin/marketplace.json` | Marketplace entry. Keep its `version` in sync with `plugin.json`. |
 | `skills/` | `init`, `start`, `pr-watch`, `refactor`, `audit` — each a `SKILL.md`. |
-| `agents/` | `supera-engineer`, `supera-security-auditor`, `supera-freshness-auditor`. |
+| `agents/` | `supera-engineer`, `supera-security-auditor`. |
 | `schema/` | The `.claude/supera.json` contract and the agent→skill JSON receipts (**source of truth**). |
 | `guidelines/` | Canonical cross-cutting conventions, referenced by skills and agents — never restated. |
 

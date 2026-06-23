@@ -13,7 +13,7 @@ A reflexive override is frequently the **worst** move. A flat blanket pin freeze
 
 You auto-apply only bounded remediations (§2 marks them ✅): the three CVE remediations through the strict gate in §3, plus the **PIN-ACTION** SHA-pin through its own gate in §5; **everything else is FLAGGED** for the user.
 
-Dependency *currency* — how far behind latest a dep has fallen, version drift across members, and routine maintenance bumps — is out of scope here; that is `supera-freshness-auditor`'s job.
+Dependency *currency* — how far behind latest a dep has fallen, version drift across members, and routine maintenance bumps — is out of scope for supera; Dependabot owns those mechanical version bumps.
 
 **Shared mechanics** — ecosystem detection, the auto-apply gate's common boxes, the always-FLAG baseline, the receipt contract, and the **division of labor with Dependabot** (you fill the gaps it can't — scoped transitive overrides, CVE verdict reasoning, false-positive suppression, the initial tag→SHA pin) — live in `guidelines/auditor-base.md`. This doc adds only the supply-chain rubric (CVE remediation, secrets, typo-squats, provenance).
 
@@ -137,7 +137,7 @@ Beyond CVEs (§2–§4) and unpinned Actions (§5), audit these classes and repo
 Return the receipt per `guidelines/auditor-base.md` (single JSON validating `schema/audit-receipt.schema.json`, no prose). Set `auditor: "security"` and map your work:
 
 - **`applied[]`** — every change you auto-remediated. For a CVE: verdict `upgrade` / `pin` / `remove-pin`, with `target`, `from`/`to`, and the `verifiedBy` check. For an action-pin (§5): verdict `pin-action`, `target` = the full `owner/repo` or `owner/repo/path` (keep the subpath), `from` = `<ref>`, `to` = `<sha>`, `verifiedBy` = `sha-resolution`. **Omit `commit`** — you leave the edits uncommitted and `/audit` makes the single commit.
-- **`findings[]`** — everything that needs a human, **most-severe first** (unfixable/flagged CVEs → leaked secrets → typo-squat/provenance → unpinnable Action): verdict `flag` or `hold`, each with `target`, `file`/`line` when locatable, and the recommended `action`.
+- **`findings[]`** — everything that needs a human, **most-severe first** (unfixable/flagged CVEs → leaked secrets → typo-squat/provenance → unpinnable Action), then any non-blocking informational notes: verdict `flag` or `hold` for a human call, or `recommend` for an informational note that needs no action — an allowlisted-floating Action (§5) is reported ONCE as `recommend` (informational, non-blocking). Each carries `target`, `file`/`line` when locatable, and the recommended `action`.
 - **`verification`** — the CVE gate run (install/build/test mirroring CI) that proved the applied CVE set green. (Action-pins carry their proof in `applied[].verifiedBy`, not here.)
 - **`degraded[]`** — any degraded probe (missing native audit, network failure, unresolvable/unreachable action ref) that blocked an auto-apply.
 - **`status`** — `ok` / `needs-review` (any `findings[]`) / `blocked` (could not audit at all).

@@ -98,25 +98,6 @@
           "default": false,
           "description": "Enable supera-security-auditor (works on npm/pnpm/yarn/cargo)."
         },
-        "freshness": {
-          "type": "object",
-          "description": "Enable supera-freshness-auditor (dependency CURRENCY, not security). Disjoint from audits.security: no CVE/secret/override logic.",
-          "additionalProperties": false,
-          "properties": {
-            "level": {
-              "type": "string",
-              "enum": ["off", "patch", "minor"],
-              "default": "off",
-              "description": "off = report-only (recommend/flag, never auto). patch = auto-apply in-range PATCH bumps; in-range minors are recommended. minor = also auto-apply CLEAN in-range MINOR bumps (breaking-flavored or notes-unreachable minors downgrade to recommend); majors always FLAG. Range-widening => FLAG at every level."
-            },
-            "minReleaseAgeDays": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 7,
-              "description": "Cooldown: only auto-apply a version whose exact-resolved publish date is at least this many days old (defuses day-zero compromised/yanked releases). If the publish date is unreachable (e.g. crates.io REST down) => UNVERIFIED => FLAG, never auto."
-            }
-          }
-        },
         "actionPinAllowlist": {
           "type": "array",
           "items": {"type": "string"},
