@@ -24,7 +24,7 @@ Thanks for your interest. supera is a Claude Code plugin — this repo **is** th
 ## Making a change
 
 1. Edit the skill / agent / schema.
-2. **Versioning is automated — don't hand-bump `version`.** On merge to `main`, [`.github/workflows/continuous-deployment.yml`](.github/workflows/continuous-deployment.yml) bumps it (`patch` by default), tags `v<version>`, cuts a GitHub release, and syncs `plugin.json` + `marketplace.json` + `package.json` in lockstep. For a `minor`/`major` bump, run the `Continuous Deployment` workflow manually (`workflow_dispatch`) and pick the `spec`.
+2. **Versioning is automated — don't hand-bump `version`.** On merge to `main`, [`.github/workflows/continuous-deployment.yml`](.github/workflows/continuous-deployment.yml) bumps it — the bump type is inferred from the merge commit via Conventional Commits (`feat:` → minor, a breaking change → major, anything else → patch) — tags `v<version>`, cuts a GitHub release, and syncs `plugin.json` + `marketplace.json` + `package.json` in lockstep. PRs squash-merge, so give the squash commit's subject the right type to get the bump you want. To force a bump regardless of the commit, run the workflow manually (`workflow_dispatch`) and pick the `spec`.
 3. Keep the plugin `name` a simple identifier (`supera`) — it is the command namespace (`/supera:start`), so scoped/`@org` names break loading.
 4. Open a PR. Once merged, the CD releases it and consumers pick it up on their next `/plugin update`.
 
