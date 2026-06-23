@@ -227,6 +227,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
           token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
       # supera-engineer commits the fix via raw git, so give it an identity
