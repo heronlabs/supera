@@ -75,7 +75,11 @@ Dispatch `supera-engineer` with: the full task description, the worktree path, a
 
 ## 4 — Create the PR
 
-Push the branch:
+**Guard against an empty branch first.** A `supera-engineer` that returned `ok` but left its work uncommitted would push a commit-less branch and open an empty PR — confirm there are commits beyond base before pushing:
+```bash
+git -C <WT_DIR>/<slug> log --oneline <REMOTE>/<BASE>..<slug>   # must be non-empty
+```
+If it's **empty**, do **not** push: the branch has no commits over base (the engineer didn't commit). Surface the problem to the user — no PR exists yet, so print the block detail to the run output and exit `blocked` (in `NONINTERACTIVE` mode this is the no-PR block case — see **Non-interactive mode**). Otherwise push the branch:
 ```bash
 git -C <WT_DIR>/<slug> push -u <REMOTE> <slug>
 ```

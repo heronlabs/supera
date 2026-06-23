@@ -40,6 +40,10 @@
         "lint": {"$ref": "#/$defs/check"}
       }
     },
+    "committed": {
+      "type": ["string", "null"],
+      "description": "The resulting commit sha on the feature branch, or null for the /refactor leave-uncommitted case."
+    },
     "decisions": {
       "type": "array",
       "description": "Non-obvious choices or assumptions a reviewer should know.",
