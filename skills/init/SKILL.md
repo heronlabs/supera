@@ -185,6 +185,8 @@ If declined, do nothing. If accepted, write `.github/workflows/supera-dependabot
 
 This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim — but **strip any `[`/`]`**: `workflow_run.workflows` is glob-matched, so square brackets break trigger parsing and the watcher dies at startup before its `if:` ever runs (the pipe `|` and other characters are safe). If the detected CI name has brackets, drop them here and in the CI workflow's own `name:`.
 
+supera-engineer runs the repo's **verify commands inside this workflow**, so the toolchain must be installed before `claude-code-action` (otherwise the run burns turns failing to find `pnpm`/`node` and never pushes a fix). Insert the same dependency-setup steps the CI uses — the pnpm example below (`pnpm/action-setup` → `setup-node` → `pnpm install`) for a pnpm stack; swap it for your stack's equivalent (npm `ci`, `cargo`, …).
+
 ```yaml
 # Prerequisites:
 #   - `ANTHROPIC_API_KEY` repo secret (or swap it for
@@ -226,6 +228,17 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
           token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # supera-engineer runs the repo's verify commands here, so set up the toolchain
+      # (swap these for your stack's equivalent — npm ci, cargo, etc.).
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
 
       - id: pr
         env:
