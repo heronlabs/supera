@@ -110,11 +110,15 @@ Classify and fix:
 | Clearly transient (network, runner OOM) | Note it; a re-run is acceptable here only. |
 | Unknown | Show the user; ask for guidance (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**). |
 
-On a **Dependabot (non-supera-authored) PR** — the author is `dependabot[bot]`, e.g. driven here by the `supera-skill-pr-watch.yml` workflow on a CI failure — the fix target is: **make the code/tests pass with the bumped version**. Delegate that to `supera-engineer` exactly as a normal CI failure: have it first reproduce the failure with `CONFIG.verify.*` (which surfaces drift-guard / lockfile-sync failures), then either adapt call sites, types, and tests to the new version, **or — for a github-actions / config bump that desyncs duplicated-but-unbumped content (a drift-guard or lockfile-sync failure) — re-sync the drifted copy by mirroring the bump into the file Dependabot couldn't reach**, not only code/type/test adaptation. The self-verify-via-`CONFIG.verify` step is the safety net. If the bump genuinely can't be accommodated in-scope, surface it / **block** (terminal block signal, §0a) rather than reverting the bump.
+On a **Dependabot (non-supera-authored) PR** — the author is `dependabot[bot]`, e.g. driven here by the `supera-dependabot-pr-watch.yml` workflow on a CI failure — the fix target is: **make the code/tests pass with the bumped version**. Delegate that to `supera-engineer` exactly as a normal CI failure: have it first reproduce the failure with `CONFIG.verify.*` (which surfaces drift-guard / lockfile-sync failures), then either adapt call sites, types, and tests to the new version, **or — for a github-actions / config bump that desyncs duplicated-but-unbumped content (a drift-guard or lockfile-sync failure) — re-sync the drifted copy by mirroring the bump into the file Dependabot couldn't reach**, not only code/type/test adaptation. The self-verify-via-`CONFIG.verify` step is the safety net. If the bump genuinely can't be accommodated in-scope, surface it / **block** (terminal block signal, §0a) rather than reverting the bump.
 
 Compute the failure signature `SIG` (failing job name + first error line). Dispatch `supera-engineer` with the exact log excerpt; wait for its JSON receipt (`schema/receipt.schema.json`) and branch on `receipt.status` — `ok` → record the attempt (`STATE.attempts += 1`, `STATE.lastFailure = SIG`), persist the marker (step 0a), push the fix; `needs-review`/`blocked` → surface `receipt.implemented` and any FAIL in `receipt.verification`, don't push a red fix (in `NONINTERACTIVE` mode, **block** instead — see **Non-interactive mode**). **Track attempts via the persisted marker so a fresh CI invocation resumes the count:** if this `SIG` equals `STATE.lastFailure` and `STATE.attempts >= 2` (the same failure has already survived 2 fix attempts): post the **terminal block signal** (§0a) with the failing-job detail, show the full log, and exit the turn (interactive: also ask for guidance).
 
-After a fix:
+After a fix, **guard against an empty push** — a `supera-engineer` that returned `ok` but left the fix uncommitted produces no new commit, so confirm the branch advanced beyond the remote before pushing:
+```bash
+git -C <worktree> log --oneline <CONFIG.pr.remote:-origin>/$BRANCH..$BRANCH   # must be non-empty
+```
+If it's **empty**, the engineer didn't commit its fix — do **not** push. Post the **terminal block signal** (§0a) with the `ok`-but-uncommitted detail and exit the turn (interactive: also surface it). Otherwise push:
 ```bash
 git push <CONFIG.pr.remote:-origin> $BRANCH
 ```
@@ -133,7 +137,11 @@ For each unresolved thread:
 2. Classify:
    - **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` with the file + the request.
    - **Question / design discussion** → do NOT implement; surface to the user (in `NONINTERACTIVE` mode, **block** — see **Non-interactive mode**).
-3. After implementing, push first, then reply referencing the pushed commit:
+3. After implementing, **guard against an empty push** — confirm the engineer's fix produced a commit before pushing (an `ok`-but-uncommitted fix leaves the branch unchanged):
+```bash
+git -C <worktree> log --oneline <remote>/$BRANCH..$BRANCH   # must be non-empty
+```
+   If it's **empty**, the engineer didn't commit — do **not** push; post the **terminal block signal** (§0a) with the detail and exit the turn (interactive: also surface it). Otherwise push first, then reply referencing the pushed commit:
 ```bash
 git push <remote> $BRANCH
 gh pr review $PR --comment --body "Addressed in <commit-sha>: <one-line summary>"
@@ -244,10 +252,12 @@ Otherwise dispatch `VOTERS` independent reviewer agents in parallel (single mess
 
 ### Close out the cycle
 
-Push, then reschedule preserving flags and exit:
+Push, then reschedule preserving flags and exit. **If a `supera-engineer` fix was delegated this cycle (6a–6c), guard against an empty push first** — confirm that fix produced a commit, since an `ok`-but-uncommitted fix would otherwise push nothing and present an unchanged PR as fixed:
 ```bash
+git -C <worktree> log --oneline <remote>/$BRANCH..$BRANCH   # if a fix ran this cycle, must be non-empty
 git push <remote> $BRANCH
 ```
+If a fix ran this cycle yet the log is **empty**, the engineer didn't commit — do **not** push; post the **terminal block signal** (§0a) with the detail and exit the turn (interactive: also surface it).
 - **`VOTERS <= 1`, or consensus cleared this cycle** → reschedule WITH `--reviewed` (subsections won't repeat); next wake, step 5 announces the PR ready:
 ```
 ScheduleWakeup(delaySeconds=120, reason="CI after review on PR #<N>", prompt="/pr-watch <N> --reviewed [--non-interactive if set]")

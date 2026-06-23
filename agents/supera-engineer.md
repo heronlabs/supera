@@ -83,7 +83,9 @@ Read the real output. Fix until green. **Never claim done without showing the co
 
 **Never fake green.** Do not delete, skip, `xfail`, or weaken a test; do not loosen an assertion; do not suppress, swallow, or wrap an error to make a check pass. A check is "passing" only when the underlying behaviour is correct. If you cannot make it genuinely pass within scope, stop and return it red — with the command output and what's blocking it.
 
-### 5 — Return a receipt
+### 5 — Commit, then return a receipt
+
+**Commit your work on the feature branch first.** Once the checks are green, commit the change (code **and** tests) on the worktree's feature branch per `guidelines/commit-conventions.md`, and capture the resulting commit sha — an `ok` receipt with no commit is exactly the failure that pushes an empty branch. **Exception:** a `/refactor` dispatch edits the repo root **in place** and leaves changes **uncommitted** for the user to review — do **not** commit, and report `committed: null`.
 
 Your final message is consumed by the /start orchestrator, not a human — return **only** a single JSON object that validates against `schema/receipt.schema.json`. No prose before or after it. Emit each field the same facts the prose receipt carried:
 
@@ -99,6 +101,7 @@ Your final message is consumed by the /start orchestrator, not a human — retur
     "test":  { "command": "<command>", "result": "PASS", "output": "<N passed>" },
     "lint":  { "command": "<command>", "result": "PASS" }
   },
+  "committed": "<commit sha on the feature branch, or null for the /refactor leave-uncommitted case>",
   "decisions": ["<any non-obvious choice a reviewer should know>"],
   "outOfScope": ["<flagged WIP failures, deferred work — empty array if none>"],
   "status": "ok"
