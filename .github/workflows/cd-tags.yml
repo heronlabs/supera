@@ -1,4 +1,4 @@
-name: '[ CD ] | Tags'
+name: 'CD | Tags'
 
 on:
   push:

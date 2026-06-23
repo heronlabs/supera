@@ -24,7 +24,7 @@ Thanks for your interest. supera is a Claude Code plugin — this repo **is** th
 ## Making a change
 
 1. Edit the skill / agent / schema.
-2. **Versioning is automated — don't hand-bump `version`.** On merge to `main`, [`.github/workflows/cd-tags.yml`](.github/workflows/cd-tags.yml) bumps it (`patch` by default), tags `v<version>`, cuts a GitHub release, and syncs `plugin.json` + `marketplace.json` + `package.json` in lockstep. For a `minor`/`major` bump, run the `[ CD ] | Tags` workflow manually (`workflow_dispatch`) and pick the `spec`.
+2. **Versioning is automated — don't hand-bump `version`.** On merge to `main`, [`.github/workflows/cd-tags.yml`](.github/workflows/cd-tags.yml) bumps it (`patch` by default), tags `v<version>`, cuts a GitHub release, and syncs `plugin.json` + `marketplace.json` + `package.json` in lockstep. For a `minor`/`major` bump, run the `CD | Tags` workflow manually (`workflow_dispatch`) and pick the `spec`.
 3. Keep the plugin `name` a simple identifier (`supera`) — it is the command namespace (`/supera:start`), so scoped/`@org` names break loading.
 4. Open a PR. Once merged, the CD releases it and consumers pick it up on their next `/plugin update`.
 

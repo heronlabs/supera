@@ -140,7 +140,7 @@ If declined, do nothing. If accepted, write `.github/workflows/supera-audit-week
 #     default `GITHUB_TOKEN` lacks `workflow` scope and cannot push changes to
 #     `.github/workflows/*` — with only it, the audit still runs and pins
 #     dependencies, but action-pins cannot be pushed.
-name: '[ Audit ] | Weekly'
+name: 'Skill | audit'
 
 on:
   schedule:
@@ -200,7 +200,7 @@ supera-engineer runs the repo's **verify commands inside this workflow**, so the
 # scope — an accepted risk for auto-fixing a Dependabot bump. Keep the
 # `SUPERA_AUDIT_TOKEN` minimally scoped. It fires only on a FAILED CI run of a
 # Dependabot pull_request.
-name: '[ Dependabot ] | PR Watch'
+name: 'Skill | pr-watch'
 
 on:
   workflow_run:
