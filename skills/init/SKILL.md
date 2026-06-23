@@ -162,6 +162,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # the auditor commits its safe remediations via raw git, so give it an
+      # identity (claude-code-action only auto-configures git in its tag mode,
+      # not prompt mode).
+      - run: |
+          git config --global user.name 'supera-bot'
+          git config --global user.email 'supera-bot@users.noreply.github.com'
+
+      # the auditor runs the repo's verify commands in the worktree /audit
+      # creates, so set up the toolchain. /audit runs install inside that
+      # worktree — no root-level `pnpm install` step here.
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
 
       - uses: anthropics/claude-code-action@30544b674398ee15c84819bd87caf8a87e8c7b55 # v1.0.154
         with:
