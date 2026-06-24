@@ -1,243 +1,448 @@
 ---
 name: start
-description: "Repo-agnostic full-lifecycle orchestrator: task → worktree → plan → delegate to supera-engineer (code + tests) → self-verified → PR → /pr-watch, and on a merged PR tears down. Idempotent: re-run to resume interrupted work or close out; `/start pause` checkpoints mid-flight. Driven by .claude/supera.json so it works in any repo."
-allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires the gh CLI
+description: "Bootstrap a repo for supera: detect its stack, ground install/build/test/lint in the repo's CI (or ask when there's none), and write .claude/supera.json. Run once per repo before /ship. Triggers: 'supera start', 'set up supera here', 'configure supera for this repo'."
+allowed-tools: Bash, Read, Glob, Grep, Write, Edit, AskUserQuestion
 ---
 
-Drive a task through its whole life — zero → open PR → merged → closed — in **any** repo. Read this repo's `.claude/supera.json` for stack commands and worktree base. Delegate the code + tests to the `supera-engineer` agent. `/start` is **idempotent** and owns the entire phase ladder: a re-run continues from the detected phase (step 1.5) — resuming an interrupted build, opening the PR, or closing out a merged PR. `/start pause` checkpoints mid-flight. After the PR is open it hands off to `/pr-watch`. The PR is the unit of work — there is no separate ticket.
+Detect this repository's toolchain and write `.claude/supera.json` so `/ship`, `/pr-watch`, and the security auditor work here. Mostly automatic — you confirm the commands, and supply them directly when the repo has no CI to read.
 
-## 0 — Load config
+The config contract is `schema/supera.schema.json` in this plugin. Produce config that validates against it.
 
-Read `.claude/supera.json` at the repo root into `CONFIG`.
+## 1 — Detect the stack
 
-- **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /init first."` Offer to run `/init` now. Do not proceed without config.
-- `BASE = CONFIG.worktree?.base ?? CONFIG.pr?.base ?? <detected default branch>`.
-- `WT_DIR = CONFIG.worktree?.dir ?? ".worktrees"`. `REMOTE = CONFIG.pr?.remote ?? "origin"`.
-- `MERGE_METHOD = CONFIG.pr?.mergeMethod ?? "squash"` — the method `/start finish` merges a green PR with.
+Inspect the repo root for marker files; `package.json`, when present, also names the stack. Set `stack` from the markers.
 
-## 1 — Parse arguments
-
-**`--non-interactive` flag:** set `NONINTERACTIVE=true` if `$ARGUMENTS` contains `--non-interactive` (strip it before parsing the rest); else `false`. This is the headless mode for CI runs with no human to answer prompts — see **Non-interactive mode** below. Interactive (`false`) is the default. Preserve the flag when handing off to `/pr-watch` (step 5).
-
-**Pause sub-command:** if `$ARGUMENTS` begins with `pause` (e.g. `pause`, `pause feat-add-payment-retry`), run the **Pause checkpoint** flow at the end of this skill and stop — do not run the pipeline below.
-
-**Finish sub-command:** if `$ARGUMENTS` begins with `finish` (e.g. `finish`, `finish feat-add-payment-retry`), run the **Finish (merge + close)** flow at the end of this skill and stop — do not run the pipeline below.
-
-Otherwise `$ARGUMENTS` may be:
-- A free-text task description — e.g. `"add payment retry on timeout"`
-- A branch name (resume / close-out an existing run) — e.g. `"feat-add-payment-retry-on-timeout"`
-
-If empty, ask for a task description (in `NONINTERACTIVE` mode there's nothing to ship and no PR to comment on — exit `blocked`, see **Non-interactive mode**).
-
-Derive a branch slug: lowercase, kebab-case, ≤50 chars, special chars stripped, prefixed by type with a **dash, never a slash** (`feat-`, `fix-`, `docs-`, `refactor-`, `chore-`). Example: `"add payment retry on timeout"` → `feat-add-payment-retry-on-timeout`. The slug is used verbatim as both the branch name **and** the worktree folder name, so it must be a single path segment — no `/`. This guarantees one flat folder per worktree (`<WT_DIR>/feat-add-payment-retry-on-timeout`), never a nested `<WT_DIR>/feat/…` subtree.
-
-## 1.5 — Phase routing (idempotency + lifecycle)
-
-Before creating anything, detect whether work for this task already exists — `/start` must **never** double-create a worktree or duplicate work, and a re-run drives the next phase. Detect the branch (the derived slug, or a branch name passed directly) and its state. The PR probe runs from the repo root (no worktree needed); the two `git -C <WT_DIR>/<slug>` probes run **only when the worktree is present**:
-```bash
-gh pr list --head <slug> --state all --json number,state     # PR? merged? (repo-root, always safe)
-git worktree list | grep <slug>                              # worktree present? gates the next two:
-git -C <WT_DIR>/<slug> log --oneline <REMOTE>/<BASE>..<slug> # commits beyond base?
-git -C <WT_DIR>/<slug> log -1 --pretty=%s                    # is HEAD a 'wip:' checkpoint?
-```
-If a PR exists, route by the PR state **first** (`pr-open` / `merged`) — those phases don't need a live worktree, so a removed worktree never blocks close-out. The build phases (`scaffolded` / `building` / `built`) require the worktree probes; if a PR is absent and the worktree is gone, treat it as `fresh`. Route by phase (the shared lifecycle ladder). **Announce the detected phase before acting** so a mis-detection is visible:
-
-| Phase | Signal | Action |
+| Markers found | `stack` | Candidate commands |
 |---|---|---|
-| `fresh` | no branch, no worktree | Fall through to step 2 (normal pipeline). |
-| `scaffolded` | worktree/branch, **0 commits** vs base | **Resume:** delegate the full implementation (**Resuming interrupted work** below), then continue to step 4. |
-| `building` | commits, **HEAD is `wip:`**, no PR | **Resume:** soft-reset the checkpoint, recover `nextUp`, delegate the remainder (**Resuming interrupted work** below), then continue to step 4. |
-| `built` | commits, HEAD not `wip:`, no PR | Skip steps 2–3; jump straight to **step 4** (open the PR). |
-| `pr-open` | PR exists, not merged | Invoke `/pr-watch <N>`. Stop. |
-| `merged` | PR merged | Run **Closing out a merged PR** below. Stop. |
+| `pnpm-lock.yaml` (+ `turbo.json`) | `pnpm` | install `pnpm install --frozen-lockfile`; build/test/lint from `turbo`/`scripts` |
+| `package-lock.json` | `npm` | install `npm ci`; build/test/lint from `scripts` |
+| `yarn.lock` | `yarn` | install `yarn install --immutable`; build/test/lint from `scripts` |
+| `Cargo.toml` | `cargo` | `cargo build --workspace` · `cargo test --workspace` · `cargo clippy -- -D warnings` |
+| `@strapi/strapi` in deps | `strapi` | `strapi build` · test script if any · lint script |
+| `go.mod` | `go` | `go build ./...` · `go test ./...` · `golangci-lint run` |
 
-## 2 — Create worktree
+The build/test/lint entries above are **candidates only** — §2 grounds them in the repo's real commands before anything is written.
 
+## 2 — Resolve build / test / lint
+
+Ground each command in what the repo actually runs, in this order:
+
+1. **CI pipeline** — inspect `.github/workflows/*.yml` (GitHub Actions) and `.gitlab-ci.yml` (GitLab CI). Read the pipeline and lift the exact build/test/lint invocations it runs.
+2. **Declared scripts** — no CI, but `package.json` declares scripts: read them (build ← `build` / `compile` / `typecheck`, test ← `test:unit` / `test`, lint ← `lint:check` / `lint`) and show them to confirm.
+3. **Ask** — no CI and nothing declared to read (early-stage repos, fresh non-JS projects): converse with the user instead of guessing. Seed the question with §1's candidates so they confirm or correct rather than start blank:
+
+  > "No CI here, so I can't read the real commands. What builds, tests, and lints this repo? (e.g. `cargo build --workspace`, `cargo test --workspace`, `cargo clippy -- -D warnings` — or say which steps don't exist yet.)"
+
+## 3 — Confirm and write
+
+Show the proposed config and ask the user to confirm or tweak the commands (use `AskUserQuestion` if a command is ambiguous).
+
+The `audits.security` auto-detect (lockfile presence) is independent of any prompt — keep it as below. Then write `.claude/supera.json` at the repo root:
+
+```jsonc
+{
+  "stack": "<detected>",
+  "verify": {
+    "install": "<install cmd>",
+    "build": "<build cmd>",
+    "test": "<test cmd>",
+    "lint": "<lint cmd>"
+  },
+  "worktree": { "dir": ".worktrees", "base": "<default branch>" },
+  "pr": { "base": "<default branch>", "remote": "origin" },
+  // security is auto-detected from lockfile presence.
+  "audits": { "security": false }
+  // Optional pr-watch rigor surfaces, off by default — uncomment to opt in.
+  // "review": { "consensus": { "voters": 1 }, "lenses": [] },   // voters:1 disables the merge-readiness gate (default); lenses [] = no extra PR-review specialists ("silent-failures" | "type-design" | "test-coverage")
+  // "security": { "denyPaths": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"] }
+}
+```
+
+Detect the default branch instead of assuming `main`:
 ```bash
-git fetch <REMOTE> <BASE>
-git worktree add <WT_DIR>/<slug> -b <slug> <REMOTE>/<BASE>
-```
-Then run the post-create step (install) if defined:
-```bash
-cd <WT_DIR>/<slug> && <CONFIG.worktree.postCreate ?? CONFIG.verify.install>
-```
-Confirm the worktree exists and the install succeeded before continuing. If the worktree already exists for this branch, reuse it (do not error).
-
-## 3 — Plan and delegate
-
-Form an internal implementation plan. It stays internal — proceed immediately unless the user explicitly said "show me the plan first" or invoked `/plan` before `/start`.
-
-The executor is always `supera-engineer` (one strong agent does code + tests, self-verifies) — the sole implementer; `/start` orchestrates, it never edits application code itself.
-
-Announce: *"Plan ready. Delegating to `supera-engineer` in worktree `<WT_DIR>/<slug>`."* If the task hinges on a term with two plausible readings — a literal name vs. a mapping, an unfamiliar proper noun, a config key that could mean two things — add one line stating the reading you're shipping (e.g. *"reading `environment pulumi` as the literal GitHub environment named `pulumi`, not a per-stack map"*). This is a visible-by-default check, not a gate: proceed unless the fork is genuinely expensive to undo — that case is the engineer's `superpowers:brainstorming` step, not a blocking question here.
-
-Dispatch `supera-engineer` with: the full task description, the worktree path, and the path to `.claude/supera.json`. The engineer self-verifies (build/test/lint from config) before returning — **do not run the quality gate yourself; CI is the gate, the engineer is the pre-flight.** Wait for its receipt — a JSON object matching `schema/receipt.schema.json`. Parse it and branch on `receipt.status`: `ok` → continue to step 4; `needs-review` or `blocked` → surface `receipt.implemented`, any FAIL in `receipt.verification`, and `receipt.outOfScope` to the user before pushing (in `NONINTERACTIVE` mode no PR exists yet to comment on — print the receipt detail and exit `blocked`, see **Non-interactive mode**).
-
-## 4 — Create the PR
-
-**Guard against an empty branch first.** A `supera-engineer` that returned `ok` but left its work uncommitted would push a commit-less branch and open an empty PR — confirm there are commits beyond base before pushing:
-```bash
-git -C <WT_DIR>/<slug> log --oneline <REMOTE>/<BASE>..<slug>   # must be non-empty
-```
-If it's **empty**, do **not** push: the branch has no commits over base (the engineer didn't commit). Surface the problem to the user — no PR exists yet, so print the block detail to the run output and exit `blocked` (in `NONINTERACTIVE` mode this is the no-PR block case — see **Non-interactive mode**). Otherwise push the branch:
-```bash
-git -C <WT_DIR>/<slug> push -u <REMOTE> <slug>
+git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
 
-Write the PR body (template below). First best-effort ensure the `supera` label exists (the standalone pr-watch workflow gates on it to recognise a `/start` PR), then create the PR assigned to `@me` so it lands in the user's review queue. Do **not** add `--reviewer` (GitHub blocks self-review; the gh-CLI user is the author), and do **not** add `--label` inline — labelling is decoupled below so a label/permission hiccup never blocks the PR:
-```bash
-gh label create supera --color ededed --description "Opened by supera /start" 2>/dev/null || true
-gh pr create \
-   --base <BASE> \
-   --title "<short human summary, <70 chars, no conventional-commit prefix>" \
-   --body "$(cat <<'EOF'
-<body below>
-EOF
-)" \
-   --assignee @me
+Set `audits.security` to `true` if the repo has a lockfile (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `Cargo.lock`, `go.sum`), else `false`. The security auditor runs on demand via `/audit`, `/ship`, and `/pr-watch`.
+
+## 4 — Write the guardrails into the repo's CLAUDE.md
+
+Insert a small, repo-agnostic guardrail block into the target repo's root `CLAUDE.md` so the main thread here follows the same discipline `supera-engineer` carries. The block is marker-delimited so it is idempotent and never clobbers existing content:
+
+````md
+<!-- supera:guardrails -->
+## Working with this repo (managed by /start — edits between these markers are overwritten on re-run)
+
+- **Edit, don't rewrite.** Change only the needed entry in a config/generated file (`package.json`, lockfiles, manifests, CI yaml); preserve the rest. Never regenerate a whole file to add one line.
+- **No scope creep.** Build only what was asked; no speculative abstractions, layers, or options. Prefer the simplest working solution.
+- **Ambiguous literals: flag, don't guess.** Config keys, IDs, and env names can be literal values, not mappings. State which reading you took.
+- **Scope a change to where it belongs** — most changes are localized to one area; touch other repos only when the change genuinely cuts across, and then update the related repos too.
+<!-- /supera:guardrails -->
+````
+
+Apply it like this:
+- **No `CLAUDE.md`** → create it containing the block.
+- **`CLAUDE.md` exists without the markers** → show the block and confirm (same courtesy as overwriting `supera.json`), then **append** it after the existing content — never modify what is already there.
+- **Markers already present** → replace only the text between `<!-- supera:guardrails -->` and `<!-- /supera:guardrails -->`; leave everything else untouched (idempotent re-run).
+
+## 5 — Offer the dependency layers (Dependabot + the audit cron + the Dependabot→pr-watch auto-fix)
+
+Dependency hygiene is layered, and a GitHub-hosted repo should adopt them (the division of labor is canonical in `guidelines/auditor-base.md`). Each layer is **independently opt-in** — offer them separately and accept each on its own merit: Dependabot (5a) stands alone as a complete path, and accepting it never obligates the audit cron (5b) or the auto-fix (5c).
+
+1. **Dependabot — the free, always-on deterministic layer.** Routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net — no LLM, native write to `.github/workflows/*`. Offer this **first**, framed as recommended.
+2. **The `/supera:audit` cron — the reasoning layer.** The workflow supera offers for the audit (since `/pr-watch` and `/ship` run locally and emit no workflow). It runs the security auditor for what Dependabot can't reason about — scoped transitive overrides, CVE verdicts, the initial tag→SHA pin.
+3. **The Dependabot→`/supera:pr-watch` auto-fix (5c).** When a Dependabot bump breaks CI, this workflow runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version — only offered when Dependabot was accepted (5a).
+
+### 5a — Offer Dependabot (recommended)
+
+Offer it only when the repo is GitHub-hosted (a `.github/` dir exists, or `origin` is a GitHub remote — `git remote get-url origin` matches `github.com`); skip silently otherwise.
+
+Ask with `AskUserQuestion` (default = **accept**; recommended): *"Add a `.github/dependabot.yml`? It's the free, always-on layer — Dependabot bumps versions, keeps SHA-pinned Actions fresh, and opens security-update PRs, leaving supera's security auditor to reason about overrides and CVE verdicts."*
+
+If accepted, write `.github/dependabot.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. Map `package-ecosystem` from the detected `stack`: **pnpm / npm / yarn → `npm`**, **cargo → `cargo`**, **go → `gomod`**. Always include the `github-actions` block. Both the `npm`/`cargo`/`gomod` and `github-actions` blocks run **full version-updates**, each grouped so a week's bumps land in one PR — Dependabot now owns the routine version bumps supera no longer reasons about. For a `pnpm` stack (`npm` ecosystem reads `pnpm-lock.yaml`):
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: npm # reads pnpm-lock.yaml
+    directory: '/'
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ['*']
 ```
-Save the PR number, then best-effort apply the `supera` label so the pr-watch workflow can pick the PR up:
-```bash
-gh pr edit <PR-number> --add-label supera 2>/dev/null || true
+
+For a `cargo` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: cargo` and its `npm:` group key for `cargo:`, keeping the same `directory` / `schedule` / `patterns: ['*']` and the unchanged `github-actions` block.
+
+For a `go` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: gomod` and its `npm:` group key for `gomod:`, keeping the same `directory` / `schedule` / `patterns: ['*']` and the unchanged `github-actions` block.
+
+### 5b — Offer the weekly audit cron
+
+Offer it only when it can do something: the security auditor is enabled (`audits.security === true`), and the repo is GitHub-hosted (same check as 5a). Skip silently when the auditor is not enabled; for a non-GitHub repo, skip with a one-line note (`"Skipping the audit workflow — no GitHub remote detected."`).
+
+When eligible, ask with `AskUserQuestion` (default = decline; opt-in, never forced): *"Emit a weekly `/supera:audit` GitHub Actions cron into `.github/workflows/supera-skill-audit.yml`? It runs the security auditor and opens an audit PR. Requires an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, plus a `SUPERA_AUDIT_TOKEN` (PAT/App token with `workflow` scope) if you want it to push GitHub Actions SHA-pins."*
+
+If declined, do nothing. If accepted, write `.github/workflows/supera-skill-audit.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. The template (supera installs from the public marketplace — those two values identify the plugin itself, not repo-specific config):
+
+```yaml
+# Prerequisites:
+#   - `ANTHROPIC_API_KEY` repo secret (or swap it for
+#     `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+#   - `SUPERA_AUDIT_TOKEN`: a PAT/App token with `contents` + `pull-requests` +
+#     `workflow` scope, so the auditor can push GitHub Actions SHA-pins. The
+#     default `GITHUB_TOKEN` lacks `workflow` scope and cannot push changes to
+#     `.github/workflows/*`. With only it the audit degrades gracefully: /audit
+#     lands the dependency remediations (their own commit, pushed first) and
+#     opens the PR; only the action-pins (a second commit) are dropped.
+name: 'Skill | audit'
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: 'Dependency audit'
+    runs-on: ubuntu-latest
+    steps:
+      # checkout + supera-bot git identity + toolchain (toolchain only — /audit
+      # runs install inside the worktree it creates). Swap `stack` for your
+      # repo's: pnpm | npm | yarn | cargo | go.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/supera-bootstrap
+        with:
+          stack: <detected stack>
+
+      - uses: anthropics/claude-code-action@30544b674398ee15c84819bd87caf8a87e8c7b55 # v1.0.154
+        id: claude
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          plugin_marketplaces: https://github.com/heronlabs/supera.git
+          plugins: supera@supera-marketplace
+          prompt: /supera:audit --non-interactive
+          show_full_output: true
+          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
+
+      # Run-level telemetry (issue #48 Phase 1): map the action's execution file
+      # into a privacy-safe metrics-event.json and upload it for the daily
+      # rollup. Self-contained (jq only) so the byte-identical /start copy runs on
+      # any consumer stack; privacy is structural — only the schema's known,
+      # constrained fields are ever written.
+      - id: metrics
+        name: 'Build run-metrics event'
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SKILL: audit
+        run: |
+          set -euo pipefail
+          if [ -z "${EXECUTION_FILE:-}" ] || [ ! -s "$EXECUTION_FILE" ]; then
+            echo 'No execution file — skipping run-metrics emit.'
+            exit 0
+          fi
+          result=$(jq -c 'map(select(.type == "result")) | last' "$EXECUTION_FILE")
+          if [ -z "$result" ] || [ "$result" = 'null' ]; then
+            echo 'No result message — skipping run-metrics emit.'
+            exit 0
+          fi
+          model=$(jq -r 'map(select(.type == "system" and .subtype == "init")) | (first.model // "")' "$EXECUTION_FILE")
+          stack=$(jq -r '.stack // "unknown"' .claude/supera.json 2>/dev/null || echo unknown)
+          jq -n \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg repo "$REPO" \
+            --arg skill "$SKILL" \
+            --arg model "$model" \
+            --arg stack "$stack" \
+            --argjson run_id "$RUN_ID" \
+            --argjson run_attempt "$RUN_ATTEMPT" \
+            --argjson result "$result" \
+            '{
+              schema_version: "1",
+              ts: $ts,
+              repo: $repo,
+              skill: $skill,
+              event: "run",
+              outcome: (if $result.subtype == "success" then "success" else "error" end),
+              model: (if ($model | test("^claude-[a-z0-9.-]+$")) then $model else "claude-unknown" end),
+              stack: (if ($stack | test("^[a-z]+$")) then $stack else "unknown" end),
+              run: {
+                cost_usd: ($result.total_cost_usd // 0),
+                num_turns: ($result.num_turns // 0),
+                duration_ms: ($result.duration_ms // 0),
+                tokens: {
+                  input: ($result.usage.input_tokens // 0),
+                  output: ($result.usage.output_tokens // 0),
+                  cache_read: ($result.usage.cache_read_input_tokens // 0),
+                  cache_creation: ($result.usage.cache_creation_input_tokens // 0)
+                }
+              },
+              gh: {run_id: $run_id, run_attempt: $run_attempt}
+            }' > metrics-event.json
+          if jq -e '
+            .schema_version == "1"
+            and (.repo | test("^[^/]+/[^/]+$"))
+            and (.skill | IN("ship", "pr-watch", "audit", "refactor"))
+            and (.outcome | IN("success", "blocked", "needs-review", "error"))
+            and (.model | test("^claude-[a-z0-9.-]+$"))
+            and (.stack | test("^[a-z]+$"))
+            and (.run.cost_usd | type == "number")
+            and (.run.tokens.input | type == "number")
+            and (.gh.run_id | type == "number")
+          ' metrics-event.json > /dev/null 2>&1; then
+            echo 'Run-metrics event built and structurally validated.'
+          else
+            echo '::warning::run-metrics event failed structural validation — dropping it.'
+            rm -f metrics-event.json
+          fi
+
+      - name: 'Upload run-metrics artifact'
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: metrics-${{ github.run_id }}
+          path: metrics-event.json
+          if-no-files-found: ignore
+          retention-days: 90
 ```
 
-## 5 — Hand off to /pr-watch
+This cron references the `./.github/actions/supera-bootstrap` composite action, which is NOT part of the plugin — emit it into the consumer repo too (5d) so the workflow is self-contained. Substitute `<detected stack>` with the `stack` from step 1 (`pnpm` | `npm` | `yarn` | `cargo` | `go`).
 
-Invoke `/pr-watch <PR-number>` — append `--non-interactive` when `NONINTERACTIVE` is set (so the headless run stays prompt-free through the PR cycle).
+After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow (and any `.github/dependabot.yml` from 5a) alongside `.claude/supera.json`.
 
-Announce: *"PR #<N> is open. Handing off to `/pr-watch <PR-number>`. On merge, `/pr-watch` auto-hands-off to `/start <slug>` to close out and tear down — no manual re-run needed (a manual `/start <slug>` still works as a fallback to close out later)."*
+### 5d — Emit the supera-bootstrap composite action
 
----
+The 5b cron (and the `supera-skill-pr-watch.yml` in 5c) reference `uses: ./.github/actions/supera-bootstrap` — a local composite action that sets the `supera-bot` git identity and the per-stack toolchain (the caller checks out first — a local `./` action can't be loaded before checkout). It is **not** part of the plugin, so a `uses:` pointing at the plugin would break; the workflows must be self-contained. **Whenever you emit 5b or 5c, also write `.github/actions/supera-bootstrap/action.yml`**, byte-identical to the template below — **idempotent: if the file already exists, never clobber it**, just report it's already present. The consumer's workflows pass `stack: <detected stack>` to it; the action gates each toolchain step on that input, so one file serves every stack.
 
-## Non-interactive mode (`--non-interactive`)
+```yaml
+name: 'supera bootstrap'
+description: 'supera-bot git identity and per-stack toolchain setup for supera skill workflows. Toolchain only — never installs dependencies; the caller checks out and installs.'
 
-For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) where no human is present to answer a prompt. The whole pipeline runs unchanged; only the prompt points behave differently. Interactive is the default — this mode is opt-in via the flag and applies only when `NONINTERACTIVE` is set.
+inputs:
+  stack:
+    description: 'Toolchain to set up: pnpm | npm | yarn | cargo | go.'
+    required: true
+  node-version-file:
+    description: 'File read by setup-node for the Node version (pnpm/npm/yarn stacks).'
+    default: '.node-version'
 
-- **Never prompt.** Skip every step that would ask the user a question or wait for a decision (the points flagged "see **Non-interactive mode**" above). Do not call `AskUserQuestion`.
-- **An ambiguous decision blocks.** When the interactive flow would stop to ask, instead surface the block as a comment and exit `blocked` — don't guess past a genuine fork:
-   - If a PR already exists for this work (phase `pr-open`/`built`-then-pushed), post the block as a PR comment: `gh pr comment <N> --body "🚫 supera /start blocked (non-interactive): <what's ambiguous + the receipt/verification detail>"`.
-   - Before any PR exists, print the block detail to the run output (there's nothing to comment on yet).
-- **Stay git/GitHub-native.** A blocked decision surfaces as a PR/issue comment, never a tracker prompt — supera has no tracker. `--non-interactive` changes only the prompt points, never the pipeline.
-- The non-prompt steps (phase routing, worktree, delegate, push, PR, hand-off) are unchanged — a clean run still opens the PR and hands off to `/pr-watch --non-interactive`.
+runs:
+  using: composite
+  steps:
+    # the engineer/auditor commits via raw git, so give it an identity
+    # (claude-code-action only auto-configures git in its tag mode, not prompt mode).
+    - shell: bash
+      run: |
+        git config --global user.name 'supera-bot'
+        git config --global user.email 'supera-bot@users.noreply.github.com'
 
----
+    - if: inputs.stack == 'pnpm'
+      uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-## Resuming interrupted work (phases `scaffolded` / `building`)
+    - if: inputs.stack == 'pnpm' || inputs.stack == 'npm' || inputs.stack == 'yarn'
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+        cache: ${{ inputs.stack == 'pnpm' && 'pnpm' || inputs.stack }}
 
-Reached from step 1.5 when a worktree/branch exists but no PR. `/start` continues the build, then falls through to step 4 to open the PR — it never restarts from scratch.
+    - if: inputs.stack == 'cargo'
+      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
-If the worktree is missing but the branch exists on the remote (paused on another machine), recreate it first:
-```bash
-git fetch <REMOTE> <slug>
-git worktree add <WT_DIR>/<slug> <slug>
-cd <WT_DIR>/<slug> && <CONFIG.worktree.postCreate ?? CONFIG.verify.install>
+    - if: inputs.stack == 'go'
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      with:
+        go-version-file: go.mod
+
+    - if: inputs.stack == 'go'
+      shell: bash
+      run: go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
 ```
 
-**`building` — undo the checkpoint first.** A `wip:` HEAD is a pause checkpoint, not real history. Un-commit it so the engineer continues from clean staged state, and recover `nextUp`:
-```bash
-git -C <WT_DIR>/<slug> show -s --format=%b HEAD     # read nextUp from the wip: body BEFORE resetting
-git -C <WT_DIR>/<slug> reset --soft HEAD~1
+### 5c — Offer the Dependabot→pr-watch auto-fix (recommended)
+
+Offer it only when **all three** hold: Dependabot was accepted in **5a**, a CI workflow was **detected in step 2**, and the repo is GitHub-hosted (same check as 5a). Skip silently otherwise.
+
+When eligible, ask with `AskUserQuestion` (default = **accept**; recommended): *"Emit a `.github/workflows/supera-skill-pr-watch.yml`? When a Dependabot bump breaks CI, it runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version. Requires the same `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) and `SUPERA_AUDIT_TOKEN` secrets as 5b."*
+
+If declined, do nothing. If accepted, write `.github/workflows/supera-skill-pr-watch.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present.
+
+This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b/5d). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim — but **strip any `[`/`]`**: `workflow_run.workflows` is glob-matched, so square brackets break trigger parsing and the watcher dies at startup before its `if:` ever runs (the pipe `|` and other characters are safe). If the detected CI name has brackets, drop them here and in the CI workflow's own `name:`.
+
+supera-engineer runs the repo's **verify commands inside this workflow**, so the toolchain must be installed before `claude-code-action` (otherwise the run burns turns failing to find `pnpm`/`node` and never pushes a fix). The `actions/checkout` + `./.github/actions/supera-bootstrap` steps (5d) check out the branch and set up the toolchain (git identity + per-stack tools); unlike 5b, pr-watch then installs at the workflow root (`pnpm install --frozen-lockfile` for a pnpm stack — swap it for your stack's equivalent, e.g. `npm ci`, `cargo fetch`).
+
+```yaml
+# Prerequisites:
+#   - `ANTHROPIC_API_KEY` repo secret (or swap it for
+#     `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`).
+#   - `SUPERA_AUDIT_TOKEN`: a PAT/App token with `contents` + `pull-requests`
+#     scope so supera can push the fix and reply on the PR; add `workflow` scope
+#     only if a fix may touch `.github/workflows/*`. The default `GITHUB_TOKEN`
+#     works for non-workflow fixes.
+#
+# Security note: this runs the bumped dependency's tests with repo secrets in
+# scope — an accepted risk for auto-fixing a Dependabot bump. Keep the
+# `SUPERA_AUDIT_TOKEN` minimally scoped. It fires only on a FAILED CI run of a
+# Dependabot pull_request.
+name: 'Skill | pr-watch'
+
+on:
+  workflow_run:
+    workflows: ['<CI WORKFLOW NAME>'] # the consumer's CI workflow name (step-2 detected)
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  pr-watch:
+    name: 'Auto-fix Dependabot bump'
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      contains(fromJSON('["failure","timed_out"]'), github.event.workflow_run.conclusion) &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      # checkout + supera-bot git identity + toolchain (toolchain only). Swap
+      # `stack` for your repo's: pnpm | npm | yarn | cargo | go.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/supera-bootstrap
+        with:
+          stack: <detected stack>
+
+      # pr-watch (unlike the audit cron) installs at the workflow root so the
+      # auto-fix step has the deps already resolved (swap for your stack's
+      # equivalent — npm ci, cargo, etc.).
+      - run: pnpm install --frozen-lockfile
+
+      - id: pr
+        env:
+          GH_TOKEN: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          NUMBER=$(gh pr list --head "$HEAD_BRANCH" --state open --json number -q '.[0].number')
+          if [ -z "$NUMBER" ]; then
+            echo "No open PR for $HEAD_BRANCH — nothing to watch."
+            echo "number=" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.pr.outputs.number != ''
+        uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
+        with:
+          allowed_bots: '*' # job-level `if:` already gates to dependabot[bot]; '*' avoids the brittle 'dependabot' vs 'dependabot[bot]' login mismatch
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          plugin_marketplaces: https://github.com/heronlabs/supera.git
+          plugins: supera@supera-marketplace
+          prompt: |
+            A Dependabot pull request (#${{ steps.pr.outputs.number }}) has a failing CI run.
+            Drive it green using the supera pr-watch skill — run the command below. This is a headless run with no human present, so never stop to ask; surface any block as a PR comment.
+            /supera:pr-watch ${{ steps.pr.outputs.number }} --non-interactive
+          show_full_output: true
+          claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
 ```
 
-**Re-delegate the remainder.** Dispatch `supera-engineer` with: the task description (the branch intent + recovered `nextUp`), the worktree path, and the path to `.claude/supera.json`. For `building`, lead with `nextUp` so the engineer continues exactly where pause stopped — don't redo finished work. The engineer self-verifies before returning (**CI is the gate; don't run the full build/test/lint here**). Wait for its JSON receipt (`schema/receipt.schema.json`); branch on `receipt.status` — `ok` continues, `needs-review`/`blocked` surfaces `receipt.implemented` and any FAIL in `receipt.verification` to the user before continuing (in `NONINTERACTIVE` mode, exit `blocked` instead — see **Non-interactive mode**).
+After writing it, tell the user the same two secrets cover it (`ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` + `SUPERA_AUDIT_TOKEN`). Then commit it alongside the other 5a/5b files.
 
-Then fall through to **step 4** to open the PR. If a soft-reset rewrote an already-pushed `wip:` commit, push with `--force-with-lease` (never `--force`).
+## 6 — Report
 
----
-
-## Pause checkpoint (`/start pause`)
-
-Reached from step 1 when `$ARGUMENTS` begins with `pause`. Stop work cleanly so a later `/start <slug>` resumes without guessing. No state file — git carries the work.
-
-1. **Resolve the WIP.** Parse the rest of `$ARGUMENTS` (a branch, or empty). Empty → the current branch or the single worktree under `WT_DIR` (ambiguous → list and ask; in `NONINTERACTIVE` mode there's no PR for a checkpoint to comment on — print the candidate worktrees and exit `blocked`, see **Non-interactive mode**). Resolve `WT_PATH` and `BRANCH`.
-2. **Capture `nextUp`.** In one or two concrete lines, what is done and what remains — name the next file/step, not "continue work". This becomes the `wip:` commit subject + body and the payload a resume reads back.
-3. **Commit the checkpoint:**
-```bash
-git -C <WT_PATH> add -A
-git -C <WT_PATH> status --porcelain      # anything staged?
-```
-   - Changes present → `git -C <WT_PATH> commit -m "wip: <nextUp one-liner>" -m "<remaining steps, one per line>"`.
-   - Tree already clean → skip the commit; the branch state itself is the checkpoint.
-   The `wip:` prefix is load-bearing: the resume path keys off it to soft-reset before continuing. Never name a real commit `wip:`. Commit per `guidelines/commit-conventions.md`; the body carries the remaining steps.
-4. **Push so the work survives:** `git -C <WT_PATH> push -u <REMOTE> <BRANCH>` (`--force-with-lease` only if it rewrote history).
-5. **Report:** *"Paused `<BRANCH>`. WIP committed + pushed, worktree kept. Resume with `/start <BRANCH>`."* List `wip-commit` (sha or "tree clean") and `pushed`. Stop.
-
----
-
-## Finish (merge + close) (`/start finish`)
-
-Reached from step 1 when `$ARGUMENTS` begins with `finish`. Merge a ready PR and close out in one step. Invoking `/start finish` **is** the merge authorization — there is no extra confirm prompt, just the one-line announce before the merge. Idempotent: the worktree may already be gone (close-out builds its summary from `gh`), so finish still works.
-
-1. **Resolve `BRANCH`/`PR`.** Parse the rest of `$ARGUMENTS` (a branch, or empty) the same way the **Pause checkpoint** flow resolves its WIP: an arg → that branch; empty → the current branch or the single worktree under `WT_DIR` (ambiguous → list and ask; in `NONINTERACTIVE` mode there's a PR to comment on only if one exists — if a PR exists post the block comment, else print the candidates and exit `blocked`, see **Non-interactive mode**). Then find the PR for the branch: `gh pr list --head <BRANCH> --state all --json number,state`. **No PR for the branch** → nothing to finish; report it and stop.
-2. **Read the PR state:**
-```bash
-gh pr view <N> --json state,mergeable,statusCheckRollup
-```
-3. **Route on `state`:**
-   - **`MERGED` already** → run the **Closing out a merged PR** flow below (summary + teardown). No merge step.
-   - **`CLOSED` (not merged)** → the PR was abandoned; nothing to finish. Report it and stop — do not merge, do not tear down (abandoning is a manual `git worktree remove`, same stance as elsewhere).
-   - **`OPEN`, every `statusCheckRollup` check `SUCCESS`/`SKIPPED`, and `mergeable == MERGEABLE`** → announce *"Merging PR #<N> (`<MERGE_METHOD>`)…"*, then `gh pr merge <N> --<MERGE_METHOD>`, then run the **Closing out a merged PR** flow below. If `gh pr merge` is refused by branch protection (required reviews etc.), surface the gh error **verbatim** and stop — do not retry.
-   - **`OPEN` and `mergeable == UNKNOWN`** (GitHub hasn't finished computing mergeability yet) → do **not** refuse-as-conflicting and do **not** advise `/pr-watch`: tell the user *"PR #<N> mergeability is still being computed by GitHub — retry `/start finish` in a moment."* and stop (in `NONINTERACTIVE` mode post that as the block comment + exit `blocked`, see **Non-interactive mode**).
-   - **`OPEN` but a check is failing/pending, or `mergeable == CONFLICTING`** (genuine not-ready, distinct from the transient `UNKNOWN` above) → refuse, do **not** merge: surface *"PR #<N> not ready (<reason>) — run `/pr-watch <N>` first."* (in `NONINTERACTIVE` mode post that as the block comment + exit `blocked`, see **Non-interactive mode**).
-
----
-
-## Closing out a merged PR (phase `merged`)
-
-Reached from step 1.5 when the PR is `MERGED`. Record what shipped and tear down the workspace. Only merged work is closed here — abandoning unmerged work is a manual `gh pr close` + `git worktree remove`. **The worktree may already be gone** (close-out partially ran, or it was paused/removed on another machine), so build the summary from `gh` — which works from the repo root — not from `git -C <WT_PATH>`.
-
-1. **Build the summary — all from the merged PR (no live worktree needed):**
-   - **Goal** — the branch slug as a one-line intent.
-   - **Files, commit count, first-commit time, merge time:**
-```bash
-gh pr view <N> --json files   -q '.files[].path'              # changed files
-gh pr view <N> --json commits -q '.commits | length'         # commit count
-gh pr view <N> --json commits -q '.commits[0].committedDate' # first commit time (PR commits are oldest-first)
-gh pr view <N> --json mergedAt -q .mergedAt                   # merge time
-```
-   **Time spent** = first-commit time → merge time (derived from git).
-   Format:
-```
-✅ Shipped: <goal>
-   PR #<N> merged · <X commits> · ⏱ ~<T> (<first hh:mm> → merged <hh:mm>)
-   Files (<count>):
-      - <path>
-      - <path>
-```
-2. **Tear down the workspace** (silently — no confirm; each step is guarded so a missing worktree/branch is a no-op, not an error):
-```bash
-[ "<BRANCH>" != "<BASE>" ] && git worktree list | grep -q "<WT_DIR>/<slug>" && git worktree remove <WT_PATH>   # --force only if it refuses on an unclean tree
-[ "<BRANCH>" != "<BASE>" ] && git rev-parse --verify --quiet <BRANCH> >/dev/null && git branch -D <BRANCH>      # never delete BASE; delete the feature branch if present
-```
-   Leave the remote branch alone (GitHub deletes it on merge if configured). **Never** remove `BASE` or its worktree.
-3. **Report:** print the summary to the terminal and confirm: *"Worktree removed, branch `<BRANCH>` deleted locally."* The lifecycle is closed.
-
----
-
-## Lifecycle controls
-
-`/start` owns the whole ladder. Only `/pr-watch` lives outside it — `/start` routes to it, never duplicates it. `/start pause` is a sub-command, not a separate skill.
-
-| Control | When | Owns |
-|---|---|---|
-| `/start pause <branch>` | Need to stop mid-build | Commits + pushes a `wip:` checkpoint, **keeps** the worktree. |
-| `/start <branch>` (re-run, `building`/`scaffolded`) | A run didn't finish | Detects the phase, undoes a `wip:` checkpoint, re-delegates the remainder to `supera-engineer`, opens the PR. |
-| `/pr-watch <N>` | PR is open | Drives CI green + review threads to resolution. Hands merged PRs back to `/start`. |
-| `/start finish <branch>` | A green PR is ready to merge | Merge a green PR (`gh pr merge --<mergeMethod>`) then close out; an already-merged PR just closes out; a not-ready PR is refused. |
-| `/start <branch>` (re-run, `merged`) | PR is merged | Posts the summary (goal · time · files), removes the worktree + local branch. The terminal step. |
-
-The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → building → built → pr-open → merged`. Every skill detects it the same way (git + GitHub, no state file).
-
----
-
-## GitHub PR body template
-
-Build the PR body to the canonical template in `.github/pull_request_template.md` — the single source of truth for the body shape (Summary, Changes, Out of scope, Test plan checklist, Notes) and which sections are required vs. omittable. Fill each placeholder and keep the section headings verbatim, so `/pr-watch` can validate the open PR against the same file. Don't restate the template here — the file is the source.
+Print the written path and a compact summary of every field. Tell the user:
+> "`.claude/supera.json` written. Commit it so the config travels with the repo. Run `/ship <task>` to ship."
 
 ## Rules
 
-- Read `.claude/supera.json` first — never hardcode commands, branches, or remotes.
-- Never remove `BASE` or its worktree.
-- **Idempotent:** run the step 1.5 phase routing before creating anything — never double-create a worktree or duplicate work.
-- `/start finish` merges via `CONFIG.pr.mergeMethod` (default `squash`) and refuses to merge a non-green or `CONFLICTING` PR — it never forces a merge past CI.
-- Commit hygiene follows `guidelines/commit-conventions.md`; `/start`'s only self-commit is the `wip:` pause checkpoint.
+**Stack detection**
+- The install command is fixed by the lockfile — take it as-is; don't ask the user to confirm it.
+- For a monorepo (`turbo.json` / workspaces), scope commands to the workspace (e.g. `pnpm turbo run build`), never a single package.
+
+**Verify commands**
+- A command CI runs is ground truth — it outranks a declared script or a canonical default.
+- With no CI, never write a blind guess: confirm a declared `package.json` script, or ask the user and take their answer as truth.
+- Omit a `verify` key for any step the repo doesn't have — never invent one.
+
+**Writing the config**
+- Detect the default branch; never hardcode `main`.
+- If `.claude/supera.json` already exists, show it and ask before overwriting.
+
+**Dependency layers (step 5)**
+- All three are **independent and opt-in** via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended) and **stands alone — a complete path on its own**; the audit cron (5b) defaults to **decline** and is only offered when the security auditor is enabled; the Dependabot→pr-watch auto-fix (5c) defaults to **accept** (recommended) and is only offered when 5a was accepted and a CI workflow was detected in step 2. Accepting 5a never obligates 5b or 5c.
+- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, `.github/workflows/supera-skill-pr-watch.yml`, or `.github/actions/supera-bootstrap/action.yml`; report it's already present instead.
+- `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`, go → `gomod`); always include the `github-actions` block.
+- The 5c template is per-repo parameterized (`workflow_run.workflows` carries the consumer's CI workflow `name`), so it's NOT in the validate.ts byte-identical drift guard — substitute the step-2 detected CI workflow name.
+- Each file's existence is the state; no `.claude/supera.json` field tracks any of them.

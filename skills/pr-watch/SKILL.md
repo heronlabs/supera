@@ -6,7 +6,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent, Workflow  # also requires the gh C
 
 Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failures, address review comments, run one code review — exit when everything is green and resolved. Reads `.claude/supera.json` for the install/build/test/lint commands used to reproduce failures.
 
-`/pr-watch` **monitors without blocking**: at every wait (CI running, a re-run after a fix) it reschedules via `ScheduleWakeup` and exits the turn, then resumes on the next wake — it never spins inline. It is one half of an intentional round-trip — `/start` opens the PR and hands here; `/pr-watch` drives it green and, on merge, auto-hands-off to `/start` to close out (a `supera:audit` PR is announced for a `/audit` re-run instead).
+`/pr-watch` **monitors without blocking**: at every wait (CI running, a re-run after a fix) it reschedules via `ScheduleWakeup` and exits the turn, then resumes on the next wake — it never spins inline. It is one half of an intentional round-trip — `/ship` opens the PR and hands here; `/pr-watch` drives it green and, on merge, auto-hands-off to `/ship` to close out (a `supera:audit` PR is announced for a `/audit` re-run instead).
 
 ## 0 — Load config
 
@@ -76,9 +76,9 @@ Parse `state`:
 ```bash
 gh pr view $PR --json author,labels -q '{author: .author.login, labels: [.labels[].name]}'
 ```
-   - Author is `dependabot[bot]` → **announce only, do not hand off.** A Dependabot PR has no supera worktree/branch to close out, so `/start` has nothing to do. Announce: *"PR #<N> (Dependabot) is merged."* Then exit. (In `NONINTERACTIVE` mode the announcement is the only surface.)
+   - Author is `dependabot[bot]` → **announce only, do not hand off.** A Dependabot PR has no supera worktree/branch to close out, so `/ship` has nothing to do. Announce: *"PR #<N> (Dependabot) is merged."* Then exit. (In `NONINTERACTIVE` mode the announcement is the only surface.)
    - Carries the `supera:audit` label → **announce only, do not auto-invoke.** `/audit` is date-scoped and self-orients on re-run, so pr-watch must not auto-invoke it — auto-invoking on a cross-day merge would start a spurious fresh audit instead of reclaiming. Announce: *"PR #<N> (audit) is merged — re-run `/audit` to reclaim its `chore-audit-<date>` worktree."* Then exit. (Nothing to invoke here — it's announce-and-exit; in `NONINTERACTIVE` mode the announcement is the only surface.)
-   - Otherwise → auto-invoke `/start <branch>` (routes to the `merged` phase → close-out + teardown). Preserve `--non-interactive` on the hand-off when set. Announce: *"PR #<N> is merged — handing off to `/start <branch>` to close out and clean up."* Then invoke `/start` and exit.
+   - Otherwise → auto-invoke `/ship <branch>` (routes to the `merged` phase → close-out + teardown). Preserve `--non-interactive` on the hand-off when set. Announce: *"PR #<N> is merged — handing off to `/ship <branch>` to close out and clean up."* Then invoke `/ship` and exit.
 - `CLOSED` (not merged) → surface that the PR was closed without merging; announce; exit. (Tearing down an abandoned branch is a manual `git worktree remove`.)
 - Otherwise continue with `statusCheckRollup` (step 3) and `reviewThreads` (step 4).
 
@@ -244,7 +244,7 @@ Any match → a secret or private key is in the PR: a **hard merge blocker**. Su
 
 ### 6e — PR description conformance
 
-Validate the open PR's body against the canonical template in `.github/pull_request_template.md` — the same shape `/start` builds the body from — so every shipped PR keeps the agreed description. Read the body once this cycle:
+Validate the open PR's body against the canonical template in `.github/pull_request_template.md` — the same shape `/ship` builds the body from — so every shipped PR keeps the agreed description. Read the body once this cycle:
 ```bash
 gh pr view $PR --json body -q .body
 ```
@@ -298,7 +298,7 @@ gh pr comment $PR --body "🚫 supera /pr-watch blocked (non-interactive): <what
 
 - Read `.claude/supera.json` for the commands used to reproduce failures — don't assume pnpm/npm.
 - **Don't spin-poll** — at every wait, `ScheduleWakeup` and exit the turn; preserve `--reviewed` and `--non-interactive` on every reschedule.
-- On `MERGED`, auto-hand-off the normal case to `/start <branch>`; for a `supera:audit` PR, announce a `/audit` re-run (do **not** auto-invoke — `/audit` is date-scoped and would start a spurious fresh audit); for a `dependabot[bot]` PR, announce merged and exit (no supera worktree/branch to close out) — never close out or remove the worktree here; the owning skill owns the terminal step.
+- On `MERGED`, auto-hand-off the normal case to `/ship <branch>`; for a `supera:audit` PR, announce a `/audit` re-run (do **not** auto-invoke — `/audit` is date-scoped and would start a spurious fresh audit); for a `dependabot[bot]` PR, announce merged and exit (no supera worktree/branch to close out) — never close out or remove the worktree here; the owning skill owns the terminal step.
 - Exit and announce when the PR is green, synced, and all threads resolved — merging is the user's decision.
 - Never push `--force` — only `--force-with-lease` after a rebase.
 - A **terminal block** posts the `<!-- supera:blocked -->` PR comment and stops (§0a) — that comment is the escalation signal; supera has no tracker.

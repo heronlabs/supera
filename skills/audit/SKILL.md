@@ -1,10 +1,10 @@
 ---
 name: audit
-description: "Standalone dependency-audit orchestrator: branches its own worktree off a target branch, runs the security auditor (CVE overrides, action-pins), carries its safe auto-fixes into a PR, and hands off to /pr-watch. Decoupled from /start — runs standalone. Callable by a human or a headless CI cron via --non-interactive. Driven by .claude/supera.json so it works in any repo."
+description: "Standalone dependency-audit orchestrator: branches its own worktree off a target branch, runs the security auditor (CVE overrides, action-pins), carries its safe auto-fixes into a PR, and hands off to /pr-watch. Decoupled from /ship — runs standalone. Callable by a human or a headless CI cron via --non-interactive. Driven by .claude/supera.json so it works in any repo."
 allowed-tools: Bash, Read, Glob, Grep, Agent  # also requires gh CLI
 ---
 
-Run this repo's security auditor against a target branch (default the base) **without** needing `/start` first. `/audit` cuts its own worktree off the target, lets the auditor **agent** apply its bounded safe auto-fixes (CVE overrides, action-pins), opens a PR carrying those fixes, and hands off to `/pr-watch` to drive it green. Audits are recurring hygiene, not backlog work, and `--non-interactive` makes it CI-cron-ready. It **never** commits to base: `/audit` always ships via PR on its own branch, and it never edits dependency manifests/lockfiles itself — the auditor agent is the implementer, exactly as `/pr-watch` step 6c dispatches it.
+Run this repo's security auditor against a target branch (default the base) **without** needing `/ship` first. `/audit` cuts its own worktree off the target, lets the auditor **agent** apply its bounded safe auto-fixes (CVE overrides, action-pins), opens a PR carrying those fixes, and hands off to `/pr-watch` to drive it green. Audits are recurring hygiene, not backlog work, and `--non-interactive` makes it CI-cron-ready. It **never** commits to base: `/audit` always ships via PR on its own branch, and it never edits dependency manifests/lockfiles itself — the auditor agent is the implementer, exactly as `/pr-watch` step 6c dispatches it.
 
 `/audit` fills the gaps the mechanical layer can't: Dependabot owns the deterministic version bumps and SHA-currency, while the auditor reasons about scoped transitive overrides, CVE verdicts, and the initial tag→SHA pin (the division of labor is canonical in `guidelines/auditor-base.md`).
 
@@ -12,7 +12,7 @@ Run this repo's security auditor against a target branch (default the base) **wi
 
 Read `.claude/supera.json` at the repo root into `CONFIG`.
 
-- **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /init first."` Offer to run `/init` now. Do not proceed without config.
+- **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /start first."` Offer to run `/start` now. Do not proceed without config.
 - `AUDIT_SEC = CONFIG.audits?.security === true` — security auditor enabled.
 - `BASE = CONFIG.pr?.base ?? CONFIG.worktree?.base ?? <detected default branch>`.
 - `WT_DIR = CONFIG.worktree?.dir ?? ".worktrees"`. `REMOTE = CONFIG.pr?.remote ?? "origin"`.
@@ -40,7 +40,7 @@ git worktree list | grep <auditBranch>                             # worktree pr
 Route, in this order:
 
 - **An OPEN (not merged) PR exists** → today's audit is already in flight. Invoke `/pr-watch <N>` (append `--non-interactive` when set) and **stop** — never double-create.
-- **A MERGED PR exists** → today's audit already shipped. Reclaim any residual worktree first — `/pr-watch` does **not** auto-invoke `/audit` on a merged audit PR (it only announces, because `/audit` is date-scoped); a re-run of `/audit` (manual, or the weekly cron) reclaims any residual `chore-audit-<date>` worktree. Audits are out of the `/start` ladder, so `/audit` owns its own close-out/reclaim. Tear it down if present (guarded so a missing worktree/branch is a no-op), then report it and exit:
+- **A MERGED PR exists** → today's audit already shipped. Reclaim any residual worktree first — `/pr-watch` does **not** auto-invoke `/audit` on a merged audit PR (it only announces, because `/audit` is date-scoped); a re-run of `/audit` (manual, or the weekly cron) reclaims any residual `chore-audit-<date>` worktree. Audits are out of the `/ship` ladder, so `/audit` owns its own close-out/reclaim. Tear it down if present (guarded so a missing worktree/branch is a no-op), then report it and exit:
   ```bash
   git worktree list | grep -q "<WT_DIR>/<auditBranch>" && git worktree remove <WT_DIR>/<auditBranch>          # --force only if it refuses on an unclean tree
   git rev-parse --verify --quiet <auditBranch> >/dev/null && git branch -D <auditBranch>                       # delete the branch if present

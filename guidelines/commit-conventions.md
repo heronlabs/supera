@@ -20,6 +20,6 @@ The rules above hold for all committers; these are the only per-actor specifics:
 | Committer | Commits |
 |---|---|
 | `supera-engineer` | the application change on the feature branch (code **and** tests). |
-| `/start` | only its `wip:` pause checkpoint. |
+| `/ship` | only its `wip:` pause checkpoint. |
 | `supera-security-auditor` | **nothing** — leaves its edits uncommitted; `/audit` commits them. |
 | `/audit` | the commit(s) folding the security auditor's applied edits. |

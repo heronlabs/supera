@@ -11,7 +11,7 @@
 # scope — an accepted risk for auto-fixing a Dependabot bump. Keep the
 # `SUPERA_AUDIT_TOKEN` minimally scoped (contents + pull-requests, workflow only
 # if needed). It fires only on a FAILED CI run of a Dependabot PR or supera's
-# own `supera`-labelled start PR.
+# own `supera`-labelled ship PR.
 name: 'Skill | pr-watch'
 
 on:
@@ -47,7 +47,7 @@ jobs:
         with:
           stack: pnpm
 
-      # pr-watch (unlike /start and /audit) installs at the workflow root so the
+      # pr-watch (unlike /ship and /audit) installs at the workflow root so the
       # auto-fix step has the deps already resolved.
       - run: pnpm install --frozen-lockfile
 
@@ -149,7 +149,7 @@ jobs:
           if jq -e '
             .schema_version == "1"
             and (.repo | test("^[^/]+/[^/]+$"))
-            and (.skill | IN("start", "pr-watch", "audit", "refactor"))
+            and (.skill | IN("ship", "pr-watch", "audit", "refactor"))
             and (.outcome | IN("success", "blocked", "needs-review", "error"))
             and (.model | test("^claude-[a-z0-9.-]+$"))
             and (.stack | test("^[a-z]+$"))

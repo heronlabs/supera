@@ -2,7 +2,7 @@
   "schema_version": "1",
   "ts": "2026-06-24T07:15:30Z",
   "repo": "heronlabs/supera",
-  "skill": "start",
+  "skill": "ship",
   "event": "run",
   "outcome": "success",
   "model": "claude-opus-4-20250514",
