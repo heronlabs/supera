@@ -1,0 +1,63 @@
+name: 'supera bootstrap'
+description: 'Checkout, supera-bot git identity, and per-stack toolchain setup for supera skill workflows. Toolchain only — never installs dependencies (the caller owns install).'
+
+inputs:
+  stack:
+    description: 'Toolchain to set up: pnpm | npm | yarn | cargo | go | python.'
+    required: true
+  token:
+    description: 'Token for actions/checkout (needs workflow scope to push .github/workflows/* changes).'
+    default: ${{ github.token }}
+  ref:
+    description: 'Branch/ref to check out; empty uses the default checkout ref (the triggering ref).'
+    default: ''
+  fetch-depth:
+    description: 'actions/checkout fetch depth; 0 fetches full history (needed for merge-base/diff).'
+    default: '0'
+  node-version-file:
+    description: 'File read by setup-node for the Node version (pnpm/npm/yarn stacks).'
+    default: '.node-version'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        token: ${{ inputs.token }}
+
+    # the engineer/auditor commits via raw git, so give it an identity
+    # (claude-code-action only auto-configures git in its tag mode, not prompt mode).
+    - shell: bash
+      run: |
+        git config --global user.name 'supera-bot'
+        git config --global user.email 'supera-bot@users.noreply.github.com'
+
+    - if: inputs.stack == 'pnpm' || inputs.stack == 'npm' || inputs.stack == 'yarn'
+      uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+    - if: inputs.stack == 'pnpm' || inputs.stack == 'npm' || inputs.stack == 'yarn'
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+        cache: ${{ inputs.stack == 'pnpm' && 'pnpm' || inputs.stack }}
+
+    - if: inputs.stack == 'cargo'
+      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+    - if: inputs.stack == 'go'
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      with:
+        go-version-file: go.mod
+
+    - if: inputs.stack == 'go'
+      shell: bash
+      run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+    - if: inputs.stack == 'python'
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+
+    - if: inputs.stack == 'python'
+      shell: bash
+      run: python -m pip install pip-audit

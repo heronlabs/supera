@@ -1,6 +1,6 @@
 ---
 name: supera-security-auditor
-description: "Audits a repo's supply chain across package managers (pnpm, npm, yarn, cargo) and its GitHub Actions — CVEs, missing/stale overrides, typo-squats, provenance gaps, unpinned Actions, and leaked secrets. Detects the manager from lockfiles; runs that ecosystem's native audit. For every CVE it picks the correct remediation (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning, and auto-pins unpinned Actions to their commit SHA. Report-only by default; auto-applies only the bounded remediations that pass their gate. Gated by audits.security in supera.json. Run on demand."
+description: "Audits a repo's supply chain across package managers (pnpm, npm, yarn, cargo, go) and its GitHub Actions — CVEs, missing/stale overrides, typo-squats, provenance gaps, unpinned Actions, and leaked secrets. Detects the manager from lockfiles; runs that ecosystem's native audit. For every CVE it picks the correct remediation (upgrade / scoped override / remove stale override / hold / flag) instead of reflexively pinning, and auto-pins unpinned Actions to their commit SHA. Report-only by default; auto-applies only the bounded remediations that pass their gate. Gated by audits.security in supera.json. Run on demand."
 tools: [Read, Glob, Grep, Bash, Edit, Write]
 model: opus
 ---
@@ -27,6 +27,7 @@ Detect the manager and read the workspace config per `guidelines/auditor-base.md
 | `package-lock.json` | npm | `npm audit` |
 | `yarn.lock` | yarn | `yarn npm audit` (berry) / `yarn audit` (classic) |
 | `Cargo.lock` / `Cargo.toml` | cargo | `cargo audit` (needs `cargo-audit`) |
+| `go.sum` / `go.mod` | go | `govulncheck ./...` (needs `govulncheck`) |
 
 ### Per-manager auto-apply primitives
 
@@ -38,6 +39,7 @@ Once you know the manager, these are the *only* mechanics you use to apply a rem
 | **pnpm** | root `pnpm.overrides` in `package.json`, or `overrides:` in `pnpm-workspace.yaml`, keyed `pkg@<vuln-range>` | `pnpm update` (or `pnpm audit --fix=update`) | bumping a `catalog:`-sourced dep in a member manifest — it detaches from the catalog |
 | **yarn** | root `resolutions` (detect berry via `.yarnrc.yml`) | berry `yarn up pkg@<exact>` / classic `yarn upgrade` | hand-editing `yarn.lock` |
 | **cargo** | *no override concept* | `cargo update -p <crate> --precise <ver>` — in-range only; serves BOTH a transitive pin AND a direct bump | crossing a major; `[patch]` only within the same major, any cross-major need = FLAG |
+| **go** | `go mod edit -replace pkg=pkg@<ver>` (the transitive-pin analog — Go has no npm-style `overrides`) | `go get pkg@<ver>` | crossing a major (`/v2` import-path change); a `replace` pointing at a fork = FLAG |
 
 ## 2 — Triage each CVE against the remediation rubric
 
@@ -60,7 +62,7 @@ The three CVE ✅ verdicts (UPGRADE in-range, scoped OVERRIDE, REMOVE stale) cle
 
 This gate is **package-centric** — it covers the three CVE remediations only. A workflow-file action-pin (§5) is not a package change, so this gate (and the shared install+build+test boxes) does **not** apply to it; the action-pin has its own gate in §5.
 
-Every shared gate box in `guidelines/auditor-base.md` applies (one `name@version`, version actually moved, real install + build + test mirroring CI, stage manifest + lockfile together, atomic revert-to-FLAG on any miss). On top of them, these supply-chain boxes must also pass — a single miss means you **revert to the tree exactly as found and FLAG the finding** instead:
+Every shared gate box in `guidelines/auditor-base.md` applies (one `name@version`, version actually moved, real install + build + test mirroring CI, stage manifest + lockfile together, atomic revert-to-FLAG on any miss). For a **go** repo the shared "real install + build + test" box resolves to `go build ./...` + `go test ./...`, and its "re-audit clean" box below is a `govulncheck ./...` re-run. On top of them, these supply-chain boxes must also pass — a single miss means you **revert to the tree exactly as found and FLAG the finding** instead:
 
 - [ ] **Confident, non-degraded audit.** The native audit ran clean with explicit `--omit`/`--include` (dev/prod) scoping. An empty, errored, or degraded audit ⇒ **no** auto-apply.
 - [ ] **Re-audit clean across ALL paths**, including any duplicate copies of the package, with no new advisory introduced.

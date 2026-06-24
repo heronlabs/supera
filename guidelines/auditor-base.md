@@ -21,9 +21,10 @@ Inspect the repo root (and workspaces) for lockfile markers, in this priority:
 | `package-lock.json` | npm |
 | `yarn.lock` | yarn (detect berry via `.yarnrc.yml`) |
 | `Cargo.lock` / `Cargo.toml` | cargo |
+| `go.sum` / `go.mod` | go |
 
 - Multiple managers present ⇒ run each, and **label every finding by ecosystem**.
-- A required tool missing (e.g. `cargo-audit`) ⇒ note the gap, skip that probe, **never fail the whole run**.
+- A required tool missing (e.g. `cargo-audit`, `govulncheck`) ⇒ note the gap, skip that probe, **never fail the whole run**.
 - **JS workspaces:** read `pnpm-workspace.yaml` (catalog + `pnpm.overrides`) and the root `package.json` `overrides`/`resolutions`; collect every `package.json` (root + members) and every `dependencies` / `devDependencies` / `peerDependencies` entry.
 
 Your domain probe per manager (the native audit) and your apply primitives live in your own doc.
