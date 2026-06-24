@@ -88,7 +88,7 @@ Apply it like this:
 
 ## 5 — Offer the dependency layers (Dependabot + the audit cron + the Dependabot→pr-watch auto-fix)
 
-Dependency hygiene is layered, and a GitHub-hosted repo should adopt them (the division of labor is canonical in `guidelines/auditor-base.md`):
+Dependency hygiene is layered, and a GitHub-hosted repo should adopt them (the division of labor is canonical in `guidelines/auditor-base.md`). Each layer is **independently opt-in** — offer them separately and accept each on its own merit: Dependabot (5a) stands alone as a complete path, and accepting it never obligates the audit cron (5b) or the auto-fix (5c).
 
 1. **Dependabot — the free, always-on deterministic layer.** Routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net — no LLM, native write to `.github/workflows/*`. Offer this **first**, framed as recommended.
 2. **The `/supera:audit` cron — the reasoning layer.** The workflow supera offers for the audit (since `/pr-watch` and `/start` run locally and emit no workflow). It runs the security auditor for what Dependabot can't reason about — scoped transitive overrides, CVE verdicts, the initial tag→SHA pin.
@@ -321,7 +321,7 @@ Print the written path and a compact summary of every field. Tell the user:
 - If `.claude/supera.json` already exists, show it and ask before overwriting.
 
 **Dependency layers (step 5)**
-- All three are opt-in via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended); the audit cron (5b) defaults to **decline** and is only offered when the security auditor is enabled; the Dependabot→pr-watch auto-fix (5c) defaults to **accept** (recommended) and is only offered when 5a was accepted and a CI workflow was detected in step 2.
+- All three are **independent and opt-in** via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended) and **stands alone — a complete path on its own**; the audit cron (5b) defaults to **decline** and is only offered when the security auditor is enabled; the Dependabot→pr-watch auto-fix (5c) defaults to **accept** (recommended) and is only offered when 5a was accepted and a CI workflow was detected in step 2. Accepting 5a never obligates 5b or 5c.
 - Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, or `.github/workflows/supera-skill-pr-watch.yml`; report it's already present instead.
 - `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`); always include the `github-actions` block.
 - The 5c template is per-repo parameterized (`workflow_run.workflows` carries the consumer's CI workflow `name`), so it's NOT in the validate.ts byte-identical drift guard — substitute the step-2 detected CI workflow name.
