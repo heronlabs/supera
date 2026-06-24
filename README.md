@@ -176,7 +176,9 @@ Written by `/supera:init` and safe to hand-edit. See [`schema/supera.schema.json
 
 ## Dependency audits
 
-Dependency hygiene is layered. **Dependabot** owns the mechanical, deterministic floor — routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net. supera's **security auditor** owns the judgment Dependabot can't make. `/supera:init` offers to wire up Dependabot for you.
+Dependency hygiene is layered, and the three layers are **independent, separately opt-in** — `/supera:init` offers each one in turn (Dependabot, then the audit cron, then the Dependabot→pr-watch auto-fix). **Dependabot** owns the mechanical, deterministic floor — routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net. supera's **security auditor** owns the judgment Dependabot can't make. `/supera:init` offers to wire up Dependabot for you.
+
+**Dependabot stands alone.** Adopting just the Dependabot layer is a fully supported, complete path — it runs deterministically with no LLM and no supera skills at runtime. The `/supera:audit` cron and the Dependabot→`/supera:pr-watch` auto-fix below are independent add-ons layered on top, not required followers: you can enable Dependabot and neither, either, or both of them.
 
 `/supera:audit` is a standalone, recurring-hygiene orchestrator, decoupled from the feature lifecycle. It runs the security auditor, folds its safe auto-fixes into a date-scoped PR (`chore-audit-<date>`), and hands off to `/pr-watch`. The auditor is **report-only by default** and only ever auto-applies bounded, gated, verified fixes — everything else is surfaced for a human to decide.
 
@@ -186,7 +188,7 @@ Enable it in `.claude/supera.json` (`audits.security`), then run `/supera:audit`
 
 ### Auto-fixing Dependabot bumps
 
-When a Dependabot bump breaks CI, `/supera:init` can emit a `.github/workflows/supera-skill-pr-watch.yml` that fires on **CI completion** (`workflow_run`) for failed Dependabot PRs and runs `/supera:pr-watch --non-interactive` on the PR — so `supera-engineer` makes the code and tests work with the bumped version instead of leaving the PR red. It's offered (recommended) only when Dependabot was accepted and a CI workflow was detected. supera dogfoods it in [`.github/workflows/skill-pr-watch.yml`](.github/workflows/skill-pr-watch.yml).
+When a Dependabot bump breaks CI, `/supera:init` can emit a `.github/workflows/supera-skill-pr-watch.yml` that fires on **CI completion** (`workflow_run`) for failed Dependabot PRs and runs `/supera:pr-watch --non-interactive` on the PR — so `supera-engineer` makes the code and tests work with the bumped version instead of leaving the PR red. It's an opt-in add-on — offered (recommended) only when Dependabot was accepted and a CI workflow was detected, but accepting Dependabot never requires it; standalone Dependabot is complete without it. supera dogfoods it in [`.github/workflows/skill-pr-watch.yml`](.github/workflows/skill-pr-watch.yml).
 
 ### Scheduling it in CI
 

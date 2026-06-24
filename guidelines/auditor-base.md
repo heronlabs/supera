@@ -6,7 +6,7 @@ Detection, gate, and receipt conventions for `supera-security-auditor`. The audi
 
 Dependabot and the auditor are layers, not rivals — and the auditor is **not** the mechanical-bump tool. Let Dependabot own the deterministic floor; the auditor owns the judgment Dependabot can't make.
 
-- **Dependabot owns the mechanical, deterministic layer.** Routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net — free, no LLM, with native write access to `.github/workflows/*` (no PAT needed). A repo that adopts supera should adopt Dependabot for this layer first.
+- **Dependabot owns the mechanical, deterministic layer.** Routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net — free, no LLM, with native write access to `.github/workflows/*` (no PAT needed). A repo that adopts supera should adopt Dependabot for this layer first, and may adopt it **on its own** — the auditor is an independent add-on layered on top, not a required follower.
 - **The auditor fills what Dependabot can't.** Scoped transitive **overrides** (pnpm/npm `overrides` for a transitive CVE with no direct upgrade path); **CVE verdict reasoning** (upgrade vs scoped-override vs remove-stale-override vs hold vs flag, not a reflex pin); **false-positive suppression** (no churned noise PR); **SHA-pinning *unpinned* actions** (the initial `@v4`→`@<sha>` conversion — Dependabot preserves an action's existing pin style and won't make this change); and the **consolidated reasoning PR** that carries the verdicts.
 
 The handoff: the auditor does the one-time tag→SHA pin Dependabot can't; Dependabot then keeps that SHA fresh afterward.
