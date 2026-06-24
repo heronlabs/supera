@@ -61,4 +61,4 @@ Your final message is consumed by `/audit`, **not a human** — return **only** 
 
 ## Commit behaviour
 
-Commit per `guidelines/commit-conventions.md` — see its "Who commits what" table for the security-auditor specifics (it leaves its edits uncommitted; `/audit` makes the single commit).
+Commit per `guidelines/commit-conventions.md` — see its "Who commits what" table for the security-auditor specifics (it leaves its edits uncommitted; `/audit` commits them).

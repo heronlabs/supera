@@ -4,8 +4,9 @@
 #   - `SUPERA_AUDIT_TOKEN`: a PAT/App token with `contents` + `pull-requests` +
 #     `workflow` scope, so the auditor can push GitHub Actions SHA-pins. The
 #     default `GITHUB_TOKEN` lacks `workflow` scope and cannot push changes to
-#     `.github/workflows/*` — with only it, the audit still runs and pins
-#     dependencies, but action-pins cannot be pushed.
+#     `.github/workflows/*`. With only it the audit degrades gracefully: /audit
+#     lands the dependency remediations (their own commit, pushed first) and
+#     opens the PR; only the action-pins (a second commit) are dropped.
 name: 'Skill | audit'
 
 on:
