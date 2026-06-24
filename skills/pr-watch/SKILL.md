@@ -16,7 +16,7 @@ Set `AUDIT = CONFIG.audits?.security === true` — gates the security audit in s
 
 Resolve the deny-list and consensus gate:
 - `DENY = CONFIG.security?.denyPaths ?? ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"]` — secret/key globs that must never enter the PR (step 6d). `[]` disables.
-- `VOTERS = CONFIG.review?.consensus?.voters ?? 1`; `QUORUM = CONFIG.review?.consensus?.quorum ?? (floor(VOTERS/2)+1)`. `VOTERS <= 1` disables the consensus gate (step 6e) — single review pass, the original behaviour.
+- `VOTERS = CONFIG.review?.consensus?.voters ?? 1`; `QUORUM = CONFIG.review?.consensus?.quorum ?? (floor(VOTERS/2)+1)`. `VOTERS <= 1` disables the consensus gate (step 6f) — single review pass, the original behaviour.
 - `LENSES = CONFIG.review?.lenses ?? []` — the specialist review lenses fanned out in step 6a; empty (the default) keeps the single code-review pass.
 
 ## 0a — Persisted attempt-state
@@ -27,7 +27,7 @@ Marker line (the JSON is on one line, wrapped in the HTML comment):
 ```
 <!-- supera:pr-watch-state {"attempts":<n>,"lastFailure":"<sig>"} -->
 ```
-- `attempts` — how many fix attempts have run this PR (CI failures in step 3 and consensus blocks in step 6e both increment it).
+- `attempts` — how many fix attempts have run this PR (CI failures in step 3 and consensus blocks in step 6f both increment it).
 - `lastFailure` — a short stable signature of the most recent failure (e.g. the failing job name + first error line, or `consensus:<reason>`), used to tell a repeat from a new failure.
 
 After resolving the PR (step 1), load the state once — find the marker comment and parse its JSON; if none exists, start at `STATE = {attempts: 0, lastFailure: null}`:
@@ -47,7 +47,7 @@ fi
 ```
 Keep exactly one marker comment per PR — always update the existing one rather than appending. Treat `STATE.attempts` as the authoritative attempt count throughout this skill; the in-session count is only a mirror of it.
 
-**Terminal block signal.** When the loop gives up — the same CI failure survives 2 fix attempts (step 3), the same consensus block recurs after 2 rounds (step 6e), or a deny-path/secret hits the PR (step 6d) — post a visible PR comment prefixed `🚫 supera blocked:` carrying a hidden `<!-- supera:blocked <reason> -->` marker, then stop and exit the turn. This comment is the escalation endpoint — supera has no tracker, so the block lives on the PR: durable, visible to the human, and detectable by a re-run so it doesn't re-loop an already-blocked PR. In interactive mode also surface the reason and ask the user; in `NONINTERACTIVE` mode the comment is the only surface.
+**Terminal block signal.** When the loop gives up — the same CI failure survives 2 fix attempts (step 3), the same consensus block recurs after 2 rounds (step 6f), or a deny-path/secret hits the PR (step 6d) — post a visible PR comment prefixed `🚫 supera blocked:` carrying a hidden `<!-- supera:blocked <reason> -->` marker, then stop and exit the turn. This comment is the escalation endpoint — supera has no tracker, so the block lives on the PR: durable, visible to the human, and detectable by a re-run so it doesn't re-loop an already-blocked PR. In interactive mode also surface the reason and ask the user; in `NONINTERACTIVE` mode the comment is the only surface.
 
 ## 1 — Resolve the PR
 
@@ -242,7 +242,21 @@ gh pr diff $PR --name-only
 ```
 Any match → a secret or private key is in the PR: a **hard merge blocker**. Surface it loudly; do **not** present the PR as ready. Post the **terminal block signal** (§0a) with the offending paths and exit the turn — clearing a committed secret is the user's call.
 
-### 6e — Merge-readiness consensus
+### 6e — PR description conformance
+
+Validate the open PR's body against the canonical template in `.github/pull_request_template.md` — the same shape `/start` builds the body from — so every shipped PR keeps the agreed description. Read the body once this cycle:
+```bash
+gh pr view $PR --json body -q .body
+```
+- **Required sections.** `## Summary`, `## Changes`, and `## Test plan` must each be present (`## Out of scope` and `## Notes` are omittable per the template). Any missing → the body doesn't conform: `/pr-watch` doesn't author the body and a malformed description shouldn't be presented as ready, so post the **terminal block signal** (§0a) naming the missing section(s) and exit the turn (interactive: also surface them so the author fixes the body).
+- **Test plan addressed.** With the required sections present, surface every unchecked `- [ ]` item under `## Test plan` as a review-finding comment so the open verification steps are visible before merge — a reminder, not a block:
+```bash
+gh pr review $PR --comment --body "Test plan has unaddressed items — verify each before merge:
+<unchecked items>"
+```
+A conforming body with every box checked surfaces nothing — continue to 6f.
+
+### 6f — Merge-readiness consensus
 
 Skip when `VOTERS <= 1`, **or** when steps 6a–6c delegated any fix this cycle — vote only on a settled PR, so push those fixes and reschedule without `--reviewed` (close-out below) and the vote runs next cycle.
 

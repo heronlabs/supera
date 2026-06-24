@@ -232,22 +232,7 @@ The phase ladder in step 1.5 is the shared contract: `fresh → scaffolded → b
 
 ## GitHub PR body template
 
-```
-## Summary
-<one paragraph: what changed and why — written for a reviewer seeing this cold>
-
-## Changes
-- <concrete change per area>
-
-## Out of scope
-- <related but deferred>          ← omit section if empty
-
-## Test plan
-- [ ] <verification step the reviewer can run or check>
-
-## Notes
-<load-bearing decisions or known follow-ups — omit if none>
-```
+Build the PR body to the canonical template in `.github/pull_request_template.md` — the single source of truth for the body shape (Summary, Changes, Out of scope, Test plan checklist, Notes) and which sections are required vs. omittable. Fill each placeholder and keep the section headings verbatim, so `/pr-watch` can validate the open PR against the same file. Don't restate the template here — the file is the source.
 
 ## Rules
 
