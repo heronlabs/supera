@@ -16,6 +16,7 @@ import {basename, join} from 'node:path';
 import Ajv2020, {type ValidateFunction} from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import {parse as parseYaml} from 'yaml';
+import {dedupeByRunId, percentile} from './metrics-rollup';
 
 const root = process.cwd();
 const errors: string[] = [];
@@ -178,6 +179,144 @@ if (dependabot.trim().length === 0) {
 } else if (!yamlBlocks.includes(dependabot)) {
   errors.push(
     `${initSkillPath}: inlined Dependabot template has drifted from ${canonicalDependabotPath} — they must stay byte-identical (the dogfood config is the canonical base, the init template is the emitted copy)`,
+  );
+}
+
+// 5. Privacy invariant for the run-telemetry event. The metrics schema is the
+// STRUCTURAL guarantee that a run never emits free text (a prompt, diff, path,
+// or commit message): every object level is sealed (additionalProperties:false)
+// and every string property is constrained to a closed shape — an enum, a
+// const, a pattern, or a format. Enforce both here so a future edit can't
+// silently open a leak; an unconstrained `type:"string"` IS the leak. Scoped to
+// the metrics schema — the receipt/config/audit schemas carry intentional free
+// text.
+type SchemaNode = Record<string, unknown>;
+const singleSubschemaKeys = [
+  'items',
+  'additionalProperties',
+  'additionalItems',
+  'not',
+  'if',
+  'then',
+  'else',
+  'contains',
+  'propertyNames',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+];
+const mapSubschemaKeys = [
+  'properties',
+  'patternProperties',
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+];
+const listSubschemaKeys = ['allOf', 'anyOf', 'oneOf', 'prefixItems'];
+
+function* walkSchema(
+  node: unknown,
+  path: string,
+): Generator<[string, SchemaNode]> {
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) return;
+  const schema = node as SchemaNode;
+  yield [path, schema];
+  for (const key of singleSubschemaKeys) {
+    if (key in schema) yield* walkSchema(schema[key], `${path}/${key}`);
+  }
+  for (const key of mapSubschemaKeys) {
+    const map = schema[key];
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      for (const [name, sub] of Object.entries(map)) {
+        yield* walkSchema(sub, `${path}/${key}/${name}`);
+      }
+    }
+  }
+  for (const key of listSubschemaKeys) {
+    const list = schema[key];
+    if (Array.isArray(list)) {
+      for (let i = 0; i < list.length; i += 1) {
+        yield* walkSchema(list[i], `${path}/${key}/${i}`);
+      }
+    }
+  }
+}
+
+const isStringTyped = (schema: SchemaNode): boolean =>
+  schema.type === 'string' ||
+  (Array.isArray(schema.type) && schema.type.includes('string'));
+const isConstrainedString = (schema: SchemaNode): boolean =>
+  'enum' in schema ||
+  'const' in schema ||
+  'pattern' in schema ||
+  'format' in schema;
+const definesObject = (schema: SchemaNode): boolean =>
+  schema.type === 'object' || 'properties' in schema;
+
+const auditPrivacy = (schema: SchemaNode, label: string): string[] => {
+  const violations: string[] = [];
+  for (const [path, node] of walkSchema(schema, label)) {
+    if (isStringTyped(node) && !isConstrainedString(node)) {
+      violations.push(
+        `${path}: unconstrained string (add enum/const/pattern/format) — free text would leak`,
+      );
+    }
+    if (definesObject(node) && node.additionalProperties !== false) {
+      violations.push(
+        `${path}: object is not sealed (set additionalProperties:false)`,
+      );
+    }
+  }
+  return violations;
+};
+
+const metricsSchemaName = 'metrics-event.schema.json';
+if (schemaFiles.includes(metricsSchemaName)) {
+  errors.push(
+    ...auditPrivacy(
+      readJson(`schema/${metricsSchemaName}`) as SchemaNode,
+      `schema/${metricsSchemaName}`,
+    ),
+  );
+  // Negative self-test: the guard must catch a leak, never pass vacuously.
+  const leakyFixture: SchemaNode = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {prompt: {type: 'string'}},
+  };
+  const unsealedFixture: SchemaNode = {
+    type: 'object',
+    properties: {skill: {type: 'string', const: 'start'}},
+  };
+  if (auditPrivacy(leakyFixture, 'fixture').length === 0) {
+    errors.push(
+      'privacy guard regression: unconstrained string was not flagged',
+    );
+  }
+  if (auditPrivacy(unsealedFixture, 'fixture').length === 0) {
+    errors.push('privacy guard regression: unsealed object was not flagged');
+  }
+} else {
+  errors.push(`schema/${metricsSchemaName}: missing run-telemetry contract`);
+}
+
+// 6. Rollup math gate. The daily rollup's pure helpers carry the only
+// non-trivial logic on the telemetry path (percentiles, run-id dedup), so a
+// regression there must turn this single gate red.
+if (percentile([1, 2, 3, 4], 50) !== 2.5) {
+  errors.push(
+    `rollup percentile p50: expected 2.5, got ${percentile([1, 2, 3, 4], 50)}`,
+  );
+}
+if (percentile([], 95) !== 0) {
+  errors.push('rollup percentile: empty series must be 0');
+}
+const deduped = dedupeByRunId(
+  [{gh: {run_id: 1}}],
+  [{gh: {run_id: 1}}, {gh: {run_id: 2}}, {gh: {run_id: 2}}],
+);
+if (deduped.length !== 2) {
+  errors.push(
+    `rollup dedupeByRunId: expected 2 unique runs, got ${deduped.length}`,
   );
 }
 

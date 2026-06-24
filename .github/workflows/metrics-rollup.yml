@@ -1,0 +1,100 @@
+# Daily run-telemetry rollup (issue #48 Phase 1). Collects the `metrics-*`
+# artifacts each dogfood-fleet repo's skill workflows uploaded, dedups them on
+# gh.run_id, appends the new events to metrics/events.jsonl on an orphan
+# `metrics` branch, and regenerates metrics/DASHBOARD.md.
+#
+# Prerequisites:
+#   - `SUPERA_AUDIT_TOKEN`: a PAT/App token with `actions: read` on every fleet
+#     repo so the collect job can download their artifacts, plus `contents:
+#     write` on this repo to publish the `metrics` branch. With only the default
+#     `GITHUB_TOKEN` the cross-repo downloads are skipped (robust to that), and
+#     just this repo's own metrics roll up.
+name: 'Metrics | rollup'
+
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: metrics-rollup
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: 'Collect ${{ matrix.repo }} metrics'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: [supera, env-ssm, terminal-cli]
+    steps:
+      - name: 'Download metrics-* artifacts'
+        env:
+          GH_TOKEN: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: heronlabs/${{ matrix.repo }}
+        run: |
+          set -euo pipefail
+          mkdir -p collected
+          runs=$(gh run list -R "$REPO" --limit 80 --json databaseId -q '.[].databaseId' 2>/dev/null || true)
+          for run in $runs; do
+            gh run download -R "$REPO" "$run" -p 'metrics-*' -D "collected/$run" 2>/dev/null || true
+          done
+          found=$(find collected -name metrics-event.json | wc -l | tr -d ' ')
+          echo "Collected $found metrics event(s) from $REPO."
+
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: collected-${{ matrix.repo }}
+          path: collected
+          if-no-files-found: ignore
+
+  rollup:
+    name: 'Aggregate + publish dashboard'
+    needs: collect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/supera-bootstrap
+        with:
+          stack: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 'Gather collected events'
+        env:
+          GH_TOKEN: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: gh run download "$GITHUB_RUN_ID" -p 'collected-*' -D collected || true
+
+      - name: 'Roll up and publish the metrics branch'
+        env:
+          GH_TOKEN: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/metrics-branch"
+          rm -rf "$work"
+          mkdir -p "$work"
+          git -C "$work" init -q
+          git -C "$work" remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git -C "$work" fetch -q --depth 1 origin metrics 2>/dev/null; then
+            git -C "$work" checkout -q -b metrics FETCH_HEAD
+          else
+            git -C "$work" checkout -q --orphan metrics
+          fi
+          mkdir -p "$work/metrics"
+          pnpm exec jiti scripts/metrics-rollup.ts --collected "$GITHUB_WORKSPACE/collected" --out "$work/metrics"
+          git -C "$work" add metrics
+          if git -C "$work" diff --cached --quiet; then
+            echo 'No new metrics — nothing to publish.'
+            exit 0
+          fi
+          git -C "$work" -c user.name=supera-bot -c user.email=supera-bot@users.noreply.github.com commit -q -m "chore: metrics rollup $(date -u +%F)"
+          git -C "$work" push -q origin HEAD:metrics

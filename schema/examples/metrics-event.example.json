@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "ts": "2026-06-24T07:15:30Z",
+  "repo": "heronlabs/supera",
+  "skill": "start",
+  "event": "run",
+  "outcome": "success",
+  "model": "claude-opus-4-20250514",
+  "stack": "pnpm",
+  "run": {
+    "cost_usd": 0.4213,
+    "num_turns": 17,
+    "duration_ms": 184523,
+    "tokens": {
+      "input": 10422,
+      "output": 8137,
+      "cache_read": 1840122,
+      "cache_creation": 92140
+    }
+  },
+  "gh": {
+    "run_id": 17483927461,
+    "run_attempt": 1
+  }
+}
