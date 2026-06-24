@@ -100,7 +100,7 @@ Offer it only when the repo is GitHub-hosted (a `.github/` dir exists, or `origi
 
 Ask with `AskUserQuestion` (default = **accept**; recommended): *"Add a `.github/dependabot.yml`? It's the free, always-on layer — Dependabot bumps versions, keeps SHA-pinned Actions fresh, and opens security-update PRs, leaving supera's security auditor to reason about overrides and CVE verdicts."*
 
-If accepted, write `.github/dependabot.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. Map `package-ecosystem` from the detected `stack`: **pnpm / npm / yarn → `npm`**, **cargo → `cargo`**. Always include the `github-actions` block. Both the `npm`/`cargo` and `github-actions` blocks run **full version-updates**, each grouped so a week's bumps land in one PR — Dependabot now owns the routine version bumps supera no longer reasons about. For a `pnpm` stack (`npm` ecosystem reads `pnpm-lock.yaml`):
+If accepted, write `.github/dependabot.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. Map `package-ecosystem` from the detected `stack`: **pnpm / npm / yarn → `npm`**, **cargo → `cargo`**, **go → `gomod`**. Always include the `github-actions` block. Both the `npm`/`cargo`/`gomod` and `github-actions` blocks run **full version-updates**, each grouped so a week's bumps land in one PR — Dependabot now owns the routine version bumps supera no longer reasons about. For a `pnpm` stack (`npm` ecosystem reads `pnpm-lock.yaml`):
 
 ```yaml
 version: 2
@@ -122,6 +122,8 @@ updates:
 ```
 
 For a `cargo` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: cargo` and its `npm:` group key for `cargo:`, keeping the same `directory` / `schedule` / `patterns: ['*']` and the unchanged `github-actions` block.
+
+For a `go` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: gomod` and its `npm:` group key for `gomod:`, keeping the same `directory` / `schedule` / `patterns: ['*']` and the unchanged `github-actions` block.
 
 ### 5b — Offer the weekly audit cron
 
@@ -194,7 +196,7 @@ description: 'Checkout, supera-bot git identity, and per-stack toolchain setup f
 
 inputs:
   stack:
-    description: 'Toolchain to set up: pnpm | npm | yarn | cargo | go | python.'
+    description: 'Toolchain to set up: pnpm | npm | yarn | cargo | go.'
     required: true
   token:
     description: 'Token for actions/checkout (needs workflow scope to push .github/workflows/* changes).'
@@ -225,7 +227,7 @@ runs:
         git config --global user.name 'supera-bot'
         git config --global user.email 'supera-bot@users.noreply.github.com'
 
-    - if: inputs.stack == 'pnpm' || inputs.stack == 'npm' || inputs.stack == 'yarn'
+    - if: inputs.stack == 'pnpm'
       uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
     - if: inputs.stack == 'pnpm' || inputs.stack == 'npm' || inputs.stack == 'yarn'
@@ -244,14 +246,7 @@ runs:
 
     - if: inputs.stack == 'go'
       shell: bash
-      run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-    - if: inputs.stack == 'python'
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-
-    - if: inputs.stack == 'python'
-      shell: bash
-      run: python -m pip install pip-audit
+      run: go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
 ```
 
 ### 5c — Offer the Dependabot→pr-watch auto-fix (recommended)
@@ -369,7 +364,7 @@ Print the written path and a compact summary of every field. Tell the user:
 
 **Dependency layers (step 5)**
 - All three are **independent and opt-in** via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended) and **stands alone — a complete path on its own**; the audit cron (5b) defaults to **decline** and is only offered when the security auditor is enabled; the Dependabot→pr-watch auto-fix (5c) defaults to **accept** (recommended) and is only offered when 5a was accepted and a CI workflow was detected in step 2. Accepting 5a never obligates 5b or 5c.
-- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, or `.github/workflows/supera-skill-pr-watch.yml`; report it's already present instead.
-- `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`); always include the `github-actions` block.
+- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, `.github/workflows/supera-skill-pr-watch.yml`, or `.github/actions/supera-bootstrap/action.yml`; report it's already present instead.
+- `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`, go → `gomod`); always include the `github-actions` block.
 - The 5c template is per-repo parameterized (`workflow_run.workflows` carries the consumer's CI workflow `name`), so it's NOT in the validate.ts byte-identical drift guard — substitute the step-2 detected CI workflow name.
 - Each file's existence is the state; no `.claude/supera.json` field tracks any of them.
