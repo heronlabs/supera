@@ -58,12 +58,14 @@ cd <WT_DIR>/<auditBranch> && <CONFIG.worktree.postCreate ?? CONFIG.verify.instal
 
 ## 4 — Run the security auditor
 
-Dispatch the `supera-security-auditor` agent on the worktree (one pass). It applies safe, gated remediations — CVE fixes (in-range upgrade, scoped override, remove-stale-override) **and** action-pins (unpinned GitHub Actions pinned to their commit SHA) — **leaving the edits in the tree**, and reports the rest. On return, if the tree is dirty, `/audit` folds them all into **one** commit (only if something is staged):
+Dispatch the `supera-security-auditor` agent on the worktree (one pass). It applies safe, gated remediations — CVE fixes (in-range upgrade, scoped override, remove-stale-override) **and** action-pins (unpinned GitHub Actions pinned to their commit SHA) — **leaving the edits in the tree**, and reports the rest. On return, if the tree is dirty, `/audit` makes **two** commits — staging the dependency/CVE remediations separately from the GitHub Actions SHA-pins, dependency commit first — so a `workflow`-scope push rejection (step 6) can drop only the action-pins, never the dependency fixes (commit a set only when it has staged changes):
 ```bash
-git -C <WT_DIR>/<auditBranch> add -A
-git -C <WT_DIR>/<auditBranch> diff --cached --quiet || git -C <WT_DIR>/<auditBranch> commit -m "fix: apply safe supply-chain remediations"
+git -C <WT_DIR>/<auditBranch> add -A -- . ':!.github/workflows'                       # deps: lockfiles, manifests, overrides — everything except workflow files
+git -C <WT_DIR>/<auditBranch> diff --cached --quiet || git -C <WT_DIR>/<auditBranch> commit -m "fix: apply safe dependency remediations"
+git -C <WT_DIR>/<auditBranch> add -A -- .github/workflows                             # action-pins: the auditor's only workflow-file edits
+git -C <WT_DIR>/<auditBranch> diff --cached --quiet || git -C <WT_DIR>/<auditBranch> commit -m "ci: pin github actions to sha"
 ```
-Parse its JSON receipt (`schema/audit-receipt.schema.json`): `applied[]` (each omits `commit` — the single commit above carries them), `findings[]`, `verification`, `degraded[]`, `status`.
+Parse its JSON receipt (`schema/audit-receipt.schema.json`): `applied[]` (each omits `commit` — the commits above carry them: `pin-action` verdicts ride the action-pin commit, the rest the dependency commit), `findings[]`, `verification`, `degraded[]`, `status`.
 
 Relay any degraded-probe gaps the auditor notes (missing `cargo-audit`, network failure); **never fail the whole audit on a degraded probe** — a degraded probe blocks the auditor's auto-apply, not the run.
 
@@ -87,10 +89,20 @@ git -C <WT_DIR>/<auditBranch> log --oneline <REMOTE>/<TARGET>..<auditBranch>
 
 **No commits (pure report-only)** → open **no** PR. Render the report from the receipt's `findings[]` + `degraded[]` (`applied[]` is empty here). **Emit the durable step-summary** (see **Durable step summary** below) on the report-only branch, then tear down the worktree (remove the worktree, delete the branch) and exit.
 
-**Commits present** → push and open the PR:
+**Commits present** → push the commits **in order**, then open the PR. Push the dependency-remediation commit first — it must succeed with a plain `GITHUB_TOKEN` — then the action-pin commit on top (it is `HEAD`, committed last in step 4). A `403` / `workflow`-scope rejection on the **second** push is the documented graceful degradation: the dependency fixes already landed, so record the dropped action-pins (`ACTION_PINS_DROPPED`) and carry on — never fail the run on it.
 ```bash
-git -C <WT_DIR>/<auditBranch> push -u <REMOTE> <auditBranch>
+if git -C <WT_DIR>/<auditBranch> diff-tree --no-commit-id --name-only -r HEAD | grep -q '^\.github/workflows/'; then
+  # HEAD is the action-pin commit. Land the dependency history first (skip when action-pins are the only commit).
+  if [ "$(git -C <WT_DIR>/<auditBranch> rev-parse HEAD~1)" != "$(git -C <WT_DIR>/<auditBranch> rev-parse <REMOTE>/<TARGET>)" ]; then
+    git -C <WT_DIR>/<auditBranch> push <REMOTE> HEAD~1:refs/heads/<auditBranch>           # dependency remediations — must succeed with GITHUB_TOKEN
+  fi
+  git -C <WT_DIR>/<auditBranch> push <REMOTE> HEAD:refs/heads/<auditBranch> || ACTION_PINS_DROPPED=1   # action-pins — 403 ⇒ no `workflow` scope ⇒ graceful
+else
+  git -C <WT_DIR>/<auditBranch> push -u <REMOTE> <auditBranch>                            # dependency remediations only — no action-pins to push
+fi
 ```
+**If the action-pins were the only fix and that second push was rejected** (`ACTION_PINS_DROPPED` set with no dependency commit pushed), nothing reached the remote: open **no** PR. Surface the dropped action-pins on the run log and in the durable step summary (as the report-only path does), tear down the worktree, and exit — the run still succeeds. Otherwise the dependency commit landed: continue and open the PR, and when `ACTION_PINS_DROPPED` is set add the dropped-action-pins line to the PR body **Notes** (below) and a run-log line.
+
 Label the PR `supera:audit`. Ensure that `supera:audit` label exists first — `gh pr create --label "supera:audit"` hard-fails the whole create with `could not add label: 'supera:audit' not found` when the label was never created in the repo, which on the first audit run leaves the auditor's commits stranded with no PR. Create it idempotently:
 
 ```bash
@@ -102,6 +114,7 @@ Create the PR assigned to `@me` (NEVER `--reviewer` — GitHub blocks self-revie
 ```bash
 gh pr create \
   --base <TARGET> \
+  --head <auditBranch> \
   --title "Dependency audit — <YYYY-MM-DD>" \
   --body "$(cat <<'EOF'
 <PR body below>
@@ -114,14 +127,16 @@ EOF
 Build the PR body **from the receipt** (no prose relay) — `applied[]` → first section, `findings[]` → second, `degraded[]` → Notes:
 ```
 ## Applied autonomously
-- <applied.verdict> <applied.target> <applied.from→applied.to> — in the security remediations commit — verified by <applied.verifiedBy>
+- <applied.verdict> <applied.target> <applied.from→applied.to> — verified by <applied.verifiedBy>
 
 ## Needs your call
 - <finding.verdict> <finding.target> @ <finding.file>:<finding.line> — <finding.action>
 
 ## Notes
-- <degraded[] entry>               ← omit the whole section when the receipt's degraded[] is empty
+- <degraded[] entry>
+- GitHub Actions SHA-pins could not be pushed — the checkout `GITHUB_TOKEN` lacks `workflow` scope; set `SUPERA_AUDIT_TOKEN` to land them. The dependency remediations above still landed.   ← only when ACTION_PINS_DROPPED
 ```
+Omit the whole **Notes** section when the receipt's `degraded[]` is empty **and** the action-pins pushed cleanly.
 
 Once the PR exists, **emit the durable step-summary** (see **Durable step summary** below) on the PR-opened branch. Then hand off: invoke `/pr-watch <N>` (append `--non-interactive` when set). Announce: *"Dependency audit PR #<N> opened (`<auditBranch>` → `<TARGET>`). Handing off to `/pr-watch <N>` to drive CI green."*
 
@@ -142,6 +157,9 @@ Keep the local terminal render unchanged — it is the interactive outcome. **Ad
 
 ### Needs your call
 - <finding.verdict> <finding.target> @ <finding.file>:<finding.line> — <finding.action>
+
+### Notes
+- ⚠️ GitHub Actions SHA-pins could not be pushed (no \`workflow\` scope — set \`SUPERA_AUDIT_TOKEN\`); the dependency remediations still landed.   ← only when ACTION_PINS_DROPPED
 EOF
 ```
 
@@ -163,7 +181,7 @@ Why no PR: <nothing auto-appliable / all findings need your call / clean>
 EOF
 ```
 
-Omit the **Applied autonomously** / **Needs your call** / **Notes** subsection when its receipt array is empty (mirror the PR-body rule). For a clean report-only run with no findings, the heading + `📋 Report-only` line + "Why no PR: clean" suffice.
+Omit the **Applied autonomously** / **Needs your call** / **Notes** subsection when its receipt array is empty (mirror the PR-body rule); omit the PR-opened **Notes** line unless `ACTION_PINS_DROPPED` is set. For a clean report-only run with no findings, the heading + `📋 Report-only` line + "Why no PR: clean" suffice.
 
 ## Non-interactive mode (`--non-interactive`)
 
@@ -181,4 +199,4 @@ For headless CI runs (e.g. GitHub Actions via `anthropics/claude-code-action`) �
 - Date-scoped audit branch `chore-audit-<date>` — idempotent within a day; a same-day re-run routes to the open PR via `/pr-watch`.
 - Deny-path match (step 5) is a hard abort — surface the offending paths, tear down, never push.
 - Every CI run leaves a durable outcome — both step-6 paths append the markdown report to `$GITHUB_STEP_SUMMARY` (gated on CI presence, guarded by `[ -n "$GITHUB_STEP_SUMMARY" ]`); the local terminal render is unchanged.
-- Commit hygiene follows `guidelines/commit-conventions.md` (`/audit` makes the single commit folding the security auditor's edits).
+- Commit hygiene follows `guidelines/commit-conventions.md` (`/audit` commits the security auditor's edits — dependency remediations first, action-pins second — and pushes them in order so a `workflow`-scope rejection drops only the action-pins).
