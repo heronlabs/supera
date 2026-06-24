@@ -20,7 +20,6 @@ Inspect the repo root for marker files; `package.json`, when present, also names
 | `Cargo.toml` | `cargo` | `cargo build --workspace` · `cargo test --workspace` · `cargo clippy -- -D warnings` |
 | `@strapi/strapi` in deps | `strapi` | `strapi build` · test script if any · lint script |
 | `go.mod` | `go` | `go build ./...` · `go test ./...` · `golangci-lint run` |
-| `pyproject.toml` / `requirements.txt` | `python` | from project scripts / `pytest` · `ruff`/`flake8` |
 
 The build/test/lint entries above are **candidates only** — §2 grounds them in the repo's real commands before anything is written.
 
@@ -64,7 +63,7 @@ Detect the default branch instead of assuming `main`:
 git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
 ```
 
-Set `audits.security` to `true` if the repo has a lockfile, else `false`. The security auditor runs on demand via `/audit`, `/start`, and `/pr-watch`.
+Set `audits.security` to `true` if the repo has a lockfile (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `Cargo.lock`, `go.sum`), else `false`. The security auditor runs on demand via `/audit`, `/start`, and `/pr-watch`.
 
 ## 4 — Write the guardrails into the repo's CLAUDE.md
 
@@ -100,7 +99,7 @@ Offer it only when the repo is GitHub-hosted (a `.github/` dir exists, or `origi
 
 Ask with `AskUserQuestion` (default = **accept**; recommended): *"Add a `.github/dependabot.yml`? It's the free, always-on layer — Dependabot bumps versions, keeps SHA-pinned Actions fresh, and opens security-update PRs, leaving supera's security auditor to reason about overrides and CVE verdicts."*
 
-If accepted, write `.github/dependabot.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. Map `package-ecosystem` from the detected `stack`: **pnpm / npm / yarn → `npm`**, **cargo → `cargo`**. Always include the `github-actions` block. Both the `npm`/`cargo` and `github-actions` blocks run **full version-updates**, each grouped so a week's bumps land in one PR — Dependabot now owns the routine version bumps supera no longer reasons about. For a `pnpm` stack (`npm` ecosystem reads `pnpm-lock.yaml`):
+If accepted, write `.github/dependabot.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present. Map `package-ecosystem` from the detected `stack`: **pnpm / npm / yarn → `npm`**, **cargo → `cargo`**, **go → `gomod`**. Always include the `github-actions` block. Both the `npm`/`cargo`/`gomod` and `github-actions` blocks run **full version-updates**, each grouped so a week's bumps land in one PR — Dependabot now owns the routine version bumps supera no longer reasons about. For a `pnpm` stack (`npm` ecosystem reads `pnpm-lock.yaml`):
 
 ```yaml
 version: 2
@@ -122,6 +121,8 @@ updates:
 ```
 
 For a `cargo` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: cargo` and its `npm:` group key for `cargo:`, keeping the same `directory` / `schedule` / `patterns: ['*']` and the unchanged `github-actions` block.
+
+For a `go` stack, swap the second block's `package-ecosystem: npm # reads pnpm-lock.yaml` line for `package-ecosystem: gomod` and its `npm:` group key for `gomod:`, keeping the same `directory` / `schedule` / `patterns: ['*']` and the unchanged `github-actions` block.
 
 ### 5b — Offer the weekly audit cron
 
@@ -161,28 +162,17 @@ jobs:
     name: 'Dependency audit'
     runs-on: ubuntu-latest
     steps:
+      # checkout + supera-bot git identity + toolchain (toolchain only — /audit
+      # runs install inside the worktree it creates). Swap `stack` for your
+      # repo's: pnpm | npm | yarn | cargo | go.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # the auditor commits its safe remediations via raw git, so give it an
-      # identity (claude-code-action only auto-configures git in its tag mode,
-      # not prompt mode).
-      - run: |
-          git config --global user.name 'supera-bot'
-          git config --global user.email 'supera-bot@users.noreply.github.com'
-
-      # the auditor runs the repo's verify commands in the worktree /audit
-      # creates, so set up the toolchain. /audit runs install inside that
-      # worktree — no root-level `pnpm install` step here.
-      # (swap these for your stack's equivalent — npm ci, cargo, etc.).
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: ./.github/actions/supera-bootstrap
         with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
+          stack: <detected stack>
 
       - uses: anthropics/claude-code-action@30544b674398ee15c84819bd87caf8a87e8c7b55 # v1.0.154
         with:
@@ -195,7 +185,57 @@ jobs:
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
 ```
 
+This cron references the `./.github/actions/supera-bootstrap` composite action, which is NOT part of the plugin — emit it into the consumer repo too (5d) so the workflow is self-contained. Substitute `<detected stack>` with the `stack` from step 1 (`pnpm` | `npm` | `yarn` | `cargo` | `go`).
+
 After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow (and any `.github/dependabot.yml` from 5a) alongside `.claude/supera.json`.
+
+### 5d — Emit the supera-bootstrap composite action
+
+The 5b cron (and the `supera-skill-pr-watch.yml` in 5c) reference `uses: ./.github/actions/supera-bootstrap` — a local composite action that sets the `supera-bot` git identity and the per-stack toolchain (the caller checks out first — a local `./` action can't be loaded before checkout). It is **not** part of the plugin, so a `uses:` pointing at the plugin would break; the workflows must be self-contained. **Whenever you emit 5b or 5c, also write `.github/actions/supera-bootstrap/action.yml`**, byte-identical to the template below — **idempotent: if the file already exists, never clobber it**, just report it's already present. The consumer's workflows pass `stack: <detected stack>` to it; the action gates each toolchain step on that input, so one file serves every stack.
+
+```yaml
+name: 'supera bootstrap'
+description: 'supera-bot git identity and per-stack toolchain setup for supera skill workflows. Toolchain only — never installs dependencies; the caller checks out and installs.'
+
+inputs:
+  stack:
+    description: 'Toolchain to set up: pnpm | npm | yarn | cargo | go.'
+    required: true
+  node-version-file:
+    description: 'File read by setup-node for the Node version (pnpm/npm/yarn stacks).'
+    default: '.node-version'
+
+runs:
+  using: composite
+  steps:
+    # the engineer/auditor commits via raw git, so give it an identity
+    # (claude-code-action only auto-configures git in its tag mode, not prompt mode).
+    - shell: bash
+      run: |
+        git config --global user.name 'supera-bot'
+        git config --global user.email 'supera-bot@users.noreply.github.com'
+
+    - if: inputs.stack == 'pnpm'
+      uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+    - if: inputs.stack == 'pnpm' || inputs.stack == 'npm' || inputs.stack == 'yarn'
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+        cache: ${{ inputs.stack == 'pnpm' && 'pnpm' || inputs.stack }}
+
+    - if: inputs.stack == 'cargo'
+      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+    - if: inputs.stack == 'go'
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      with:
+        go-version-file: go.mod
+
+    - if: inputs.stack == 'go'
+      shell: bash
+      run: go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
+```
 
 ### 5c — Offer the Dependabot→pr-watch auto-fix (recommended)
 
@@ -205,9 +245,9 @@ When eligible, ask with `AskUserQuestion` (default = **accept**; recommended): *
 
 If declined, do nothing. If accepted, write `.github/workflows/supera-skill-pr-watch.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present.
 
-This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim — but **strip any `[`/`]`**: `workflow_run.workflows` is glob-matched, so square brackets break trigger parsing and the watcher dies at startup before its `if:` ever runs (the pipe `|` and other characters are safe). If the detected CI name has brackets, drop them here and in the CI workflow's own `name:`.
+This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b/5d). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim — but **strip any `[`/`]`**: `workflow_run.workflows` is glob-matched, so square brackets break trigger parsing and the watcher dies at startup before its `if:` ever runs (the pipe `|` and other characters are safe). If the detected CI name has brackets, drop them here and in the CI workflow's own `name:`.
 
-supera-engineer runs the repo's **verify commands inside this workflow**, so the toolchain must be installed before `claude-code-action` (otherwise the run burns turns failing to find `pnpm`/`node` and never pushes a fix). Insert the same dependency-setup steps the CI uses — the pnpm example below (`pnpm/action-setup` → `setup-node` → `pnpm install`) for a pnpm stack; swap it for your stack's equivalent (npm `ci`, `cargo`, …).
+supera-engineer runs the repo's **verify commands inside this workflow**, so the toolchain must be installed before `claude-code-action` (otherwise the run burns turns failing to find `pnpm`/`node` and never pushes a fix). The `actions/checkout` + `./.github/actions/supera-bootstrap` steps (5d) check out the branch and set up the toolchain (git identity + per-stack tools); unlike 5b, pr-watch then installs at the workflow root (`pnpm install --frozen-lockfile` for a pnpm stack — swap it for your stack's equivalent, e.g. `npm ci`, `cargo fetch`).
 
 ```yaml
 # Prerequisites:
@@ -246,27 +286,21 @@ jobs:
       github.event.workflow_run.actor.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      # checkout + supera-bot git identity + toolchain (toolchain only). Swap
+      # `stack` for your repo's: pnpm | npm | yarn | cargo | go.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
           token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # supera-engineer commits the fix via raw git, so give it an identity
-      # (claude-code-action only auto-configures git in its tag mode, not prompt mode).
-      - run: |
-          git config --global user.name 'supera-bot'
-          git config --global user.email 'supera-bot@users.noreply.github.com'
-
-      # supera-engineer runs the repo's verify commands here, so set up the toolchain
-      # (swap these for your stack's equivalent — npm ci, cargo, etc.).
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: ./.github/actions/supera-bootstrap
         with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
+          stack: <detected stack>
 
+      # pr-watch (unlike the audit cron) installs at the workflow root so the
+      # auto-fix step has the deps already resolved (swap for your stack's
+      # equivalent — npm ci, cargo, etc.).
       - run: pnpm install --frozen-lockfile
 
       - id: pr
@@ -322,7 +356,7 @@ Print the written path and a compact summary of every field. Tell the user:
 
 **Dependency layers (step 5)**
 - All three are **independent and opt-in** via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended) and **stands alone — a complete path on its own**; the audit cron (5b) defaults to **decline** and is only offered when the security auditor is enabled; the Dependabot→pr-watch auto-fix (5c) defaults to **accept** (recommended) and is only offered when 5a was accepted and a CI workflow was detected in step 2. Accepting 5a never obligates 5b or 5c.
-- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, or `.github/workflows/supera-skill-pr-watch.yml`; report it's already present instead.
-- `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`); always include the `github-actions` block.
+- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, `.github/workflows/supera-skill-pr-watch.yml`, or `.github/actions/supera-bootstrap/action.yml`; report it's already present instead.
+- `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`, go → `gomod`); always include the `github-actions` block.
 - The 5c template is per-repo parameterized (`workflow_run.workflows` carries the consumer's CI workflow `name`), so it's NOT in the validate.ts byte-identical drift guard — substitute the step-2 detected CI workflow name.
 - Each file's existence is the state; no `.claude/supera.json` field tracks any of them.

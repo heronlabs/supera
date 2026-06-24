@@ -28,7 +28,7 @@
           "verdict": {
             "type": "string",
             "enum": ["upgrade", "pin", "remove-pin", "pin-action"],
-            "description": "The applied remediation. security: upgrade (in-range) / pin (scoped override) / remove-pin (stale override) / pin-action (pin an unpinned GitHub Action to its commit SHA)."
+            "description": "The applied remediation. security: upgrade (in-range; Go maps to `go get pkg@<ver>`) / pin (scoped override; Go maps to a `go mod edit -replace` directive) / remove-pin (stale override) / pin-action (pin an unpinned GitHub Action to its commit SHA)."
           },
           "target": {
             "type": "string",

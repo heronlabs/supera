@@ -114,6 +114,12 @@ if (agents.length === 0) errors.push('agents/: no *.md found');
 // byte-identical to the canonical .github/workflows/skill-audit.yml — the
 // workflow is the base, the init template is the emitted copy. A silent
 // divergence ships consumers a stale cron, so fail loud if they differ.
+// The canonical workflow hardcodes `stack: pnpm` (supera dogfoods pnpm) while
+// the init template emits `stack: <detected stack>`; that single bootstrap
+// input legitimately differs per consumer, so normalize it away before the
+// byte-compare (everything else must stay identical).
+const normalizeStackInput = (yaml: string): string =>
+  yaml.replace(/^(\s*stack:).*$/m, '$1 <stack>');
 const canonicalWorkflowPath = '.github/workflows/skill-audit.yml';
 const initSkillPath = 'skills/init/SKILL.md';
 const workflow = readFileSync(join(root, canonicalWorkflowPath), 'utf8');
@@ -122,6 +128,7 @@ const yamlBlocks = [
     /```yaml\r?\n(.*?)\r?\n```/gs,
   ),
 ].map(m => `${m[1]}\n`);
+const normalizedBlocks = yamlBlocks.map(normalizeStackInput);
 if (workflow.trim().length === 0) {
   errors.push(
     `${canonicalWorkflowPath}: canonical audit-cron workflow is empty`,
@@ -130,9 +137,27 @@ if (workflow.trim().length === 0) {
   errors.push(
     `${initSkillPath}: no \`\`\`yaml block found to guard against ${canonicalWorkflowPath}`,
   );
-} else if (!yamlBlocks.includes(workflow)) {
+} else if (!normalizedBlocks.includes(normalizeStackInput(workflow))) {
   errors.push(
-    `${initSkillPath}: inlined audit-cron template has drifted from ${canonicalWorkflowPath} — they must stay byte-identical (the workflow is the canonical base, the init template is the emitted copy)`,
+    `${initSkillPath}: inlined audit-cron template has drifted from ${canonicalWorkflowPath} — they must stay byte-identical modulo the bootstrap \`stack\` input (the workflow is the canonical base, the init template is the emitted copy)`,
+  );
+}
+
+// Same drift guard for the supera-bootstrap composite action: /init emits a
+// .github/actions/supera-bootstrap/action.yml into the consumer (5d), and it
+// must stay byte-identical to this repo's canonical action — a silent
+// divergence ships consumers a stale bootstrap action, so fail loud.
+const canonicalActionPath = '.github/actions/supera-bootstrap/action.yml';
+const action = readFileSync(join(root, canonicalActionPath), 'utf8');
+if (action.trim().length === 0) {
+  errors.push(`${canonicalActionPath}: canonical bootstrap action is empty`);
+} else if (yamlBlocks.length === 0) {
+  errors.push(
+    `${initSkillPath}: no \`\`\`yaml block found to guard against ${canonicalActionPath}`,
+  );
+} else if (!yamlBlocks.includes(action)) {
+  errors.push(
+    `${initSkillPath}: inlined supera-bootstrap template has drifted from ${canonicalActionPath} — they must stay byte-identical (the action is the canonical base, the init template is the emitted copy)`,
   );
 }
 
@@ -162,5 +187,5 @@ if (errors.length > 0) {
   process.exit(1);
 }
 console.log(
-  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot templates in sync`,
+  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot + bootstrap-action templates in sync`,
 );

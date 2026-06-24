@@ -96,7 +96,7 @@
         "security": {
           "type": "boolean",
           "default": false,
-          "description": "Enable supera-security-auditor (works on npm/pnpm/yarn/cargo)."
+          "description": "Enable supera-security-auditor (works on npm/pnpm/yarn/cargo/go)."
         },
         "actionPinAllowlist": {
           "type": "array",
