@@ -176,6 +176,7 @@ jobs:
           stack: <detected stack>
 
       - uses: anthropics/claude-code-action@30544b674398ee15c84819bd87caf8a87e8c7b55 # v1.0.154
+        id: claude
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
@@ -184,6 +185,90 @@ jobs:
           prompt: /supera:audit --non-interactive
           show_full_output: true
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
+
+      # Run-level telemetry (issue #48 Phase 1): map the action's execution file
+      # into a privacy-safe metrics-event.json and upload it for the daily
+      # rollup. Self-contained (jq only) so the byte-identical /init copy runs on
+      # any consumer stack; privacy is structural — only the schema's known,
+      # constrained fields are ever written.
+      - id: metrics
+        name: 'Build run-metrics event'
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SKILL: audit
+        run: |
+          set -euo pipefail
+          if [ -z "${EXECUTION_FILE:-}" ] || [ ! -s "$EXECUTION_FILE" ]; then
+            echo 'No execution file — skipping run-metrics emit.'
+            exit 0
+          fi
+          result=$(jq -c 'map(select(.type == "result")) | last' "$EXECUTION_FILE")
+          if [ -z "$result" ] || [ "$result" = 'null' ]; then
+            echo 'No result message — skipping run-metrics emit.'
+            exit 0
+          fi
+          model=$(jq -r 'map(select(.type == "system" and .subtype == "init")) | (first.model // "")' "$EXECUTION_FILE")
+          stack=$(jq -r '.stack // "unknown"' .claude/supera.json 2>/dev/null || echo unknown)
+          jq -n \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg repo "$REPO" \
+            --arg skill "$SKILL" \
+            --arg model "$model" \
+            --arg stack "$stack" \
+            --argjson run_id "$RUN_ID" \
+            --argjson run_attempt "$RUN_ATTEMPT" \
+            --argjson result "$result" \
+            '{
+              schema_version: "1",
+              ts: $ts,
+              repo: $repo,
+              skill: $skill,
+              event: "run",
+              outcome: (if $result.subtype == "success" then "success" else "error" end),
+              model: (if ($model | test("^claude-[a-z0-9.-]+$")) then $model else "claude-unknown" end),
+              stack: (if ($stack | test("^[a-z]+$")) then $stack else "unknown" end),
+              run: {
+                cost_usd: ($result.total_cost_usd // 0),
+                num_turns: ($result.num_turns // 0),
+                duration_ms: ($result.duration_ms // 0),
+                tokens: {
+                  input: ($result.usage.input_tokens // 0),
+                  output: ($result.usage.output_tokens // 0),
+                  cache_read: ($result.usage.cache_read_input_tokens // 0),
+                  cache_creation: ($result.usage.cache_creation_input_tokens // 0)
+                }
+              },
+              gh: {run_id: $run_id, run_attempt: $run_attempt}
+            }' > metrics-event.json
+          if jq -e '
+            .schema_version == "1"
+            and (.repo | test("^[^/]+/[^/]+$"))
+            and (.skill | IN("start", "pr-watch", "audit", "refactor"))
+            and (.outcome | IN("success", "blocked", "needs-review", "error"))
+            and (.model | test("^claude-[a-z0-9.-]+$"))
+            and (.stack | test("^[a-z]+$"))
+            and (.run.cost_usd | type == "number")
+            and (.run.tokens.input | type == "number")
+            and (.gh.run_id | type == "number")
+          ' metrics-event.json > /dev/null 2>&1; then
+            echo 'Run-metrics event built and structurally validated.'
+          else
+            echo '::warning::run-metrics event failed structural validation — dropping it.'
+            rm -f metrics-event.json
+          fi
+
+      - name: 'Upload run-metrics artifact'
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: metrics-${{ github.run_id }}
+          path: metrics-event.json
+          if-no-files-found: ignore
+          retention-days: 90
 ```
 
 This cron references the `./.github/actions/supera-bootstrap` composite action, which is NOT part of the plugin — emit it into the consumer repo too (5d) so the workflow is self-contained. Substitute `<detected stack>` with the `stack` from step 1 (`pnpm` | `npm` | `yarn` | `cargo` | `go`).

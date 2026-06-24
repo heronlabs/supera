@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/heronlabs/supera/schema/metrics-event.schema.json",
+  "title": "supera run telemetry event",
+  "description": "One privacy-safe telemetry record per supera skill run — the RUN layer (Phase 1). Emitted as a GitHub Actions artifact by the skill-start / skill-pr-watch / skill-audit workflows and rolled up daily. Privacy is STRUCTURAL, not scrubbed: additionalProperties:false at every level and every string property is constrained to a closed shape (enum / const / pattern / format), so no free text — no prompt, diff, path, or commit message — can ever ride along. scripts/validate.ts enforces both rules so a future edit cannot silently open a leak.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "ts",
+    "repo",
+    "skill",
+    "event",
+    "outcome",
+    "model",
+    "stack",
+    "run",
+    "gh"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "Telemetry record version, so the rollup can evolve the shape without losing old data."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC instant the run completed (RFC 3339 date-time)."
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$",
+      "description": "owner/repo the run executed in."
+    },
+    "skill": {
+      "type": "string",
+      "enum": ["start", "pr-watch", "audit", "refactor"],
+      "description": "supera skill that produced the run."
+    },
+    "event": {
+      "type": "string",
+      "const": "run",
+      "description": "Telemetry layer. Phase 1 emits exactly one 'run' event per skill run; later semantic layers add their own event kinds."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "blocked", "needs-review", "error"],
+      "description": "Terminal result of the run. Phase 1 derives success|error from the action result subtype; blocked|needs-review are reserved for the Phase 2 semantic layer."
+    },
+    "model": {
+      "type": "string",
+      "pattern": "^claude-[a-z0-9.-]+$",
+      "description": "Claude model id the run used, read from the action's init message."
+    },
+    "stack": {
+      "type": "string",
+      "pattern": "^[a-z]+$",
+      "description": "The repo's toolchain (from .claude/supera.json `stack`), e.g. pnpm, cargo, go."
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cost_usd", "num_turns", "duration_ms", "tokens"],
+      "description": "Cost and effort the run consumed.",
+      "properties": {
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total USD cost of the run."
+        },
+        "num_turns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Agent turns taken."
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Wall-clock duration in milliseconds."
+        },
+        "tokens": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input", "output", "cache_read", "cache_creation"],
+          "description": "Token usage for the run.",
+          "properties": {
+            "input": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Input tokens."
+            },
+            "output": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Output tokens."
+            },
+            "cache_read": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Cache-read input tokens."
+            },
+            "cache_creation": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Cache-creation input tokens."
+            }
+          }
+        }
+      }
+    },
+    "gh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "run_attempt"],
+      "description": "GitHub Actions run provenance, used to dedup events on rollup.",
+      "properties": {
+        "run_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "github.run_id of the emitting workflow run."
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "github.run_attempt of the emitting workflow run."
+        }
+      }
+    }
+  }
+}
