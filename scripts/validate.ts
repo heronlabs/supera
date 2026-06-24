@@ -111,21 +111,21 @@ for (const file of markdown) {
 if (skills.length === 0) errors.push('skills/: no SKILL.md found');
 if (agents.length === 0) errors.push('agents/: no *.md found');
 
-// 4. Drift guard: /init inlines the audit-cron workflow, and it must stay
+// 4. Drift guard: /start inlines the audit-cron workflow, and it must stay
 // byte-identical to the canonical .github/workflows/skill-audit.yml — the
-// workflow is the base, the init template is the emitted copy. A silent
+// workflow is the base, the start template is the emitted copy. A silent
 // divergence ships consumers a stale cron, so fail loud if they differ.
 // The canonical workflow hardcodes `stack: pnpm` (supera dogfoods pnpm) while
-// the init template emits `stack: <detected stack>`; that single bootstrap
+// the start template emits `stack: <detected stack>`; that single bootstrap
 // input legitimately differs per consumer, so normalize it away before the
 // byte-compare (everything else must stay identical).
 const normalizeStackInput = (yaml: string): string =>
   yaml.replace(/^(\s*stack:).*$/m, '$1 <stack>');
 const canonicalWorkflowPath = '.github/workflows/skill-audit.yml';
-const initSkillPath = 'skills/init/SKILL.md';
+const startSkillPath = 'skills/start/SKILL.md';
 const workflow = readFileSync(join(root, canonicalWorkflowPath), 'utf8');
 const yamlBlocks = [
-  ...readFileSync(join(root, initSkillPath), 'utf8').matchAll(
+  ...readFileSync(join(root, startSkillPath), 'utf8').matchAll(
     /```yaml\r?\n(.*?)\r?\n```/gs,
   ),
 ].map(m => `${m[1]}\n`);
@@ -136,15 +136,15 @@ if (workflow.trim().length === 0) {
   );
 } else if (yamlBlocks.length === 0) {
   errors.push(
-    `${initSkillPath}: no \`\`\`yaml block found to guard against ${canonicalWorkflowPath}`,
+    `${startSkillPath}: no \`\`\`yaml block found to guard against ${canonicalWorkflowPath}`,
   );
 } else if (!normalizedBlocks.includes(normalizeStackInput(workflow))) {
   errors.push(
-    `${initSkillPath}: inlined audit-cron template has drifted from ${canonicalWorkflowPath} — they must stay byte-identical modulo the bootstrap \`stack\` input (the workflow is the canonical base, the init template is the emitted copy)`,
+    `${startSkillPath}: inlined audit-cron template has drifted from ${canonicalWorkflowPath} — they must stay byte-identical modulo the bootstrap \`stack\` input (the workflow is the canonical base, the start template is the emitted copy)`,
   );
 }
 
-// Same drift guard for the supera-bootstrap composite action: /init emits a
+// Same drift guard for the supera-bootstrap composite action: /start emits a
 // .github/actions/supera-bootstrap/action.yml into the consumer (5d), and it
 // must stay byte-identical to this repo's canonical action — a silent
 // divergence ships consumers a stale bootstrap action, so fail loud.
@@ -154,15 +154,15 @@ if (action.trim().length === 0) {
   errors.push(`${canonicalActionPath}: canonical bootstrap action is empty`);
 } else if (yamlBlocks.length === 0) {
   errors.push(
-    `${initSkillPath}: no \`\`\`yaml block found to guard against ${canonicalActionPath}`,
+    `${startSkillPath}: no \`\`\`yaml block found to guard against ${canonicalActionPath}`,
   );
 } else if (!yamlBlocks.includes(action)) {
   errors.push(
-    `${initSkillPath}: inlined supera-bootstrap template has drifted from ${canonicalActionPath} — they must stay byte-identical (the action is the canonical base, the init template is the emitted copy)`,
+    `${startSkillPath}: inlined supera-bootstrap template has drifted from ${canonicalActionPath} — they must stay byte-identical (the action is the canonical base, the start template is the emitted copy)`,
   );
 }
 
-// Same drift guard for the Dependabot template: /init inlines a
+// Same drift guard for the Dependabot template: /start inlines a
 // .github/dependabot.yml (the pnpm/npm + github-actions blocks), and it must
 // stay byte-identical to this repo's canonical dogfood .github/dependabot.yml.
 // A silent divergence ships consumers a stale Dependabot config, so fail loud.
@@ -174,11 +174,11 @@ if (dependabot.trim().length === 0) {
   );
 } else if (yamlBlocks.length === 0) {
   errors.push(
-    `${initSkillPath}: no \`\`\`yaml block found to guard against ${canonicalDependabotPath}`,
+    `${startSkillPath}: no \`\`\`yaml block found to guard against ${canonicalDependabotPath}`,
   );
 } else if (!yamlBlocks.includes(dependabot)) {
   errors.push(
-    `${initSkillPath}: inlined Dependabot template has drifted from ${canonicalDependabotPath} — they must stay byte-identical (the dogfood config is the canonical base, the init template is the emitted copy)`,
+    `${startSkillPath}: inlined Dependabot template has drifted from ${canonicalDependabotPath} — they must stay byte-identical (the dogfood config is the canonical base, the start template is the emitted copy)`,
   );
 }
 
@@ -285,7 +285,7 @@ if (schemaFiles.includes(metricsSchemaName)) {
   };
   const unsealedFixture: SchemaNode = {
     type: 'object',
-    properties: {skill: {type: 'string', const: 'start'}},
+    properties: {skill: {type: 'string', const: 'ship'}},
   };
   if (auditPrivacy(leakyFixture, 'fixture').length === 0) {
     errors.push(

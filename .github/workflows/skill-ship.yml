@@ -6,7 +6,7 @@
 #     only if a delivery may touch `.github/workflows/*` (the default
 #     `GITHUB_TOKEN` lacks `workflow` scope). The default `GITHUB_TOKEN` works
 #     for non-workflow deliveries.
-name: 'Skill | start'
+name: 'Skill | ship'
 
 on:
   workflow_dispatch:
@@ -26,11 +26,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  start:
+  ship:
     name: 'Deliver task'
     runs-on: ubuntu-latest
     steps:
-      # checkout + supera-bot git identity + toolchain (toolchain only — /start
+      # checkout + supera-bot git identity + toolchain (toolchain only — /ship
       # runs install inside the worktree it creates). Swap `stack` for your
       # repo's: pnpm | npm | yarn | cargo | go.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -50,8 +50,8 @@ jobs:
           plugin_marketplaces: https://github.com/heronlabs/supera.git
           plugins: supera@supera-marketplace
           prompt: |
-            Deliver the task below using the supera start skill — run the command at the end. This is a headless run with no human present, so never stop to ask; if you hit a block, surface it as a comment on the PR once one exists, or print it to the run output if no PR exists yet.
-            /supera:start ${{ github.event.inputs.task }} --non-interactive
+            Deliver the task below using the supera ship skill — run the command at the end. This is a headless run with no human present, so never stop to ask; if you hit a block, surface it as a comment on the PR once one exists, or print it to the run output if no PR exists yet.
+            /supera:ship ${{ github.event.inputs.task }} --non-interactive
           show_full_output: true
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
 
@@ -67,7 +67,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-          SKILL: start
+          SKILL: ship
         run: |
           set -euo pipefail
           if [ -z "${EXECUTION_FILE:-}" ] || [ ! -s "$EXECUTION_FILE" ]; then
@@ -115,7 +115,7 @@ jobs:
           if jq -e '
             .schema_version == "1"
             and (.repo | test("^[^/]+/[^/]+$"))
-            and (.skill | IN("start", "pr-watch", "audit", "refactor"))
+            and (.skill | IN("ship", "pr-watch", "audit", "refactor"))
             and (.outcome | IN("success", "blocked", "needs-review", "error"))
             and (.model | test("^claude-[a-z0-9.-]+$"))
             and (.stack | test("^[a-z]+$"))

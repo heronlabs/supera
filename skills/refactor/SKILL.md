@@ -1,12 +1,12 @@
 ---
 name: refactor
-description: "Improve existing code in place — dispatch supera-engineer to refactor a repo, directory, or file against an optional directive (rename for clarity, extract duplication, simplify, split a large file). Lightweight: no worktree, no PR, no commit — it leaves the changes in your working tree to review, then you commit, or run /start for a PR. Standalone, or applied mid-/start by the engineer for a pointed cleanup. Triggers: 'refactor', 'clean up this code', 'rename these', 'extract this', 'simplify'."
+description: "Improve existing code in place — dispatch supera-engineer to refactor a repo, directory, or file against an optional directive (rename for clarity, extract duplication, simplify, split a large file). Lightweight: no worktree, no PR, no commit — it leaves the changes in your working tree to review, then you commit, or run /ship for a PR. Standalone, or applied mid-/ship by the engineer for a pointed cleanup. Triggers: 'refactor', 'clean up this code', 'rename these', 'extract this', 'simplify'."
 allowed-tools: Bash, Read, Glob, Grep, Agent
 ---
 
-Improve **existing** code without changing what it does — the pointed, in-place counterpart to `/start`. `/refactor` scopes a behaviour-preserving cleanup and hands it to `supera-engineer` (the sole implementer, which already carries the code-quality philosophy and the deny-path gate). It adds **no** new rules — it is a new front door to the engineer.
+Improve **existing** code without changing what it does — the pointed, in-place counterpart to `/ship`. `/refactor` scopes a behaviour-preserving cleanup and hands it to `supera-engineer` (the sole implementer, which already carries the code-quality philosophy and the deny-path gate). It adds **no** new rules — it is a new front door to the engineer.
 
-Lightweight by default: **no worktree, no PR, no commit.** The engineer edits in your current working tree and self-verifies; you review the diff locally, then commit yourself — or run `/start` when you want the full worktree → PR → CI lifecycle.
+Lightweight by default: **no worktree, no PR, no commit.** The engineer edits in your current working tree and self-verifies; you review the diff locally, then commit yourself — or run `/ship` when you want the full worktree → PR → CI lifecycle.
 
 ## 0 — Load config
 
@@ -37,17 +37,17 @@ The engineer self-verifies (`verify.build` / `test` / `lint`) before returning �
 ## 4 — Report
 
 Surface `receipt.implemented`, the changed `files`, and the `verification` results, then:
-> "Refactored `<path>` — behaviour unchanged, checks green. Review the diff, then commit — or run `/start` to take it through a PR."
+> "Refactored `<path>` — behaviour unchanged, checks green. Review the diff, then commit — or run `/ship` to take it through a PR."
 
 If `receipt.status` is `needs-review` or `blocked`, surface the detail and **do not** present the refactor as clean.
 
-## Mid-start use
+## Mid-ship use
 
-When `supera-engineer` is mid-`/start` and hits existing code that must be cleaned up before the feature work can continue, it performs that cleanup as a **bounded, behaviour-preserving refactor under this skill's discipline** — scoped to the blast radius, kept as its own logical commit, verified green — then resumes the feature. It does **not** spawn a second engineer; it is already the implementer.
+When `supera-engineer` is mid-`/ship` and hits existing code that must be cleaned up before the feature work can continue, it performs that cleanup as a **bounded, behaviour-preserving refactor under this skill's discipline** — scoped to the blast radius, kept as its own logical commit, verified green — then resumes the feature. It does **not** spawn a second engineer; it is already the implementer.
 
 ## Rules
 
 - Behaviour-preserving only — no feature change, no public-contract change; the existing tests must pass unchanged (that is the proof the refactor is safe).
 - Scope to `path` — never widen into a repo-wide rewrite the user didn't ask for.
-- Lightweight: no worktree, no PR, no commit — `/refactor` leaves the working tree modified for the user to review; route through `/start` for the full lifecycle.
+- Lightweight: no worktree, no PR, no commit — `/refactor` leaves the working tree modified for the user to review; route through `/ship` for the full lifecycle.
 - The engineer is the only implementer and carries every guideline (code quality, deny-path gate, `guidelines/commit-conventions.md` when it does commit) — `/refactor` adds no rules of its own.

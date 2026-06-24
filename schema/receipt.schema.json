@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/heronlabs/supera/schema/receipt.schema.json",
   "title": "supera-engineer receipt",
-  "description": "The structured verdict the supera-engineer agent emits as its final message. Consumed by /start and /pr-watch, which branch on `status` deterministically instead of scraping prose.",
+  "description": "The structured verdict the supera-engineer agent emits as its final message. Consumed by /ship and /pr-watch, which branch on `status` deterministically instead of scraping prose.",
   "type": "object",
   "required": ["implemented", "status"],
   "additionalProperties": false,

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/heronlabs/supera/schema/metrics-event.schema.json",
   "title": "supera run telemetry event",
-  "description": "One privacy-safe telemetry record per supera skill run — the RUN layer (Phase 1). Emitted as a GitHub Actions artifact by the skill-start / skill-pr-watch / skill-audit workflows and rolled up daily. Privacy is STRUCTURAL, not scrubbed: additionalProperties:false at every level and every string property is constrained to a closed shape (enum / const / pattern / format), so no free text — no prompt, diff, path, or commit message — can ever ride along. scripts/validate.ts enforces both rules so a future edit cannot silently open a leak.",
+  "description": "One privacy-safe telemetry record per supera skill run — the RUN layer (Phase 1). Emitted as a GitHub Actions artifact by the skill-ship / skill-pr-watch / skill-audit workflows and rolled up daily. Privacy is STRUCTURAL, not scrubbed: additionalProperties:false at every level and every string property is constrained to a closed shape (enum / const / pattern / format), so no free text — no prompt, diff, path, or commit message — can ever ride along. scripts/validate.ts enforces both rules so a future edit cannot silently open a leak.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -35,7 +35,7 @@
     },
     "skill": {
       "type": "string",
-      "enum": ["start", "pr-watch", "audit", "refactor"],
+      "enum": ["ship", "pr-watch", "audit", "refactor"],
       "description": "supera skill that produced the run."
     },
     "event": {

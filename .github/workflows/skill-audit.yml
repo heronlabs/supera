@@ -53,7 +53,7 @@ jobs:
 
       # Run-level telemetry (issue #48 Phase 1): map the action's execution file
       # into a privacy-safe metrics-event.json and upload it for the daily
-      # rollup. Self-contained (jq only) so the byte-identical /init copy runs on
+      # rollup. Self-contained (jq only) so the byte-identical /start copy runs on
       # any consumer stack; privacy is structural — only the schema's known,
       # constrained fields are ever written.
       - id: metrics
@@ -112,7 +112,7 @@ jobs:
           if jq -e '
             .schema_version == "1"
             and (.repo | test("^[^/]+/[^/]+$"))
-            and (.skill | IN("start", "pr-watch", "audit", "refactor"))
+            and (.skill | IN("ship", "pr-watch", "audit", "refactor"))
             and (.outcome | IN("success", "blocked", "needs-review", "error"))
             and (.model | test("^claude-[a-z0-9.-]+$"))
             and (.stack | test("^[a-z]+$"))
