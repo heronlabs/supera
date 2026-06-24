@@ -1,7 +1,7 @@
 {
   "name": "supera",
   "description": "Repo-agnostic change-shipping superagent: init, start (full lifecycle — resume, pause, close-out), pr-watch, refactor, and audit (security auditor). One strong engineer agent does code + tests; behaviour is driven by a per-repo .claude/supera.json so the same skills work across pnpm, npm, cargo, Strapi, and more.",
-  "version": "0.30.1",
+  "version": "0.30.2",
   "author": {
     "name": "Lucas Lacerda"
   },
