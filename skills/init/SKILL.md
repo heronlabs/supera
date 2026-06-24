@@ -20,7 +20,6 @@ Inspect the repo root for marker files; `package.json`, when present, also names
 | `Cargo.toml` | `cargo` | `cargo build --workspace` · `cargo test --workspace` · `cargo clippy -- -D warnings` |
 | `@strapi/strapi` in deps | `strapi` | `strapi build` · test script if any · lint script |
 | `go.mod` | `go` | `go build ./...` · `go test ./...` · `golangci-lint run` |
-| `pyproject.toml` / `requirements.txt` | `python` | from project scripts / `pytest` · `ruff`/`flake8` |
 
 The build/test/lint entries above are **candidates only** — §2 grounds them in the repo's real commands before anything is written.
 
@@ -165,11 +164,15 @@ jobs:
     steps:
       # checkout + supera-bot git identity + toolchain (toolchain only — /audit
       # runs install inside the worktree it creates). Swap `stack` for your
-      # repo's: pnpm | npm | yarn | cargo | go | python.
+      # repo's: pnpm | npm | yarn | cargo | go.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
       - uses: ./.github/actions/supera-bootstrap
         with:
           stack: <detected stack>
-          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - uses: anthropics/claude-code-action@30544b674398ee15c84819bd87caf8a87e8c7b55 # v1.0.154
         with:
@@ -182,31 +185,22 @@ jobs:
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
 ```
 
-This cron references the `./.github/actions/supera-bootstrap` composite action, which is NOT part of the plugin — emit it into the consumer repo too (5d) so the workflow is self-contained. Substitute `<detected stack>` with the `stack` from step 1 (`pnpm` | `npm` | `yarn` | `cargo` | `go` | `python`).
+This cron references the `./.github/actions/supera-bootstrap` composite action, which is NOT part of the plugin — emit it into the consumer repo too (5d) so the workflow is self-contained. Substitute `<detected stack>` with the `stack` from step 1 (`pnpm` | `npm` | `yarn` | `cargo` | `go`).
 
 After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow (and any `.github/dependabot.yml` from 5a) alongside `.claude/supera.json`.
 
 ### 5d — Emit the supera-bootstrap composite action
 
-The 5b cron (and the `supera-skill-pr-watch.yml` in 5c) reference `uses: ./.github/actions/supera-bootstrap` — a local composite action that handles checkout, the `supera-bot` git identity, and the per-stack toolchain. It is **not** part of the plugin, so a `uses:` pointing at the plugin would break; the workflows must be self-contained. **Whenever you emit 5b or 5c, also write `.github/actions/supera-bootstrap/action.yml`**, byte-identical to the template below — **idempotent: if the file already exists, never clobber it**, just report it's already present. The consumer's workflows pass `stack: <detected stack>` to it; the action gates each toolchain step on that input, so one file serves every stack.
+The 5b cron (and the `supera-skill-pr-watch.yml` in 5c) reference `uses: ./.github/actions/supera-bootstrap` — a local composite action that sets the `supera-bot` git identity and the per-stack toolchain (the caller checks out first — a local `./` action can't be loaded before checkout). It is **not** part of the plugin, so a `uses:` pointing at the plugin would break; the workflows must be self-contained. **Whenever you emit 5b or 5c, also write `.github/actions/supera-bootstrap/action.yml`**, byte-identical to the template below — **idempotent: if the file already exists, never clobber it**, just report it's already present. The consumer's workflows pass `stack: <detected stack>` to it; the action gates each toolchain step on that input, so one file serves every stack.
 
 ```yaml
 name: 'supera bootstrap'
-description: 'Checkout, supera-bot git identity, and per-stack toolchain setup for supera skill workflows. Toolchain only — never installs dependencies (the caller owns install).'
+description: 'supera-bot git identity and per-stack toolchain setup for supera skill workflows. Toolchain only — never installs dependencies; the caller checks out and installs.'
 
 inputs:
   stack:
     description: 'Toolchain to set up: pnpm | npm | yarn | cargo | go.'
     required: true
-  token:
-    description: 'Token for actions/checkout (needs workflow scope to push .github/workflows/* changes).'
-    default: ${{ github.token }}
-  ref:
-    description: 'Branch/ref to check out; empty uses the default checkout ref (the triggering ref).'
-    default: ''
-  fetch-depth:
-    description: 'actions/checkout fetch depth; 0 fetches full history (needed for merge-base/diff).'
-    default: '0'
   node-version-file:
     description: 'File read by setup-node for the Node version (pnpm/npm/yarn stacks).'
     default: '.node-version'
@@ -214,12 +208,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      with:
-        ref: ${{ inputs.ref }}
-        fetch-depth: ${{ inputs.fetch-depth }}
-        token: ${{ inputs.token }}
-
     # the engineer/auditor commits via raw git, so give it an identity
     # (claude-code-action only auto-configures git in its tag mode, not prompt mode).
     - shell: bash
@@ -259,7 +247,7 @@ If declined, do nothing. If accepted, write `.github/workflows/supera-skill-pr-w
 
 This template fires on the **consumer's** CI completing, so `workflow_run.workflows` must carry the CI workflow `name` detected in step 2 — substitute it in for `<CI WORKFLOW NAME>` below. Because that name is per-repo, this template is **deliberately NOT part of the validate.ts byte-identical drift guard** (unlike 5a/5b/5d). Fill `<CI WORKFLOW NAME>` with the detected CI workflow's `name:` value verbatim — but **strip any `[`/`]`**: `workflow_run.workflows` is glob-matched, so square brackets break trigger parsing and the watcher dies at startup before its `if:` ever runs (the pipe `|` and other characters are safe). If the detected CI name has brackets, drop them here and in the CI workflow's own `name:`.
 
-supera-engineer runs the repo's **verify commands inside this workflow**, so the toolchain must be installed before `claude-code-action` (otherwise the run burns turns failing to find `pnpm`/`node` and never pushes a fix). The `./.github/actions/supera-bootstrap` step (5d) sets up the toolchain (checkout + git identity + per-stack tools); unlike 5b, pr-watch then installs at the workflow root (`pnpm install --frozen-lockfile` for a pnpm stack — swap it for your stack's equivalent, e.g. `npm ci`, `cargo fetch`).
+supera-engineer runs the repo's **verify commands inside this workflow**, so the toolchain must be installed before `claude-code-action` (otherwise the run burns turns failing to find `pnpm`/`node` and never pushes a fix). The `actions/checkout` + `./.github/actions/supera-bootstrap` steps (5d) check out the branch and set up the toolchain (git identity + per-stack tools); unlike 5b, pr-watch then installs at the workflow root (`pnpm install --frozen-lockfile` for a pnpm stack — swap it for your stack's equivalent, e.g. `npm ci`, `cargo fetch`).
 
 ```yaml
 # Prerequisites:
@@ -299,12 +287,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # checkout + supera-bot git identity + toolchain (toolchain only). Swap
-      # `stack` for your repo's: pnpm | npm | yarn | cargo | go | python.
+      # `stack` for your repo's: pnpm | npm | yarn | cargo | go.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
       - uses: ./.github/actions/supera-bootstrap
         with:
           stack: <detected stack>
-          ref: ${{ github.event.workflow_run.head_branch }}
-          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
       # pr-watch (unlike the audit cron) installs at the workflow root so the
       # auto-fix step has the deps already resolved (swap for your stack's

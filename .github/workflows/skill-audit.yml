@@ -29,11 +29,15 @@ jobs:
     steps:
       # checkout + supera-bot git identity + toolchain (toolchain only — /audit
       # runs install inside the worktree it creates). Swap `stack` for your
-      # repo's: pnpm | npm | yarn | cargo | go | python.
+      # repo's: pnpm | npm | yarn | cargo | go.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
       - uses: ./.github/actions/supera-bootstrap
         with:
           stack: pnpm
-          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - uses: anthropics/claude-code-action@30544b674398ee15c84819bd87caf8a87e8c7b55 # v1.0.154
         with:

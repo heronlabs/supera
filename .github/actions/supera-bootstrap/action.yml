@@ -1,19 +1,10 @@
 name: 'supera bootstrap'
-description: 'Checkout, supera-bot git identity, and per-stack toolchain setup for supera skill workflows. Toolchain only — never installs dependencies (the caller owns install).'
+description: 'supera-bot git identity and per-stack toolchain setup for supera skill workflows. Toolchain only — never installs dependencies; the caller checks out and installs.'
 
 inputs:
   stack:
     description: 'Toolchain to set up: pnpm | npm | yarn | cargo | go.'
     required: true
-  token:
-    description: 'Token for actions/checkout (needs workflow scope to push .github/workflows/* changes).'
-    default: ${{ github.token }}
-  ref:
-    description: 'Branch/ref to check out; empty uses the default checkout ref (the triggering ref).'
-    default: ''
-  fetch-depth:
-    description: 'actions/checkout fetch depth; 0 fetches full history (needed for merge-base/diff).'
-    default: '0'
   node-version-file:
     description: 'File read by setup-node for the Node version (pnpm/npm/yarn stacks).'
     default: '.node-version'
@@ -21,12 +12,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      with:
-        ref: ${{ inputs.ref }}
-        fetch-depth: ${{ inputs.fetch-depth }}
-        token: ${{ inputs.token }}
-
     # the engineer/auditor commits via raw git, so give it an identity
     # (claude-code-action only auto-configures git in its tag mode, not prompt mode).
     - shell: bash

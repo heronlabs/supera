@@ -36,12 +36,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # checkout + supera-bot git identity + toolchain (toolchain only). Swap
-      # `stack` for your repo's: pnpm | npm | yarn | cargo | go | python.
+      # `stack` for your repo's: pnpm | npm | yarn | cargo | go.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
+
       - uses: ./.github/actions/supera-bootstrap
         with:
           stack: pnpm
-          ref: ${{ github.event.workflow_run.head_branch }}
-          token: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
 
       # pr-watch (unlike /start and /audit) installs at the workflow root so the
       # auto-fix step has the deps already resolved.
