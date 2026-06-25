@@ -1,0 +1,125 @@
+name: 'supera metrics'
+description: 'Build a privacy-safe run-metrics event from the skill run (jq only), merge the optional .supera/metrics/run.json semantic layer, warn on per-skill budget overage, and upload it as an artifact for the daily rollup. Privacy is structural — only the metrics schema known, constrained fields are ever written.'
+
+inputs:
+  skill:
+    description: 'The supera skill that produced the run: ship | pr-watch | audit | refactor.'
+    required: true
+  execution-file:
+    description: 'Path to the claude-code-action execution file. The caller passes its claude step output (steps.<id>.outputs.execution_file) — a caller-step output that is not visible inside this action.'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: 'Build run-metrics event'
+      if: always()
+      shell: bash
+      env:
+        EXECUTION_FILE: ${{ inputs.execution-file }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        SKILL: ${{ inputs.skill }}
+      run: |
+        set -euo pipefail
+        if [ -z "${EXECUTION_FILE:-}" ] || [ ! -s "$EXECUTION_FILE" ]; then
+          echo 'No execution file — skipping run-metrics emit.'
+          exit 0
+        fi
+        result=$(jq -c 'map(select(.type == "result")) | last' "$EXECUTION_FILE")
+        if [ -z "$result" ] || [ "$result" = 'null' ]; then
+          echo 'No result message — skipping run-metrics emit.'
+          exit 0
+        fi
+        model=$(jq -r 'map(select(.type == "system" and .subtype == "init")) | (first.model // "")' "$EXECUTION_FILE")
+        stack=$(jq -r '.stack // "unknown"' .claude/supera.json 2>/dev/null || echo unknown)
+        jq -n \
+          --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --arg repo "$REPO" \
+          --arg skill "$SKILL" \
+          --arg model "$model" \
+          --arg stack "$stack" \
+          --argjson run_id "$RUN_ID" \
+          --argjson run_attempt "$RUN_ATTEMPT" \
+          --argjson result "$result" \
+          '{
+            schema_version: "1",
+            ts: $ts,
+            repo: $repo,
+            skill: $skill,
+            event: "run",
+            outcome: (if $result.subtype == "success" then "success" else "error" end),
+            model: (if ($model | test("^claude-[a-z0-9.-]+$")) then $model else "claude-unknown" end),
+            stack: (if ($stack | test("^[a-z]+$")) then $stack else "unknown" end),
+            run: {
+              cost_usd: ($result.total_cost_usd // 0),
+              num_turns: ($result.num_turns // 0),
+              duration_ms: ($result.duration_ms // 0),
+              tokens: {
+                input: ($result.usage.input_tokens // 0),
+                output: ($result.usage.output_tokens // 0),
+                cache_read: ($result.usage.cache_read_input_tokens // 0),
+                cache_creation: ($result.usage.cache_creation_input_tokens // 0)
+              }
+            },
+            gh: {run_id: $run_id, run_attempt: $run_attempt}
+          }' > metrics-event.json
+        if jq -e '
+          .schema_version == "1"
+          and (.repo | test("^[^/]+/[^/]+$"))
+          and (.skill | IN("ship", "pr-watch", "audit", "refactor"))
+          and (.outcome | IN("success", "blocked", "needs-review", "error"))
+          and (.model | test("^claude-[a-z0-9.-]+$"))
+          and (.stack | test("^[a-z]+$"))
+          and (.run.cost_usd | type == "number")
+          and (.run.tokens.input | type == "number")
+          and (.gh.run_id | type == "number")
+        ' metrics-event.json > /dev/null 2>&1; then
+          echo 'Run-metrics event built and structurally validated.'
+        else
+          echo '::warning::run-metrics event failed structural validation — dropping it.'
+          rm -f metrics-event.json
+        fi
+        # Phase 2 semantic layer: if the skill wrote .supera/metrics/run.json
+        # (counts/enums only — no free text), merge it into the event's
+        # `semantic` key. The merge keeps only the known semantic fields, so a
+        # stray key can't open a leak, and the result is re-validated.
+        run_json=$(find . -path '*/.supera/metrics/run.json' -print -quit 2>/dev/null || true)
+        if [ -s metrics-event.json ] && [ -n "$run_json" ] && [ -s "$run_json" ]; then
+          merged=$(jq \
+            --slurpfile s "$run_json" \
+            '. + {semantic: ($s[0] | {
+              self_verify_retries, ci_reruns, phases_traversed,
+              blocked_reason_category, files_changed_count, loc_delta
+            } | with_entries(select(.value != null)))}' \
+            metrics-event.json 2>/dev/null || true)
+          if [ -n "$merged" ] && echo "$merged" | jq -e '.semantic | length > 0' > /dev/null 2>&1; then
+            echo "$merged" > metrics-event.json
+            echo 'Merged semantic run.json into the metrics event.'
+          fi
+        fi
+        # Budget gate (warn-only, never fails the job): warn if cost/turns
+        # exceed the per-skill soft budget in .claude/supera.json.
+        if [ -s metrics-event.json ]; then
+          budget=$(jq -c --arg skill "$SKILL" '.metrics.budgets[$skill] // {}' .claude/supera.json 2>/dev/null || echo '{}')
+          cost=$(jq -r '.run.cost_usd' metrics-event.json)
+          turns=$(jq -r '.run.num_turns' metrics-event.json)
+          cost_budget=$(echo "$budget" | jq -r '.cost_usd // empty')
+          turns_budget=$(echo "$budget" | jq -r '.turns // empty')
+          if [ -n "$cost_budget" ] && jq -n --argjson c "$cost" --argjson b "$cost_budget" -e '$c > $b' > /dev/null 2>&1; then
+            echo "::warning::$SKILL run cost \$$cost exceeded the \$$cost_budget budget."
+          fi
+          if [ -n "$turns_budget" ] && jq -n --argjson t "$turns" --argjson b "$turns_budget" -e '$t > $b' > /dev/null 2>&1; then
+            echo "::warning::$SKILL run used $turns turns, over the $turns_budget budget."
+          fi
+        fi
+
+    - name: 'Upload run-metrics artifact'
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: metrics-${{ github.run_id }}
+        path: metrics-event.json
+        if-no-files-found: ignore
+        retention-days: 90

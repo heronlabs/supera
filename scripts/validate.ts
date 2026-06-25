@@ -163,6 +163,30 @@ if (action.trim().length === 0) {
   );
 }
 
+// Same drift guard for the supera-metrics composite action: /start emits a
+// .github/actions/supera-metrics/action.yml into the consumer (5e) — the
+// telemetry emit step the skill workflows call — and it must stay byte-identical
+// to this repo's canonical action. A silent divergence ships consumers a stale
+// metrics emit, so fail loud.
+const canonicalMetricsActionPath = '.github/actions/supera-metrics/action.yml';
+const metricsAction = readFileSync(
+  join(root, canonicalMetricsActionPath),
+  'utf8',
+);
+if (metricsAction.trim().length === 0) {
+  errors.push(
+    `${canonicalMetricsActionPath}: canonical metrics action is empty`,
+  );
+} else if (yamlBlocks.length === 0) {
+  errors.push(
+    `${startSkillPath}: no \`\`\`yaml block found to guard against ${canonicalMetricsActionPath}`,
+  );
+} else if (!yamlBlocks.includes(metricsAction)) {
+  errors.push(
+    `${startSkillPath}: inlined supera-metrics template has drifted from ${canonicalMetricsActionPath} — they must stay byte-identical (the action is the canonical base, the start template is the emitted copy)`,
+  );
+}
+
 // Same drift guard for the Dependabot template: /start inlines a
 // .github/dependabot.yml (the pnpm/npm + github-actions blocks), and it must
 // stay byte-identical to this repo's canonical dogfood .github/dependabot.yml.

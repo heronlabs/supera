@@ -186,125 +186,16 @@ jobs:
           show_full_output: true
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
 
-      # Run-level telemetry (issue #48 Phase 1): map the action's execution file
-      # into a privacy-safe metrics-event.json and upload it for the daily
-      # rollup. Self-contained (jq only) so the byte-identical /start copy runs on
-      # any consumer stack; privacy is structural — only the schema's known,
-      # constrained fields are ever written.
-      - id: metrics
-        name: 'Build run-metrics event'
+      # Run + semantic telemetry → privacy-safe metrics artifact for the daily
+      # rollup (build + validate + budget warning live in the composite action).
+      - uses: ./.github/actions/supera-metrics
         if: always()
-        env:
-          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          SKILL: audit
-        run: |
-          set -euo pipefail
-          if [ -z "${EXECUTION_FILE:-}" ] || [ ! -s "$EXECUTION_FILE" ]; then
-            echo 'No execution file — skipping run-metrics emit.'
-            exit 0
-          fi
-          result=$(jq -c 'map(select(.type == "result")) | last' "$EXECUTION_FILE")
-          if [ -z "$result" ] || [ "$result" = 'null' ]; then
-            echo 'No result message — skipping run-metrics emit.'
-            exit 0
-          fi
-          model=$(jq -r 'map(select(.type == "system" and .subtype == "init")) | (first.model // "")' "$EXECUTION_FILE")
-          stack=$(jq -r '.stack // "unknown"' .claude/supera.json 2>/dev/null || echo unknown)
-          jq -n \
-            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --arg repo "$REPO" \
-            --arg skill "$SKILL" \
-            --arg model "$model" \
-            --arg stack "$stack" \
-            --argjson run_id "$RUN_ID" \
-            --argjson run_attempt "$RUN_ATTEMPT" \
-            --argjson result "$result" \
-            '{
-              schema_version: "1",
-              ts: $ts,
-              repo: $repo,
-              skill: $skill,
-              event: "run",
-              outcome: (if $result.subtype == "success" then "success" else "error" end),
-              model: (if ($model | test("^claude-[a-z0-9.-]+$")) then $model else "claude-unknown" end),
-              stack: (if ($stack | test("^[a-z]+$")) then $stack else "unknown" end),
-              run: {
-                cost_usd: ($result.total_cost_usd // 0),
-                num_turns: ($result.num_turns // 0),
-                duration_ms: ($result.duration_ms // 0),
-                tokens: {
-                  input: ($result.usage.input_tokens // 0),
-                  output: ($result.usage.output_tokens // 0),
-                  cache_read: ($result.usage.cache_read_input_tokens // 0),
-                  cache_creation: ($result.usage.cache_creation_input_tokens // 0)
-                }
-              },
-              gh: {run_id: $run_id, run_attempt: $run_attempt}
-            }' > metrics-event.json
-          if jq -e '
-            .schema_version == "1"
-            and (.repo | test("^[^/]+/[^/]+$"))
-            and (.skill | IN("ship", "pr-watch", "audit", "refactor"))
-            and (.outcome | IN("success", "blocked", "needs-review", "error"))
-            and (.model | test("^claude-[a-z0-9.-]+$"))
-            and (.stack | test("^[a-z]+$"))
-            and (.run.cost_usd | type == "number")
-            and (.run.tokens.input | type == "number")
-            and (.gh.run_id | type == "number")
-          ' metrics-event.json > /dev/null 2>&1; then
-            echo 'Run-metrics event built and structurally validated.'
-          else
-            echo '::warning::run-metrics event failed structural validation — dropping it.'
-            rm -f metrics-event.json
-          fi
-          # Phase 2 semantic layer: if the skill wrote .supera/metrics/run.json
-          # (counts/enums only — no free text), merge it into the event's
-          # `semantic` key. The merge keeps only the known semantic fields, so a
-          # stray key can't open a leak, and the result is re-validated.
-          run_json=$(find . -path '*/.supera/metrics/run.json' -print -quit 2>/dev/null || true)
-          if [ -s metrics-event.json ] && [ -n "$run_json" ] && [ -s "$run_json" ]; then
-            merged=$(jq \
-              --slurpfile s "$run_json" \
-              '. + {semantic: ($s[0] | {
-                self_verify_retries, ci_reruns, phases_traversed,
-                blocked_reason_category, files_changed_count, loc_delta
-              } | with_entries(select(.value != null)))}' \
-              metrics-event.json 2>/dev/null || true)
-            if [ -n "$merged" ] && echo "$merged" | jq -e '.semantic | length > 0' > /dev/null 2>&1; then
-              echo "$merged" > metrics-event.json
-              echo 'Merged semantic run.json into the metrics event.'
-            fi
-          fi
-          # Budget gate (warn-only, never fails the job): warn if cost/turns
-          # exceed the per-skill soft budget in .claude/supera.json.
-          if [ -s metrics-event.json ]; then
-            budget=$(jq -c --arg skill "$SKILL" '.metrics.budgets[$skill] // {}' .claude/supera.json 2>/dev/null || echo '{}')
-            cost=$(jq -r '.run.cost_usd' metrics-event.json)
-            turns=$(jq -r '.run.num_turns' metrics-event.json)
-            cost_budget=$(echo "$budget" | jq -r '.cost_usd // empty')
-            turns_budget=$(echo "$budget" | jq -r '.turns // empty')
-            if [ -n "$cost_budget" ] && jq -n --argjson c "$cost" --argjson b "$cost_budget" -e '$c > $b' > /dev/null 2>&1; then
-              echo "::warning::$SKILL run cost \$$cost exceeded the \$$cost_budget budget."
-            fi
-            if [ -n "$turns_budget" ] && jq -n --argjson t "$turns" --argjson b "$turns_budget" -e '$t > $b' > /dev/null 2>&1; then
-              echo "::warning::$SKILL run used $turns turns, over the $turns_budget budget."
-            fi
-          fi
-
-      - name: 'Upload run-metrics artifact'
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: metrics-${{ github.run_id }}
-          path: metrics-event.json
-          if-no-files-found: ignore
-          retention-days: 90
+          skill: audit
+          execution-file: ${{ steps.claude.outputs.execution_file }}
 ```
 
-This cron references the `./.github/actions/supera-bootstrap` composite action, which is NOT part of the plugin — emit it into the consumer repo too (5d) so the workflow is self-contained. Substitute `<detected stack>` with the `stack` from step 1 (`pnpm` | `npm` | `yarn` | `cargo` | `go`).
+This cron references the `./.github/actions/supera-bootstrap` and `./.github/actions/supera-metrics` composite actions, which are NOT part of the plugin — emit them into the consumer repo too (5d, 5e) so the workflow is self-contained. Substitute `<detected stack>` with the `stack` from step 1 (`pnpm` | `npm` | `yarn` | `cargo` | `go`).
 
 After writing it, tell the user to add the `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope; without it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes). Then commit the workflow (and any `.github/dependabot.yml` from 5a) alongside `.claude/supera.json`.
 
@@ -354,6 +245,138 @@ runs:
     - if: inputs.stack == 'go'
       shell: bash
       run: go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
+```
+
+### 5e — Emit the supera-metrics composite action
+
+The 5b cron's telemetry step is `uses: ./.github/actions/supera-metrics` — a local composite action that builds the privacy-safe metrics-event (jq only), merges the optional `.supera/metrics/run.json` semantic layer, warns on a per-skill budget overage, and uploads the artifact for the daily rollup. Like supera-bootstrap it is **not** part of the plugin, so **whenever you emit 5b, also write `.github/actions/supera-metrics/action.yml`**, byte-identical to the template below — **idempotent: if the file already exists, never clobber it**, just report it's already present. It takes no per-consumer value (`skill` is passed by the caller workflow), so one file serves every stack and every skill.
+
+```yaml
+name: 'supera metrics'
+description: 'Build a privacy-safe run-metrics event from the skill run (jq only), merge the optional .supera/metrics/run.json semantic layer, warn on per-skill budget overage, and upload it as an artifact for the daily rollup. Privacy is structural — only the metrics schema known, constrained fields are ever written.'
+
+inputs:
+  skill:
+    description: 'The supera skill that produced the run: ship | pr-watch | audit | refactor.'
+    required: true
+  execution-file:
+    description: 'Path to the claude-code-action execution file. The caller passes its claude step output (steps.<id>.outputs.execution_file) — a caller-step output that is not visible inside this action.'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: 'Build run-metrics event'
+      if: always()
+      shell: bash
+      env:
+        EXECUTION_FILE: ${{ inputs.execution-file }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        SKILL: ${{ inputs.skill }}
+      run: |
+        set -euo pipefail
+        if [ -z "${EXECUTION_FILE:-}" ] || [ ! -s "$EXECUTION_FILE" ]; then
+          echo 'No execution file — skipping run-metrics emit.'
+          exit 0
+        fi
+        result=$(jq -c 'map(select(.type == "result")) | last' "$EXECUTION_FILE")
+        if [ -z "$result" ] || [ "$result" = 'null' ]; then
+          echo 'No result message — skipping run-metrics emit.'
+          exit 0
+        fi
+        model=$(jq -r 'map(select(.type == "system" and .subtype == "init")) | (first.model // "")' "$EXECUTION_FILE")
+        stack=$(jq -r '.stack // "unknown"' .claude/supera.json 2>/dev/null || echo unknown)
+        jq -n \
+          --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --arg repo "$REPO" \
+          --arg skill "$SKILL" \
+          --arg model "$model" \
+          --arg stack "$stack" \
+          --argjson run_id "$RUN_ID" \
+          --argjson run_attempt "$RUN_ATTEMPT" \
+          --argjson result "$result" \
+          '{
+            schema_version: "1",
+            ts: $ts,
+            repo: $repo,
+            skill: $skill,
+            event: "run",
+            outcome: (if $result.subtype == "success" then "success" else "error" end),
+            model: (if ($model | test("^claude-[a-z0-9.-]+$")) then $model else "claude-unknown" end),
+            stack: (if ($stack | test("^[a-z]+$")) then $stack else "unknown" end),
+            run: {
+              cost_usd: ($result.total_cost_usd // 0),
+              num_turns: ($result.num_turns // 0),
+              duration_ms: ($result.duration_ms // 0),
+              tokens: {
+                input: ($result.usage.input_tokens // 0),
+                output: ($result.usage.output_tokens // 0),
+                cache_read: ($result.usage.cache_read_input_tokens // 0),
+                cache_creation: ($result.usage.cache_creation_input_tokens // 0)
+              }
+            },
+            gh: {run_id: $run_id, run_attempt: $run_attempt}
+          }' > metrics-event.json
+        if jq -e '
+          .schema_version == "1"
+          and (.repo | test("^[^/]+/[^/]+$"))
+          and (.skill | IN("ship", "pr-watch", "audit", "refactor"))
+          and (.outcome | IN("success", "blocked", "needs-review", "error"))
+          and (.model | test("^claude-[a-z0-9.-]+$"))
+          and (.stack | test("^[a-z]+$"))
+          and (.run.cost_usd | type == "number")
+          and (.run.tokens.input | type == "number")
+          and (.gh.run_id | type == "number")
+        ' metrics-event.json > /dev/null 2>&1; then
+          echo 'Run-metrics event built and structurally validated.'
+        else
+          echo '::warning::run-metrics event failed structural validation — dropping it.'
+          rm -f metrics-event.json
+        fi
+        # Phase 2 semantic layer: if the skill wrote .supera/metrics/run.json
+        # (counts/enums only — no free text), merge it into the event's
+        # `semantic` key. The merge keeps only the known semantic fields, so a
+        # stray key can't open a leak, and the result is re-validated.
+        run_json=$(find . -path '*/.supera/metrics/run.json' -print -quit 2>/dev/null || true)
+        if [ -s metrics-event.json ] && [ -n "$run_json" ] && [ -s "$run_json" ]; then
+          merged=$(jq \
+            --slurpfile s "$run_json" \
+            '. + {semantic: ($s[0] | {
+              self_verify_retries, ci_reruns, phases_traversed,
+              blocked_reason_category, files_changed_count, loc_delta
+            } | with_entries(select(.value != null)))}' \
+            metrics-event.json 2>/dev/null || true)
+          if [ -n "$merged" ] && echo "$merged" | jq -e '.semantic | length > 0' > /dev/null 2>&1; then
+            echo "$merged" > metrics-event.json
+            echo 'Merged semantic run.json into the metrics event.'
+          fi
+        fi
+        # Budget gate (warn-only, never fails the job): warn if cost/turns
+        # exceed the per-skill soft budget in .claude/supera.json.
+        if [ -s metrics-event.json ]; then
+          budget=$(jq -c --arg skill "$SKILL" '.metrics.budgets[$skill] // {}' .claude/supera.json 2>/dev/null || echo '{}')
+          cost=$(jq -r '.run.cost_usd' metrics-event.json)
+          turns=$(jq -r '.run.num_turns' metrics-event.json)
+          cost_budget=$(echo "$budget" | jq -r '.cost_usd // empty')
+          turns_budget=$(echo "$budget" | jq -r '.turns // empty')
+          if [ -n "$cost_budget" ] && jq -n --argjson c "$cost" --argjson b "$cost_budget" -e '$c > $b' > /dev/null 2>&1; then
+            echo "::warning::$SKILL run cost \$$cost exceeded the \$$cost_budget budget."
+          fi
+          if [ -n "$turns_budget" ] && jq -n --argjson t "$turns" --argjson b "$turns_budget" -e '$t > $b' > /dev/null 2>&1; then
+            echo "::warning::$SKILL run used $turns turns, over the $turns_budget budget."
+          fi
+        fi
+
+    - name: 'Upload run-metrics artifact'
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: metrics-${{ github.run_id }}
+        path: metrics-event.json
+        if-no-files-found: ignore
+        retention-days: 90
 ```
 
 ### 5c — Offer the Dependabot→pr-watch auto-fix (recommended)
@@ -475,7 +498,7 @@ Print the written path and a compact summary of every field. Tell the user:
 
 **Dependency layers (step 5)**
 - All three are **independent and opt-in** via `AskUserQuestion` and only offered on a GitHub-hosted repo. Dependabot (5a) defaults to **accept** (recommended) and **stands alone — a complete path on its own**; the audit cron (5b) defaults to **decline** and is only offered when the security auditor is enabled; the Dependabot→pr-watch auto-fix (5c) defaults to **accept** (recommended) and is only offered when 5a was accepted and a CI workflow was detected in step 2. Accepting 5a never obligates 5b or 5c.
-- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, `.github/workflows/supera-skill-pr-watch.yml`, or `.github/actions/supera-bootstrap/action.yml`; report it's already present instead.
+- Idempotent — never clobber an existing `.github/dependabot.yml`, `.github/workflows/supera-skill-audit.yml`, `.github/workflows/supera-skill-pr-watch.yml`, `.github/actions/supera-bootstrap/action.yml`, or `.github/actions/supera-metrics/action.yml`; report it's already present instead.
 - `package-ecosystem` maps from the detected `stack` (pnpm/npm/yarn → `npm`, cargo → `cargo`, go → `gomod`); always include the `github-actions` block.
 - The 5c template is per-repo parameterized (`workflow_run.workflows` carries the consumer's CI workflow `name`), so it's NOT in the validate.ts byte-identical drift guard — substitute the step-2 detected CI workflow name.
 - Each file's existence is the state; no `.claude/supera.json` field tracks any of them.
