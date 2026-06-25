@@ -30,7 +30,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        repo: [supera, env-ssm, terminal-cli]
+        repo:
+          - supera
+          - env-ssm
+          - terminal-cli
+          - action-claude-plugin-build
+          - action-cloudfront-publish
+          - action-ecr-publish
+          - action-env-sync-build
+          - action-fargate-publish
+          - action-lambda-publish
+          - action-pulumi-build
+          - action-s3-publish
+          - action-ssm-env-build
+          - action-tag-release-build
     steps:
       - name: 'Download metrics-* artifacts'
         env:
