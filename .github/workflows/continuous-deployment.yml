@@ -45,20 +45,6 @@ jobs:
         with:
           version: ${{ steps.version.outputs.version }}
 
-      - name: Derive and push major/minor semver tags
-        shell: bash
-        run: |
-          FULL_VERSION="${{ steps.version.outputs.version }}"
-          CLEAN_VERSION="${FULL_VERSION#v}"
-          MAJOR="${CLEAN_VERSION%%.*}"
-          REST="${CLEAN_VERSION#*.}"
-          MINOR="${REST%.*}"
-
-          git tag -f "v${MAJOR}" "${{ github.sha }}"
-          git tag -f "v${MAJOR}.${MINOR}" "${{ github.sha }}"
-          git push origin -f "v${MAJOR}"
-          git push origin -f "v${MAJOR}.${MINOR}"
-
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-${{ steps.version.outputs.version }}
