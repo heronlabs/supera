@@ -182,6 +182,43 @@ if (dependabot.trim().length === 0) {
   );
 }
 
+// Pin-only drift guard for the 5c pr-watch template: /start inlines a
+// .github/workflows/supera-skill-pr-watch.yml (5c), but it carries a per-repo
+// `<CI WORKFLOW NAME>` placeholder (and prose) that can never be byte-identical
+// to this repo's canonical .github/workflows/skill-pr-watch.yml — so a full
+// byte-compare is impossible. Instead compare ONLY the GitHub Actions SHA pins:
+// every external `uses: <action>@<sha>` in the template must pin the same SHA as
+// that action in the real workflow, or the template's pins have rotted. Local
+// `uses: ./...` actions have no `@sha` and are ignored.
+const canonicalPrWatchPath = '.github/workflows/skill-pr-watch.yml';
+const prWatchWorkflow = readFileSync(join(root, canonicalPrWatchPath), 'utf8');
+const prWatchTemplate = yamlBlocks.find(b =>
+  b.includes("name: 'Skill | pr-watch'"),
+);
+const collectActionPins = (yaml: string): Map<string, string> => {
+  const pins = new Map<string, string>();
+  for (const m of yaml.matchAll(/uses:\s*([^\s@]+)@([0-9a-f]{40})\b/g)) {
+    pins.set(m[1], m[2]);
+  }
+  return pins;
+};
+if (prWatchWorkflow.trim().length === 0) {
+  errors.push(`${canonicalPrWatchPath}: canonical pr-watch workflow is empty`);
+} else if (!prWatchTemplate) {
+  errors.push(
+    `${startSkillPath}: no \`\`\`yaml block with \`name: 'Skill | pr-watch'\` found to guard against ${canonicalPrWatchPath}`,
+  );
+} else {
+  const workflowPins = collectActionPins(prWatchWorkflow);
+  for (const [action, templateSha] of collectActionPins(prWatchTemplate)) {
+    if (workflowPins.get(action) !== templateSha) {
+      errors.push(
+        `${startSkillPath}: inlined pr-watch template pins ${action}@${templateSha}, but ${canonicalPrWatchPath} pins ${action}@${workflowPins.get(action) ?? '(absent)'} — the action SHA pins must match (the workflow is the canonical base, the start template is the emitted copy; only the action SHA pins are compared, the \`<CI WORKFLOW NAME>\` placeholder and prose are intentionally not)`,
+      );
+    }
+  }
+}
+
 // 5. Privacy invariant for the run-telemetry event. The metrics schema is the
 // STRUCTURAL guarantee that a run never emits free text (a prompt, diff, path,
 // or commit message): every object level is sealed (additionalProperties:false)
@@ -326,5 +363,5 @@ if (errors.length > 0) {
   process.exit(1);
 }
 console.log(
-  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot + bootstrap-action templates in sync`,
+  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot + bootstrap-action templates in sync, pr-watch template pins in sync`,
 );
