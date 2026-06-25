@@ -1,6 +1,6 @@
 ---
 name: pr-watch
-description: "Repo-agnostic PR babysitter: monitors CI, fixes failures via supera-engineer, addresses review comments, runs one code-review cycle (plus a security audit when audits.security is enabled), and exits when the branch is green, synced with the base, and all threads resolved."
+description: "Repo-agnostic PR babysitter: monitors CI, fixes failures via supera-engineer, addresses review comments, runs one code-review cycle (plus a security audit when audits.security is enabled), and exits when the branch is green, synced with the base, and all threads resolved. With audits.dependabot.autoResolveOnPass, a green dependabot[bot] PR is auto-resolved on the security auditor's verdict — merged when clean, closed when the bump carries a merge-blocker."
 allowed-tools: Bash, Read, Glob, Grep, Agent, Workflow  # also requires the gh CLI
 ---
 
@@ -13,6 +13,8 @@ Monitor an open PR until it is ready to merge, in any repo. Watch CI, fix failur
 Read `.claude/supera.json` into `CONFIG` (for `verify.*` commands and `pr.base`/`pr.remote`). If absent, proceed with sensible git/gh defaults and skip any config-derived command (tell the user once that supera isn't initialised here).
 
 Set `AUDIT = CONFIG.audits?.security === true` — gates the security audit in step 6. Default `false` when config is absent.
+
+Set `AUTO_RESOLVE = CONFIG.audits?.dependabot?.autoResolveOnPass === true` — gates the green-CI Dependabot auto-resolve in step 5. Default `false` when absent. Set `MERGE_METHOD = CONFIG.pr?.mergeMethod ?? "squash"` — the merge method that auto-resolve uses (`gh pr merge --<MERGE_METHOD>`).
 
 Resolve the deny-list and consensus gate:
 - `DENY = CONFIG.security?.denyPaths ?? ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"]` — secret/key globs that must never enter the PR (step 6d). `[]` disables.
@@ -158,6 +160,26 @@ Ready for the review cycle when all three hold:
 - Zero unresolved `reviewThreads`.
 - `mergeable` is `MERGEABLE` (not `CONFLICTING`).
 
+**Dependabot auto-resolve** (`AUTO_RESOLVE` is true and all three conditions above hold). On a green, mergeable PR whose author is `dependabot[bot]`, don't wait for a human — settle the bump on the security auditor's verdict, reusing the step 6c auditor machinery (the auditor runs here even when `AUDIT` is false: it *is* the verdict this auto-resolve gates on). A human's `supera`-labelled ship PR never auto-resolves — it falls through to the `REVIEWED` branching below, where merging stays the user's decision. The auditor's verdict is the whole gate for the bump: this path settles on it and deliberately bypasses the step-6 code-review and `review.consensus` merge-readiness gate (CI is the quality gate for a dependency bump; the consensus gate still applies to human `supera`-labelled PRs).
+
+1. Confirm the author once — skip this block unless it's Dependabot:
+```bash
+gh pr view $PR --json author -q .author.login   # must be dependabot[bot]
+```
+2. Dispatch the `supera-security-auditor` agent on the worktree (one pass — the same dispatch and verdict semantics as step 6c), scoped to the bump.
+   - **Applied safe remediations** (it left commits — a CVE override or a SHA-pin) → handle them exactly as 6c does: the green is now stale, so push them and reschedule (preserve flags) for a fresh CI run and re-evaluation on the next wake — never merge a branch the auditor just changed. Reply referencing the commit as in 6c, then exit the turn.
+   - **Clean** (no merge-blocker, nothing applied) → merge now with the configured method:
+```bash
+gh pr merge $PR --$MERGE_METHOD
+```
+     If `gh pr merge` is refused (branch protection / required reviews), post its error verbatim as the **terminal block signal** (§0a) and leave the PR open — do not retry or force. On success, announce *"PR #<N> (Dependabot) audited clean and merged."* and exit the turn.
+   - **Merge-blocker** (a critical CVE the bump introduces, a leaked secret, or a flagged finding — the same blocker conditions 6c surfaces) → comment the reason and close it; Dependabot may later reopen it with a newer version, which is acceptable:
+```bash
+gh pr comment $PR --body "Closing this Dependabot PR — the bump carries a merge-blocker: <auditor's blocker reason>. Dependabot may reopen it with a newer version."
+gh pr close $PR
+```
+     Announce the close and the reason, then exit the turn (in `NONINTERACTIVE` mode the comment is the only surface).
+
 **`REVIEWED=true`** → announce *"PR #<N> is green, reviewed, all threads resolved — ready to merge."* Exit.
 **`REVIEWED=false`** → proceed to step 6.
 
@@ -300,6 +322,7 @@ gh pr comment $PR --body "🚫 supera /pr-watch blocked (non-interactive): <what
 - **Don't spin-poll** — at every wait, `ScheduleWakeup` and exit the turn; preserve `--reviewed` and `--non-interactive` on every reschedule.
 - On `MERGED`, auto-hand-off the normal case to `/ship <branch>`; for a `supera:audit` PR, announce a `/audit` re-run (do **not** auto-invoke — `/audit` is date-scoped and would start a spurious fresh audit); for a `dependabot[bot]` PR, announce merged and exit (no supera worktree/branch to close out) — never close out or remove the worktree here; the owning skill owns the terminal step.
 - Exit and announce when the PR is green, synced, and all threads resolved — merging is the user's decision.
+- With `audits.dependabot.autoResolveOnPass`, a green, mergeable `dependabot[bot]` PR auto-resolves on the security auditor's verdict instead of waiting (step 5) — merge (clean) or comment-and-close (merge-blocker); a refused merge surfaces as a terminal block. Never auto-resolves a human's `supera`-labelled ship PR.
 - Never push `--force` — only `--force-with-lease` after a rebase.
 - A **terminal block** posts the `<!-- supera:blocked -->` PR comment and stops (§0a) — that comment is the escalation signal; supera has no tracker.
 - Commit hygiene follows `guidelines/commit-conventions.md`.

@@ -53,6 +53,7 @@ The `audits.security` auto-detect (lockfile presence) is independent of any prom
   // security is auto-detected from lockfile presence.
   "audits": { "security": false }
   // Optional pr-watch rigor surfaces, off by default — uncomment to opt in.
+  // "audits": { "security": false, "dependabot": { "autoResolveOnPass": true } },   // autoResolveOnPass: once a dependabot[bot] PR's CI is green, /pr-watch audits the bump and merges it (clean) or closes it (merge-blocker) — green Dependabot PRs stop piling up; off by default
   // "review": { "consensus": { "voters": 1 }, "lenses": [] },   // voters:1 disables the merge-readiness gate (default); lenses [] = no extra PR-review specialists ("silent-failures" | "type-design" | "test-coverage")
   // "security": { "denyPaths": ["**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/id_rsa", "**/id_ed25519", "**/*.keystore"] }
 }
@@ -91,7 +92,7 @@ Dependency hygiene is layered, and a GitHub-hosted repo should adopt them (the d
 
 1. **Dependabot — the free, always-on deterministic layer.** Routine version bumps, keeping already-pinned GitHub Actions fresh, and the security-update safety net — no LLM, native write to `.github/workflows/*`. Offer this **first**, framed as recommended.
 2. **The `/supera:audit` cron — the reasoning layer.** The workflow supera offers for the audit (since `/pr-watch` and `/ship` run locally and emit no workflow). It runs the security auditor for what Dependabot can't reason about — scoped transitive overrides, CVE verdicts, the initial tag→SHA pin.
-3. **The Dependabot→`/supera:pr-watch` auto-fix (5c).** When a Dependabot bump breaks CI, this workflow runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version — only offered when Dependabot was accepted (5a).
+3. **The Dependabot→`/supera:pr-watch` auto-fix + auto-resolve (5c).** When a Dependabot bump breaks CI, this workflow runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version; and when the bump's CI is green it runs `/supera:pr-watch` too, which auto-resolves the PR — audits the bump, then merges it (clean) or closes it (merge-blocker) — once `audits.dependabot.autoResolveOnPass` is enabled (off by default). Only offered when Dependabot was accepted (5a).
 
 ### 5a — Offer Dependabot (recommended)
 
@@ -327,7 +328,7 @@ runs:
 
 Offer it only when **all three** hold: Dependabot was accepted in **5a**, a CI workflow was **detected in step 2**, and the repo is GitHub-hosted (same check as 5a). Skip silently otherwise.
 
-When eligible, ask with `AskUserQuestion` (default = **accept**; recommended): *"Emit a `.github/workflows/supera-skill-pr-watch.yml`? When a Dependabot bump breaks CI, it runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version. Requires the same `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) and `SUPERA_AUDIT_TOKEN` secrets as 5b."*
+When eligible, ask with `AskUserQuestion` (default = **accept**; recommended): *"Emit a `.github/workflows/supera-skill-pr-watch.yml`? When a Dependabot bump breaks CI, it runs `/supera:pr-watch` on the failed PR so supera-engineer makes the code/tests work with the bumped version; and on a green Dependabot bump it runs `/supera:pr-watch` to auto-resolve the PR — audit, then merge (clean) or close (merge-blocker) — once you opt in via `audits.dependabot.autoResolveOnPass` (off by default). Requires the same `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) and `SUPERA_AUDIT_TOKEN` secrets as 5b."*
 
 If declined, do nothing. If accepted, write `.github/workflows/supera-skill-pr-watch.yml` — **idempotent: if the file already exists, never clobber it**, just report it's already present.
 
@@ -346,8 +347,9 @@ supera-engineer runs the repo's **verify commands inside this workflow**, so the
 #
 # Security note: this runs the bumped dependency's tests with repo secrets in
 # scope — an accepted risk for auto-fixing a Dependabot bump. Keep the
-# `SUPERA_AUDIT_TOKEN` minimally scoped. It fires only on a FAILED CI run of a
-# Dependabot pull_request.
+# `SUPERA_AUDIT_TOKEN` minimally scoped. It fires on a FAILED CI run of a
+# Dependabot pull_request (auto-fix), and on a PASSING one (auto-resolve via the
+# security auditor's verdict when `audits.dependabot.autoResolveOnPass` is set).
 name: 'Skill | pr-watch'
 
 on:
@@ -365,10 +367,10 @@ concurrency:
 
 jobs:
   pr-watch:
-    name: 'Auto-fix Dependabot bump'
+    name: 'Auto-fix or auto-resolve Dependabot bump'
     if: >-
       github.event.workflow_run.event == 'pull_request' &&
-      contains(fromJSON('["failure","timed_out"]'), github.event.workflow_run.conclusion) &&
+      contains(fromJSON('["failure","timed_out","success"]'), github.event.workflow_run.conclusion) &&
       github.event.workflow_run.actor.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -393,14 +395,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           NUMBER=$(gh pr list --head "$HEAD_BRANCH" --state open --json number -q '.[0].number')
           if [ -z "$NUMBER" ]; then
             echo "No open PR for $HEAD_BRANCH — nothing to watch."
             echo "number=" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          # On a PASSING run the bump is eligible only when the repo opted into
+          # auto-resolve (audits.dependabot.autoResolveOnPass) — otherwise a flag-off
+          # green run would burn a no-op headless claude run (the job `if:` already
+          # gates to dependabot[bot]). On failure/timed_out it's eligible (auto-fix).
+          if [ "$CONCLUSION" = "success" ]; then
+            AUTO=$(jq -r '.audits.dependabot.autoResolveOnPass // false' .claude/supera.json 2>/dev/null || echo false)
+            if [ "$AUTO" != "true" ]; then
+              echo "PR #$NUMBER not eligible for conclusion=success (autoResolveOnPass off) — skipping."
+              echo "number=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
 
       - if: steps.pr.outputs.number != ''
         uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
@@ -411,8 +426,8 @@ jobs:
           plugin_marketplaces: https://github.com/heronlabs/supera.git
           plugins: supera@supera-marketplace
           prompt: |
-            A Dependabot pull request (#${{ steps.pr.outputs.number }}) has a failing CI run.
-            Drive it green using the supera pr-watch skill — run the command below. This is a headless run with no human present, so never stop to ask; surface any block as a PR comment.
+            A Dependabot pull request (#${{ steps.pr.outputs.number }}) needs attention after its CI run.
+            Run the supera pr-watch skill via the command below — it drives a failing run green, or auto-resolves a green bump when `audits.dependabot.autoResolveOnPass` is set. This is a headless run with no human present, so never stop to ask; surface any block as a PR comment.
             /supera:pr-watch ${{ steps.pr.outputs.number }} --non-interactive
           show_full_output: true
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'

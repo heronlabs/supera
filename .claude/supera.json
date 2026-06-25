@@ -1,6 +1,7 @@
 {
   "audits": {
     "actionPinAllowlist": ["heronlabs/*"],
+    "dependabot": {"autoResolveOnPass": true},
     "security": true
   },
   "pr": {"base": "main", "remote": "origin"},

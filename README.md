@@ -168,6 +168,7 @@ Written by `/supera:start` and safe to hand-edit. See [`schema/supera.schema.jso
 | `pr` | PR defaults: `base` (target branch, default `main`), `remote` (default `origin`). |
 | `audits.security` | `true`/`false` (default `false`). Enables `supera-security-auditor`. |
 | `audits.actionPinAllowlist` | Globs of `owner/repo` whose unpinned GitHub Actions the security auditor leaves floating (default `[]` = pin everything). |
+| `audits.dependabot.autoResolveOnPass` | `true`/`false` (default `false`). When on, `/supera:pr-watch` auto-resolves a green `dependabot[bot]` PR via the security auditor's verdict — merges it (clean) or closes it (merge-blocker). Never touches a human's `supera`-labelled PR. |
 | `review.consensus` | Optional pre-merge merge-readiness vote in `/supera:pr-watch`: `voters` (default `1` = off), `quorum`. |
 | `review.lenses` | Optional specialist review lenses in `/supera:pr-watch` (`silent-failures` \| `type-design` \| `test-coverage`). Default `[]`. |
 | `security.denyPaths` | Globs the engineer must never touch and `/supera:pr-watch` refuses into a PR (secrets / private keys). Defaults to common secret/key globs; `[]` disables. |
@@ -186,9 +187,9 @@ The security audit also hardens your CI supply chain: it flags every GitHub Acti
 
 Enable it in `.claude/supera.json` (`audits.security`), then run `/supera:audit` on demand, or schedule it in CI.
 
-### Auto-fixing Dependabot bumps
+### Auto-fixing and auto-resolving Dependabot bumps
 
-When a Dependabot bump breaks CI, `/supera:start` can emit a `.github/workflows/supera-skill-pr-watch.yml` that fires on **CI completion** (`workflow_run`) for failed Dependabot PRs and runs `/supera:pr-watch --non-interactive` on the PR — so `supera-engineer` makes the code and tests work with the bumped version instead of leaving the PR red. It's an opt-in add-on — offered (recommended) only when Dependabot was accepted and a CI workflow was detected, but accepting Dependabot never requires it; standalone Dependabot is complete without it. supera dogfoods it in [`.github/workflows/skill-pr-watch.yml`](.github/workflows/skill-pr-watch.yml).
+When a Dependabot bump breaks CI, `/supera:start` can emit a `.github/workflows/supera-skill-pr-watch.yml` that fires on **CI completion** (`workflow_run`) for failed Dependabot PRs and runs `/supera:pr-watch --non-interactive` on the PR — so `supera-engineer` makes the code and tests work with the bumped version instead of leaving the PR red. With `audits.dependabot.autoResolveOnPass` enabled, the same workflow also fires on a **green** Dependabot PR and `/supera:pr-watch` auto-resolves it — running the security auditor on the bump, then merging it (clean) or commenting the blocker reason and closing it (merge-blocker) — so green Dependabot PRs don't pile up waiting for a human. It's off by default and only ever acts on `dependabot[bot]` PRs, never a human's `supera`-labelled ship PR. It's an opt-in add-on — offered (recommended) only when Dependabot was accepted and a CI workflow was detected, but accepting Dependabot never requires it; standalone Dependabot is complete without it. supera dogfoods it in [`.github/workflows/skill-pr-watch.yml`](.github/workflows/skill-pr-watch.yml).
 
 ### Scheduling it in CI
 
