@@ -182,6 +182,76 @@ if (dependabot.trim().length === 0) {
   );
 }
 
+// Pin-only drift guard for the 5c pr-watch template: /start inlines a
+// .github/workflows/supera-skill-pr-watch.yml (5c), but it carries a per-repo
+// `<CI WORKFLOW NAME>` placeholder (and prose) that can never be byte-identical
+// to this repo's canonical .github/workflows/skill-pr-watch.yml — so a full
+// byte-compare is impossible. Instead compare ONLY the GitHub Actions SHA pins:
+// every external `uses: <action>@<sha>` in the template must pin the same SHA as
+// that action in the real workflow, or the template's pins have rotted. Local
+// `uses: ./...` actions have no `@sha` and are ignored.
+const canonicalPrWatchPath = '.github/workflows/skill-pr-watch.yml';
+let prWatchWorkflow: string;
+try {
+  prWatchWorkflow = readFileSync(join(root, canonicalPrWatchPath), 'utf8');
+} catch {
+  prWatchWorkflow = '';
+}
+const prWatchTemplate = yamlBlocks.find(b =>
+  /^name: 'Skill \| pr-watch'/m.test(b),
+);
+type ActionPin = {action: string; sha: string};
+// A ref that is hex-shaped but not exactly 40 lowercase hex is a malformed pin
+// (e.g. a truncated or upper-cased SHA) and must be flagged, not silently
+// dropped; a non-hex ref like `@v6` is a legitimate floating tag and ignored.
+const collectActionPins = (yaml: string, source: string): ActionPin[] => {
+  const pins: ActionPin[] = [];
+  for (const m of yaml.matchAll(/uses:\s*([^\s@]+)@(\S+)/g)) {
+    const [, action, ref] = m;
+    if (/^[0-9a-f]{40}$/.test(ref)) {
+      pins.push({action, sha: ref});
+    } else if (/^[0-9a-fA-F]+$/.test(ref)) {
+      errors.push(
+        `${source}: ${action}@${ref} looks like a SHA pin but is not 40 lowercase hex — pin to a full commit SHA`,
+      );
+    }
+  }
+  return pins;
+};
+if (prWatchWorkflow.trim().length === 0) {
+  errors.push(`${canonicalPrWatchPath}: canonical pr-watch workflow is empty`);
+} else if (!prWatchTemplate) {
+  errors.push(
+    `${startSkillPath}: no \`\`\`yaml block with \`name: 'Skill | pr-watch'\` found to guard against ${canonicalPrWatchPath}`,
+  );
+} else {
+  const templatePins = collectActionPins(prWatchTemplate, startSkillPath);
+  const workflowPins = collectActionPins(prWatchWorkflow, canonicalPrWatchPath);
+  // Compare every action pinned in EITHER file: a drift in either direction,
+  // or a template-only action, is an error. A canonical-only action (e.g.
+  // actions/upload-artifact) is exempt — the template is intentionally a subset.
+  const actions = new Set([
+    ...templatePins.map(p => p.action),
+    ...workflowPins.map(p => p.action),
+  ]);
+  for (const action of actions) {
+    const templateShas = templatePins
+      .filter(p => p.action === action)
+      .map(p => p.sha);
+    const workflowShas = workflowPins
+      .filter(p => p.action === action)
+      .map(p => p.sha);
+    if (templateShas.length === 0) continue;
+    for (const templateSha of templateShas) {
+      if (!workflowShas.includes(templateSha)) {
+        errors.push(
+          `${startSkillPath}: inlined pr-watch template pins ${action}@${templateSha}, but ${canonicalPrWatchPath} pins ${action}@${workflowShas.join(', ') || '(absent)'} — the action SHA pins must match (the workflow is the canonical base, the start template is the emitted copy; only the action SHA pins are compared, the \`<CI WORKFLOW NAME>\` placeholder and prose are intentionally not)`,
+        );
+      }
+    }
+  }
+}
+
 // 5. Privacy invariant for the run-telemetry event. The metrics schema is the
 // STRUCTURAL guarantee that a run never emits free text (a prompt, diff, path,
 // or commit message): every object level is sealed (additionalProperties:false)
@@ -326,5 +396,5 @@ if (errors.length > 0) {
   process.exit(1);
 }
 console.log(
-  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot + bootstrap-action templates in sync`,
+  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot + bootstrap-action templates in sync, pr-watch template pins in sync`,
 );

@@ -403,7 +403,7 @@ jobs:
           fi
 
       - if: steps.pr.outputs.number != ''
-        uses: anthropics/claude-code-action@2fee15510437d71399d9139ed60433470484a8fb # v1.0.153
+        uses: anthropics/claude-code-action@428971d2ecd6e3a7cb0ee0da2a3a8b33fdb3678d # v1.0.157
         with:
           allowed_bots: '*' # job-level `if:` already gates to dependabot[bot]; '*' avoids the brittle 'dependabot' vs 'dependabot[bot]' login mismatch
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
