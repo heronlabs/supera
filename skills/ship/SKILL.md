@@ -101,6 +101,19 @@ Save the PR number, then best-effort apply the `supera` label so the pr-watch wo
 gh pr edit <PR-number> --add-label supera 2>/dev/null || true
 ```
 
+## 4.5 — Write the semantic metrics file
+
+Before handing off, write `.supera/metrics/run.json` in the worktree capturing **how** this run went — counts and enums only, never paths, prose, or commit text (the telemetry CI emit merges it into the run event, and the local SessionEnd hook reads it; both keep the privacy invariant). Match `schema/metrics-event.schema.json`'s `semantic` object: `phases_traversed` (the phase-ladder phases this run moved through, e.g. `["fresh","scaffolded","building","built","pr-open"]`), `files_changed_count` (a count from `git -C <WT_DIR>/<slug> diff --name-only <REMOTE>/<BASE>..<slug> | wc -l`), `loc_delta` (net lines, from `git -C <WT_DIR>/<slug> diff --numstat <REMOTE>/<BASE>..<slug>` summed as added − removed), and — only when the run blocked — `blocked_reason_category` (one of `ci-red`, `verify-fail`, `merge-conflict`, `missing-config`, `auth`, `other`). Omit any field you don't have rather than inventing it.
+
+```bash
+mkdir -p <WT_DIR>/<slug>/.supera/metrics
+cat > <WT_DIR>/<slug>/.supera/metrics/run.json <<EOF
+{"phases_traversed":["fresh","scaffolded","building","built"],"files_changed_count":<count>,"loc_delta":<net>}
+EOF
+```
+
+This file is a transient artifact, not part of the change — do not stage or commit it.
+
 ## 5 — Hand off to /pr-watch
 
 Invoke `/pr-watch <PR-number>` — append `--non-interactive` when `NONINTERACTIVE` is set (so the headless run stays prompt-free through the PR cycle).

@@ -151,6 +151,17 @@ Reschedule (preserve flags) and exit:
 ScheduleWakeup(delaySeconds=120, reason="CI after addressing review on PR #<N>", prompt="/pr-watch <N> [flags]")
 ```
 
+## 4.5 — Write the semantic metrics file
+
+Whenever this skill reaches a terminal state for the turn — the PR goes ready (step 5), or a terminal block is posted (§0a) — write `.supera/metrics/run.json` in the PR's worktree capturing **how** the watch went: counts and enums only, never paths, prose, or the failure text. Match `schema/metrics-event.schema.json`'s `semantic` object: `ci_reruns` (= `STATE.attempts`, the rerun count carried on the marker), `self_verify_retries` (engineer self-verify failures this watch, if tracked), and — on a terminal block only — `blocked_reason_category` (map the block: a surviving CI failure → `ci-red`, a `mergeable == CONFLICTING` give-up → `merge-conflict`, a deny-path/secret hit → `other`, an `ok`-but-uncommitted engineer → `verify-fail`). Omit any field you don't have. The telemetry CI emit merges this into the run event and the local SessionEnd hook reads it — both keep the privacy invariant; it is a transient artifact, never staged or committed.
+
+```bash
+mkdir -p <worktree>/.supera/metrics
+cat > <worktree>/.supera/metrics/run.json <<EOF
+{"ci_reruns":$ATTEMPTS}
+EOF
+```
+
 ## 5 — Done check
 
 Ready for the review cycle when all three hold:

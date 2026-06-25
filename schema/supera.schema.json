@@ -6,6 +6,25 @@
   "type": "object",
   "required": ["stack", "verify"],
   "additionalProperties": false,
+  "$defs": {
+    "skillBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Soft budget for one skill. Either field may be omitted; an omitted field is unbudgeted.",
+      "properties": {
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "USD cost above which a run warns (warn-only, never fails the job)."
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Agent turns above which a run warns (warn-only, never fails the job)."
+        }
+      }
+    }
+  },
   "properties": {
     "stack": {
       "type": "string",
@@ -139,6 +158,26 @@
           },
           "uniqueItems": true,
           "default": []
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Run-telemetry budgets. Soft, warn-only: an over-budget run posts a GitHub ::warning:: annotation in the CI emit step but NEVER fails the job (enforce-mode is a non-goal). Omit entirely to disable the budget warning.",
+      "additionalProperties": false,
+      "default": {},
+      "properties": {
+        "budgets": {
+          "type": "object",
+          "description": "Per-skill soft budgets, keyed by skill name (ship | pr-watch | audit | refactor). A run whose cost_usd or num_turns exceeds its skill's budget triggers a warning annotation. A skill with no entry is unbudgeted.",
+          "additionalProperties": false,
+          "default": {},
+          "properties": {
+            "ship": {"$ref": "#/$defs/skillBudget"},
+            "pr-watch": {"$ref": "#/$defs/skillBudget"},
+            "audit": {"$ref": "#/$defs/skillBudget"},
+            "refactor": {"$ref": "#/$defs/skillBudget"}
+          }
         }
       }
     },

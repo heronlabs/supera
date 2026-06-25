@@ -126,6 +126,59 @@
           "description": "github.run_attempt of the emitting workflow run."
         }
       }
+    },
+    "semantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional Phase 2 semantic layer — counts and enums the skill writes to .supera/metrics/run.json describing HOW the run went. Every field is a count, a number, or a closed enum: privacy stays structural, so no path, prompt, diff, or commit message can ride along. Absent when the skill wrote no run.json.",
+      "properties": {
+        "self_verify_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Times supera-engineer's self-verify (build/test/lint) failed and was re-run before passing."
+        },
+        "ci_reruns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Times pr-watch re-ran CI after pushing a fix."
+        },
+        "phases_traversed": {
+          "type": "array",
+          "description": "Phase-ladder phases this run moved through, in order.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "scaffolded",
+              "building",
+              "built",
+              "pr-open",
+              "merged"
+            ]
+          }
+        },
+        "blocked_reason_category": {
+          "type": "string",
+          "enum": [
+            "ci-red",
+            "verify-fail",
+            "merge-conflict",
+            "missing-config",
+            "auth",
+            "other"
+          ],
+          "description": "When the run blocked, the category of the block — never the free-text reason."
+        },
+        "files_changed_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Files the change touched — a COUNT, never the paths."
+        },
+        "loc_delta": {
+          "type": "integer",
+          "description": "Net lines added minus removed across the change. May be negative."
+        }
+      }
     }
   }
 }

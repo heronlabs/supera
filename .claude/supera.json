@@ -3,6 +3,13 @@
     "actionPinAllowlist": ["heronlabs/*"],
     "security": true
   },
+  "metrics": {
+    "budgets": {
+      "audit": {"cost_usd": 2, "turns": 40},
+      "pr-watch": {"cost_usd": 1.5, "turns": 30},
+      "ship": {"cost_usd": 3, "turns": 50}
+    }
+  },
   "pr": {"base": "main", "remote": "origin"},
   "review": {"consensus": {"voters": 3}},
   "stack": "pnpm",

@@ -11,3 +11,6 @@
 # node, in case tooling is ever added here
 node_modules/
 .eslintcache
+
+# transient per-run telemetry the skills write (never committed)
+.supera/

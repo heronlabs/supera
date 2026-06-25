@@ -140,6 +140,17 @@ Omit the whole **Notes** section when the receipt's `degraded[]` is empty **and*
 
 Once the PR exists, **emit the durable step-summary** (see **Durable step summary** below) on the PR-opened branch. Then hand off: invoke `/pr-watch <N>` (append `--non-interactive` when set). Announce: *"Dependency audit PR #<N> opened (`<auditBranch>` → `<TARGET>`). Handing off to `/pr-watch <N>` to drive CI green."*
 
+### Semantic metrics file
+
+At the end of the run — PR-opened or report-only — write `.supera/metrics/run.json` in the audit worktree capturing **how** the audit went: counts and enums only, never paths, prose, or the finding text. Match `schema/metrics-event.schema.json`'s `semantic` object: `files_changed_count` (the count from `git -C <WT_DIR>/<auditBranch> diff --name-only <REMOTE>/<TARGET>`) and `loc_delta` (net lines, from `... diff --numstat <REMOTE>/<TARGET>` summed as added − removed), and — only when the run aborts on the deny-path gate (step 5) — `blocked_reason_category: "other"`. Omit any field you don't have. The telemetry CI emit merges this into the run event and the local SessionEnd hook reads it — both keep the privacy invariant; it is a transient artifact, never staged or committed (the deny gate diffs against the target, so write it after that gate passes).
+
+```bash
+mkdir -p <WT_DIR>/<auditBranch>/.supera/metrics
+cat > <WT_DIR>/<auditBranch>/.supera/metrics/run.json <<EOF
+{"files_changed_count":<count>,"loc_delta":<net>}
+EOF
+```
+
 ### Durable step summary
 
 Keep the local terminal render unchanged — it is the interactive outcome. **Additionally**, when running under GitHub Actions (`$GITHUB_STEP_SUMMARY` is set), append a markdown report of the run's outcome to that file so every headless `/audit` leaves a durable artifact in the run's summary. This is gated on **CI presence**, not `NONINTERACTIVE` — guard it with `[ -n "$GITHUB_STEP_SUMMARY" ]` so local interactive runs are untouched. Both step-6 exit paths emit it: the report-only path before teardown, the PR-opened path after the PR is created. Build it from the receipt fields already parsed (`applied[]`, `findings[]`, `degraded[]`, `status`), reusing the PR-body section structure.

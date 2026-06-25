@@ -21,5 +21,13 @@
   "gh": {
     "run_id": 17483927461,
     "run_attempt": 1
+  },
+  "semantic": {
+    "self_verify_retries": 1,
+    "ci_reruns": 2,
+    "phases_traversed": ["fresh", "scaffolded", "building", "built", "pr-open"],
+    "blocked_reason_category": "ci-red",
+    "files_changed_count": 4,
+    "loc_delta": 137
   }
 }

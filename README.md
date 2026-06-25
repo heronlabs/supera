@@ -100,6 +100,7 @@ This cuts a worktree, delegates the code + tests to `supera-engineer`, opens a P
 | `/supera:pr-watch` | PR babysitter: monitor CI, fix failures via `supera-engineer`, address review threads, run one code-review cycle (plus a security audit when enabled), exit when green, synced, and resolved. | `[PR#] [--non-interactive]` |
 | `/supera:refactor` | Improve existing code in place — dispatch `supera-engineer` against a repo/dir/file. Lightweight: no worktree, no PR, no commit — leaves changes in your working tree to review. | `[path] [directive]` |
 | `/supera:audit` | Standalone dependency-audit orchestrator: cut a worktree, run the security auditor (CVE overrides, action-pins), carry safe auto-fixes into a PR, hand off to `/pr-watch`. CI-cron-ready. | `[branch] [--non-interactive]` |
+| `/supera:gain` | Print your own telemetry dashboard from the local `~/.supera/events.jsonl` the SessionEnd hook records: per-skill cost, turns, retries, and success rate, compared against the fleet median when reachable. Read-only and local-only. | *(no args)* |
 
 ## Agents
 
@@ -171,6 +172,7 @@ Written by `/supera:start` and safe to hand-edit. See [`schema/supera.schema.jso
 | `review.consensus` | Optional pre-merge merge-readiness vote in `/supera:pr-watch`: `voters` (default `1` = off), `quorum`. |
 | `review.lenses` | Optional specialist review lenses in `/supera:pr-watch` (`silent-failures` \| `type-design` \| `test-coverage`). Default `[]`. |
 | `security.denyPaths` | Globs the engineer must never touch and `/supera:pr-watch` refuses into a PR (secrets / private keys). Defaults to common secret/key globs; `[]` disables. |
+| `metrics.budgets` | Optional per-skill soft budgets `{ <skill>: { cost_usd, turns } }`. An over-budget run posts a GitHub `::warning::` annotation in the CI emit step — warn-only, **never** fails the job. Omit to disable. |
 
 ---
 
@@ -193,6 +195,19 @@ When a Dependabot bump breaks CI, `/supera:start` can emit a `.github/workflows/
 ### Scheduling it in CI
 
 `/supera:start` offers to write a weekly `/supera:audit` cron into `.github/workflows/supera-skill-audit.yml` (opt-in, only when the security auditor is enabled and the repo is GitHub-hosted). It runs the auditor via [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action), loading supera from the public marketplace, and opens an audit PR. Add an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) repo secret for it, and — to let the auditor push GitHub Actions SHA-pins — a `SUPERA_AUDIT_TOKEN` (a PAT/App token with `workflow` scope): the default `GITHUB_TOKEN` lacks `workflow` scope, so with only it the audit still runs and pins dependencies but cannot push `.github/workflows/*` changes. supera's own repo runs the same cron from [`.github/workflows/skill-audit.yml`](.github/workflows/skill-audit.yml), the canonical reference for the emitted one.
+
+## Telemetry
+
+supera records a small, **privacy-safe** metric per skill run so you can see what your runs cost and how often they retry — across two arms that share one schema ([`schema/metrics-event.schema.json`](schema/metrics-event.schema.json)).
+
+**Privacy is structural, not scrubbed.** Every object in the metrics schema is sealed (`additionalProperties: false`) and every string field is a closed shape (enum / const / pattern / format) — so a reason-for-block is an enum, changed files a count, lines a number. **No prompt, path, diff, or commit text can ever ride along**, and `scripts/validate.ts` turns CI red on any field that would open that door.
+
+- **CI arm.** The `skill-ship` / `skill-pr-watch` / `skill-audit` workflows emit a `metrics-event` artifact per run (cost, turns, tokens, plus a semantic layer of counts/enums), and a daily rollup publishes a dashboard to the `metrics` branch.
+- **Local arm.** A **SessionEnd hook** ships with the plugin. When a session ran a supera skill, it derives that run's cost / turns / tokens from your local Claude Code session and appends a `metrics-event` to `~/.supera/events.jsonl`. **Local-only by default** — nothing leaves your machine. Set **`SUPERA_METRICS=1`** (with `gh` authenticated) to also append the event to the `metrics` branch so your runs roll up alongside the fleet.
+
+Run **`/supera:gain`** to print your own dashboard from `~/.supera/events.jsonl` — per-skill cost, turns, retries, and success rate, compared against the fleet median when the `metrics` branch is reachable. It is read-only: `/supera:gain` never writes anything, and your runs reach the fleet only via the opt-in `SUPERA_METRICS=1` push.
+
+Per-skill **soft budgets** are optional (`metrics.budgets` in `.claude/supera.json`): an over-budget run posts a `::warning::` annotation in the CI emit step but **never** fails the job.
 
 ## Headless / CI
 

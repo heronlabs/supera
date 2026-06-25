@@ -1,0 +1,16 @@
+{
+  "description": "supera local telemetry — on session end, capture a privacy-safe run-metrics event from this machine's Claude Code session into ~/.supera/events.jsonl (local-only unless SUPERA_METRICS=1).",
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \"${CLAUDE_PLUGIN_ROOT}/hooks/session-end.ts\"",
+            "timeout": 20,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}

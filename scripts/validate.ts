@@ -17,6 +17,7 @@ import Ajv2020, {type ValidateFunction} from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import {parse as parseYaml} from 'yaml';
 import {dedupeByRunId, percentile} from './metrics-rollup';
+import {buildLocalEvent, summarizeTranscriptUsage} from '../hooks/session-end';
 
 const root = process.cwd();
 const errors: string[] = [];
@@ -317,6 +318,96 @@ const deduped = dedupeByRunId(
 if (deduped.length !== 2) {
   errors.push(
     `rollup dedupeByRunId: expected 2 unique runs, got ${deduped.length}`,
+  );
+}
+
+// 7. Local-arm gate (Phase 3). The SessionEnd hook derives a metrics-event from
+// the local Claude Code transcript and the skill's run.json. Its pure helpers —
+// summing transcript usage and assembling the event — are the only non-trivial
+// logic on the local path, and the built event must conform to the same
+// privacy-safe schema as the CI emit, so exercise both here and validate the
+// result against the compiled schema.
+const transcriptLines = [
+  {
+    type: 'assistant',
+    message: {
+      model: 'claude-opus-4-8',
+      usage: {
+        input_tokens: 10,
+        output_tokens: 20,
+        cache_read_input_tokens: 100,
+        cache_creation_input_tokens: 5,
+      },
+    },
+  },
+  {type: 'user', message: {content: 'ignored'}},
+  {
+    type: 'assistant',
+    message: {
+      model: 'claude-opus-4-8',
+      usage: {
+        input_tokens: 3,
+        output_tokens: 7,
+        cache_read_input_tokens: 50,
+        cache_creation_input_tokens: 0,
+      },
+    },
+  },
+];
+const usage = summarizeTranscriptUsage(transcriptLines);
+if (usage.turns !== 2) {
+  errors.push(
+    `hook summarizeTranscriptUsage turns: expected 2, got ${usage.turns}`,
+  );
+}
+if (usage.tokens.input !== 13) {
+  errors.push(
+    `hook summarizeTranscriptUsage input tokens: expected 13, got ${usage.tokens.input}`,
+  );
+}
+if (usage.tokens.cache_read !== 150) {
+  errors.push(
+    `hook summarizeTranscriptUsage cache_read: expected 150, got ${usage.tokens.cache_read}`,
+  );
+}
+if (usage.model !== 'claude-opus-4-8') {
+  errors.push(
+    `hook summarizeTranscriptUsage model: expected claude-opus-4-8, got ${usage.model}`,
+  );
+}
+
+const localEvent = buildLocalEvent({
+  skill: 'ship',
+  repo: 'heronlabs/supera',
+  stack: 'pnpm',
+  ts: '2026-06-25T10:00:00Z',
+  usage,
+  semantic: {self_verify_retries: 1, blocked_reason_category: 'ci-red'},
+});
+const metricsValidate = compiled.get(metricsSchemaName);
+if (metricsValidate && !metricsValidate(localEvent)) {
+  for (const e of metricsValidate.errors ?? []) {
+    errors.push(`hook buildLocalEvent: ${e.instancePath || '/'} ${e.message}`);
+  }
+}
+if (localEvent.semantic?.blocked_reason_category !== 'ci-red') {
+  errors.push(
+    'hook buildLocalEvent: semantic block category not carried through',
+  );
+}
+// A run with no semantic file must still produce a schema-valid event with no
+// semantic key (the field is optional, never an empty object).
+const bareEvent = buildLocalEvent({
+  skill: 'audit',
+  repo: 'heronlabs/supera',
+  stack: 'pnpm',
+  ts: '2026-06-25T10:00:00Z',
+  usage,
+  semantic: null,
+});
+if ('semantic' in bareEvent) {
+  errors.push(
+    'hook buildLocalEvent: omitted semantic must not add a semantic key',
   );
 }
 
