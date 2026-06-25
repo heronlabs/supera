@@ -212,26 +212,27 @@ const pushToFleet = (event: LocalEvent): void => {
     {encoding: 'utf8'},
   ).trim();
   const path = 'metrics/events.jsonl';
-  const existing = execFileSync(
+  // One round-trip: the GitHub contents API returns base64 `content` and the
+  // blob `sha` in the same response, so read both from a single call (a 404 on a
+  // missing file throws and is swallowed by main's best-effort catch).
+  const meta = execFileSync(
     'gh',
     [
       'api',
       `repos/${repo}/contents/${path}?ref=metrics`,
       '-q',
-      '.content // ""',
+      '{content: (.content // ""), sha: (.sha // "")}',
     ],
     {encoding: 'utf8'},
   ).trim();
+  const {content: existing, sha: blobSha} = JSON.parse(meta) as {
+    content: string;
+    sha: string;
+  };
   const decoded = existing
     ? Buffer.from(existing, 'base64').toString('utf8')
     : '';
-  const sha = decoded
-    ? execFileSync(
-        'gh',
-        ['api', `repos/${repo}/contents/${path}?ref=metrics`, '-q', '.sha'],
-        {encoding: 'utf8'},
-      ).trim()
-    : '';
+  const sha = decoded ? blobSha : '';
   const next = `${decoded}${JSON.stringify(event)}\n`;
   const content = Buffer.from(next, 'utf8').toString('base64');
   const args = [
