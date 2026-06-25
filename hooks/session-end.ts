@@ -48,30 +48,64 @@ export interface Semantic {
   loc_delta?: number;
 }
 
-// The exact six semantic fields the metrics schema allows. The TS interface is
-// erased at runtime (native type stripping), so a `... as Semantic` cast
-// constrains nothing — this runtime allowlist is what actually keeps a stray or
-// free-text key out of events.jsonl and the shared metrics branch. It mirrors
-// the CI jq allowlist in .github/actions/supera-metrics/action.yml.
-const SEMANTIC_KEYS = [
-  'self_verify_retries',
-  'ci_reruns',
-  'phases_traversed',
-  'blocked_reason_category',
-  'files_changed_count',
-  'loc_delta',
-] as const;
+// The phase-ladder and block-reason enums, kept in lockstep with
+// schema/metrics-event.schema.json. Privacy is structural on VALUES, not just
+// keys: a free-text / out-of-enum value in an allowlisted string field would
+// otherwise ride through verbatim (heredoc-filled run.json) and leak.
+const PHASE_LADDER = [
+  'fresh',
+  'scaffolded',
+  'building',
+  'built',
+  'pr-open',
+  'merged',
+];
+const BLOCK_CATEGORIES = [
+  'ci-red',
+  'verify-fail',
+  'merge-conflict',
+  'missing-config',
+  'auth',
+  'other',
+];
 
-/** Project untrusted run.json onto only the allowed semantic fields, dropping
- * null/undefined (the local mirror of the CI `with_entries(select(.value != null))`).
- * Returns null when nothing allowlisted survives, so `semantic` is omitted. */
+const isNonNegativeInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0;
+const isInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value);
+
+/** Each allowed semantic field's value validator, mirroring the schema domain.
+ * Returns the conforming value, or undefined to drop the field — the TS
+ * interface is erased at runtime, so this is the real privacy gate. */
+const SEMANTIC_FIELDS: Record<string, (value: unknown) => unknown> = {
+  self_verify_retries: v => (isNonNegativeInteger(v) ? v : undefined),
+  ci_reruns: v => (isNonNegativeInteger(v) ? v : undefined),
+  files_changed_count: v => (isNonNegativeInteger(v) ? v : undefined),
+  loc_delta: v => (isInteger(v) ? v : undefined),
+  blocked_reason_category: v =>
+    typeof v === 'string' && BLOCK_CATEGORIES.includes(v) ? v : undefined,
+  phases_traversed: v => {
+    if (!Array.isArray(v)) return undefined;
+    const filtered = v.filter(
+      p => typeof p === 'string' && PHASE_LADDER.includes(p),
+    );
+    return filtered.length > 0 ? filtered : undefined;
+  },
+};
+
+/** Project untrusted run.json onto only the allowed semantic fields AND only
+ * schema-conforming values (out-of-enum strings dropped, phases filtered to the
+ * ladder, counts required to be non-negative integers). Returns null when
+ * nothing survives, so `semantic` is omitted. No free text can ever leak to
+ * events.jsonl or the metrics branch. Mirrors the CI jq filter in
+ * .github/actions/supera-metrics/action.yml. */
 export const pickSemantic = (raw: unknown): Semantic | null => {
   if (raw === null || typeof raw !== 'object') return null;
   const source = raw as Record<string, unknown>;
   const picked: Record<string, unknown> = {};
-  for (const key of SEMANTIC_KEYS) {
-    const value = source[key];
-    if (value !== null && value !== undefined) picked[key] = value;
+  for (const [key, conform] of Object.entries(SEMANTIC_FIELDS)) {
+    const value = conform(source[key]);
+    if (value !== undefined) picked[key] = value;
   }
   return Object.keys(picked).length > 0 ? (picked as Semantic) : null;
 };

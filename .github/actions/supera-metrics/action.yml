@@ -81,18 +81,30 @@ runs:
           echo '::warning::run-metrics event failed structural validation — dropping it.'
           rm -f metrics-event.json
         fi
-        # Phase 2 semantic layer: if the skill wrote .supera/metrics/run.json
-        # (counts/enums only — no free text), merge it into the event's
-        # `semantic` key. The merge keeps only the known semantic fields, so a
-        # stray key can't open a leak, and the result is re-validated.
+        # Phase 2 semantic layer: if the skill wrote .supera/metrics/run.json,
+        # merge it into the event's `semantic` key — structurally, on VALUES not
+        # just keys. Keep only the six known fields AND only schema-conforming
+        # values: the block-reason and phase enums are filtered (a non-conforming
+        # phase item is dropped), the counts must be non-negative integers, and
+        # loc_delta an integer. Everything else is dropped, so no free text can
+        # ride through; the merge is skipped entirely when nothing survives.
         run_json=$(find . -path '*/.supera/metrics/run.json' -print -quit 2>/dev/null || true)
         if [ -s metrics-event.json ] && [ -n "$run_json" ] && [ -s "$run_json" ]; then
           merged=$(jq \
             --slurpfile s "$run_json" \
-            '. + {semantic: ($s[0] | {
-              self_verify_retries, ci_reruns, phases_traversed,
-              blocked_reason_category, files_changed_count, loc_delta
-            } | with_entries(select(.value != null)))}' \
+            'def nnint: if (type == "number" and . == floor and . >= 0) then . else null end;
+             def anyint: if (type == "number" and . == floor) then . else null end;
+             ($s[0] // {}) as $r
+             | . + {semantic: (
+                 {
+                   self_verify_retries: ($r.self_verify_retries | nnint),
+                   ci_reruns: ($r.ci_reruns | nnint),
+                   files_changed_count: ($r.files_changed_count | nnint),
+                   loc_delta: ($r.loc_delta | anyint),
+                   blocked_reason_category: ($r.blocked_reason_category | if (type == "string" and IN("ci-red","verify-fail","merge-conflict","missing-config","auth","other")) then . else null end),
+                   phases_traversed: ($r.phases_traversed | if type == "array" then [ .[] | select(IN("fresh","scaffolded","building","built","pr-open","merged")) ] else null end | if (type == "array" and length > 0) then . else null end)
+                 } | with_entries(select(.value != null))
+               )}' \
             metrics-event.json 2>/dev/null || true)
           if [ -n "$merged" ] && echo "$merged" | jq -e '.semantic | length > 0' > /dev/null 2>&1; then
             echo "$merged" > metrics-event.json

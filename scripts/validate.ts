@@ -475,6 +475,55 @@ if (metricsValidate && !metricsValidate(leakyEvent)) {
     );
   }
 }
+// Structural privacy is about VALUES, not just keys: an allowlisted string
+// field carrying a free-text / out-of-enum VALUE (heredocs are LLM-filled) must
+// be dropped, phases_traversed filtered to the phase-ladder enum, and the
+// integer counts type/range-checked — otherwise a path-bearing reason rides
+// through and the event fails the schema. Assert the cleaned event re-validates
+// and carries no stray value.
+const valueLeakEvent = buildLocalEvent({
+  skill: 'ship',
+  repo: 'heronlabs/supera',
+  stack: 'pnpm',
+  ts: '2026-06-25T10:00:00Z',
+  usage,
+  semantic: {
+    blocked_reason_category: 'ci-red: tests failing in src/auth/login.ts',
+    phases_traversed: ['fresh', 'totally-bogus-phase', 'built'],
+    files_changed_count: -7,
+    loc_delta: 12,
+  } as never,
+});
+if (metricsValidate && !metricsValidate(valueLeakEvent)) {
+  for (const e of metricsValidate.errors ?? []) {
+    errors.push(
+      `hook buildLocalEvent value-leak: ${e.instancePath || '/'} ${e.message} — a non-conforming semantic value reached the event`,
+    );
+  }
+}
+if ('blocked_reason_category' in (valueLeakEvent.semantic ?? {})) {
+  errors.push(
+    'hook buildLocalEvent value-leak: free-text blocked_reason_category was not dropped',
+  );
+}
+if (
+  JSON.stringify(valueLeakEvent.semantic?.phases_traversed ?? []) !==
+  JSON.stringify(['fresh', 'built'])
+) {
+  errors.push(
+    'hook buildLocalEvent value-leak: phases_traversed not filtered to the enum',
+  );
+}
+if ('files_changed_count' in (valueLeakEvent.semantic ?? {})) {
+  errors.push(
+    'hook buildLocalEvent value-leak: negative files_changed_count was not dropped',
+  );
+}
+if (JSON.stringify(valueLeakEvent.semantic ?? {}).includes('login.ts')) {
+  errors.push(
+    'hook buildLocalEvent value-leak: free-text path leaked into semantic',
+  );
+}
 
 if (errors.length > 0) {
   console.error(`✗ validation failed (${errors.length}):`);
