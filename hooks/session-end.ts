@@ -48,6 +48,34 @@ export interface Semantic {
   loc_delta?: number;
 }
 
+// The exact six semantic fields the metrics schema allows. The TS interface is
+// erased at runtime (native type stripping), so a `... as Semantic` cast
+// constrains nothing — this runtime allowlist is what actually keeps a stray or
+// free-text key out of events.jsonl and the shared metrics branch. It mirrors
+// the CI jq allowlist in .github/actions/supera-metrics/action.yml.
+const SEMANTIC_KEYS = [
+  'self_verify_retries',
+  'ci_reruns',
+  'phases_traversed',
+  'blocked_reason_category',
+  'files_changed_count',
+  'loc_delta',
+] as const;
+
+/** Project untrusted run.json onto only the allowed semantic fields, dropping
+ * null/undefined (the local mirror of the CI `with_entries(select(.value != null))`).
+ * Returns null when nothing allowlisted survives, so `semantic` is omitted. */
+export const pickSemantic = (raw: unknown): Semantic | null => {
+  if (raw === null || typeof raw !== 'object') return null;
+  const source = raw as Record<string, unknown>;
+  const picked: Record<string, unknown> = {};
+  for (const key of SEMANTIC_KEYS) {
+    const value = source[key];
+    if (value !== null && value !== undefined) picked[key] = value;
+  }
+  return Object.keys(picked).length > 0 ? (picked as Semantic) : null;
+};
+
 export interface LocalEvent {
   schema_version: '1';
   ts: string;
@@ -163,13 +191,16 @@ export const buildLocalEvent = (input: {
   semantic: Semantic | null;
 }): LocalEvent => {
   const {usage} = input;
+  // Allowlist the (untrusted) run.json down to the six schema fields before it
+  // touches the event — never trust the `Semantic` cast.
+  const semantic = pickSemantic(input.semantic);
   const event: LocalEvent = {
     schema_version: '1',
     ts: input.ts,
     repo: input.repo,
     skill: input.skill,
     event: 'run',
-    outcome: input.semantic?.blocked_reason_category ? 'blocked' : 'success',
+    outcome: semantic?.blocked_reason_category ? 'blocked' : 'success',
     model: MODEL_PATTERN.test(usage.model) ? usage.model : 'claude-unknown',
     stack: STACK_PATTERN.test(input.stack) ? input.stack : 'unknown',
     run: {
@@ -182,7 +213,7 @@ export const buildLocalEvent = (input: {
     // local event uses 0 (it never collides with a real CI run_id >= 1).
     gh: {run_id: 0, run_attempt: 1},
   };
-  if (input.semantic) event.semantic = input.semantic;
+  if (semantic) event.semantic = semantic;
   return event;
 };
 
@@ -272,14 +303,17 @@ const main = (): void => {
   const skill = skillFromTranscript(lines);
   if (!skill) return;
 
+  // The semantic file is optional: skills like /refactor write none, yet the
+  // run still deserves a run-level event (cost/turns/tokens from the
+  // transcript). A missing/unreadable run.json just omits `semantic` — it must
+  // never abort the emit, or those runs go uncaptured (issue #55 acceptance).
   let semantic: Semantic | null = null;
   try {
     semantic = readJson(
       join(cwd, '.supera', 'metrics', 'run.json'),
     ) as Semantic;
   } catch {
-    // No semantic file → the run didn't reach the write step; skip silently.
-    return;
+    semantic = null;
   }
 
   let repo = 'local/unknown';

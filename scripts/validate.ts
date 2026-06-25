@@ -434,6 +434,47 @@ if ('semantic' in bareEvent) {
     'hook buildLocalEvent: omitted semantic must not add a semantic key',
   );
 }
+// Privacy is structural on the LOCAL arm too: a run.json carrying a stray or
+// free-text key (SKILL.md heredocs are LLM-filled) must be allowlisted down to
+// exactly the six schema fields before it can reach events.jsonl or the metrics
+// branch — the local mirror of the CI jq allowlist. Feed a leaky run.json and
+// assert only allowlisted keys survive.
+const leakyEvent = buildLocalEvent({
+  skill: 'ship',
+  repo: 'heronlabs/supera',
+  stack: 'pnpm',
+  ts: '2026-06-25T10:00:00Z',
+  usage,
+  semantic: {
+    blocked_reason_category: 'ci-red',
+    files_changed_count: 4,
+    leaked_path: 'src/auth/token.ts',
+    prompt: 'fix the bug in the login flow',
+  } as never,
+});
+const allowedSemanticKeys = new Set([
+  'self_verify_retries',
+  'ci_reruns',
+  'phases_traversed',
+  'blocked_reason_category',
+  'files_changed_count',
+  'loc_delta',
+]);
+const leakedKeys = Object.keys(leakyEvent.semantic ?? {}).filter(
+  k => !allowedSemanticKeys.has(k),
+);
+if (leakedKeys.length > 0) {
+  errors.push(
+    `hook buildLocalEvent: leaked non-allowlisted semantic key(s) ${leakedKeys.join(', ')} — privacy must be structural on the local arm`,
+  );
+}
+if (metricsValidate && !metricsValidate(leakyEvent)) {
+  for (const e of metricsValidate.errors ?? []) {
+    errors.push(
+      `hook buildLocalEvent leaky-input: ${e.instancePath || '/'} ${e.message}`,
+    );
+  }
+}
 
 if (errors.length > 0) {
   console.error(`✗ validation failed (${errors.length}):`);
@@ -441,5 +482,5 @@ if (errors.length > 0) {
   process.exit(1);
 }
 console.log(
-  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot + bootstrap-action templates in sync`,
+  `✓ ${schemaFiles.length} schemas compile, ${instances.length} instances + ${markdown.length} frontmatter blocks valid, audit-cron + dependabot + bootstrap-action + metrics-action templates in sync`,
 );
