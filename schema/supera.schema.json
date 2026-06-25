@@ -84,7 +84,7 @@
           "type": "string",
           "enum": ["squash", "merge", "rebase"],
           "default": "squash",
-          "description": "Merge method `/ship finish` uses to merge a green PR (gh pr merge --<method>) before close-out. Default squash."
+          "description": "Merge method used by `/ship finish` (merging a green PR before close-out) and by `/pr-watch` Dependabot auto-resolve, via `gh pr merge --<method>`. Default squash."
         }
       }
     },
@@ -103,6 +103,18 @@
           "items": {"type": "string"},
           "default": [],
           "description": "Glob patterns of `owner/repo` whose unpinned GitHub Actions the security auditor must leave FLOATING (not auto-pin); each matched `uses:` ref is reported once as informational, never flagged. Empty (default) = pin everything (current behaviour)."
+        },
+        "dependabot": {
+          "type": "object",
+          "description": "Auto-resolution policy for Dependabot PRs in /pr-watch.",
+          "additionalProperties": false,
+          "properties": {
+            "autoResolveOnPass": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, /pr-watch resolves a green Dependabot PR without waiting for a human: once CI passes it runs supera-security-auditor on the bump and either merges it (no merge-blocker — clean) or comments the blocker reason and closes it (a critical CVE the bump introduces, a leaked secret, or a flagged finding). Strictly gated to author == dependabot[bot] — never auto-merges or auto-closes a human's supera-labelled ship PR. False (default) = a green Dependabot PR waits for a human (current behaviour)."
+            }
+          }
         }
       }
     },

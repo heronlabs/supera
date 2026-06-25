@@ -10,8 +10,9 @@
 # Security note: this runs the bumped dependency's tests with repo secrets in
 # scope — an accepted risk for auto-fixing a Dependabot bump. Keep the
 # `SUPERA_AUDIT_TOKEN` minimally scoped (contents + pull-requests, workflow only
-# if needed). It fires only on a FAILED CI run of a Dependabot PR or supera's
-# own `supera`-labelled ship PR.
+# if needed). It fires on a FAILED CI run of a Dependabot PR or supera's own
+# `supera`-labelled ship PR (auto-fix), and on a PASSING CI run of a Dependabot
+# PR (auto-resolve via the security auditor's verdict when enabled).
 name: 'Skill | pr-watch'
 
 on:
@@ -29,10 +30,13 @@ concurrency:
 
 jobs:
   pr-watch:
-    name: 'Auto-fix failing PR'
+    name: 'Auto-fix or auto-resolve PR'
     if: >-
-      github.event.workflow_run.event == 'pull_request' &&
-      contains(fromJSON('["failure","timed_out"]'), github.event.workflow_run.conclusion)
+      github.event.workflow_run.event == 'pull_request' && (
+        contains(fromJSON('["failure","timed_out"]'), github.event.workflow_run.conclusion) ||
+        (github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.actor.login == 'dependabot[bot]')
+      )
     runs-on: ubuntu-latest
     steps:
       # checkout + supera-bot git identity + toolchain (toolchain only). Swap
@@ -56,6 +60,7 @@ jobs:
           GH_TOKEN: ${{ secrets.SUPERA_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           ACTOR: ${{ github.event.workflow_run.actor.login }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           set -euo pipefail
           PR=$(gh pr list --head "$HEAD_BRANCH" --state open --json number,labels -q '.[0]')
@@ -65,10 +70,28 @@ jobs:
             echo "number=" >> "$GITHUB_OUTPUT"; exit 0
           fi
           HAS_SUPERA=$(echo "$PR" | jq -r 'any(.labels[]?; .name == "supera")')
-          if [ "$ACTOR" = "dependabot[bot]" ] || [ "$HAS_SUPERA" = "true" ]; then
-            echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          IS_DEPENDABOT=false
+          if [ "$ACTOR" = "dependabot[bot]" ]; then IS_DEPENDABOT=true; fi
+          # On a PASSING run a PR is eligible only when it's Dependabot AND the repo
+          # opted into auto-resolve (audits.dependabot.autoResolveOnPass) — otherwise a
+          # flag-off green run would burn a no-op headless claude run; a supera-labelled
+          # human ship PR never auto-merges on green. On failure/timed_out either a
+          # Dependabot or supera-labelled PR is eligible (auto-fix) — the existing behaviour.
+          if [ "$CONCLUSION" = "success" ]; then
+            AUTO=$(jq -r '.audits.dependabot.autoResolveOnPass // false' .claude/supera.json 2>/dev/null || echo false)
+            if [ "$IS_DEPENDABOT" = "true" ] && [ "$AUTO" = "true" ]; then ELIGIBLE=true; else ELIGIBLE=false; fi
+          elif [ "$IS_DEPENDABOT" = "true" ] || [ "$HAS_SUPERA" = "true" ]; then
+            ELIGIBLE=true
           else
-            echo "PR #$NUMBER is neither Dependabot nor supera-labelled — skipping."
+            ELIGIBLE=false
+          fi
+          if [ "$ELIGIBLE" = "true" ]; then
+            echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          elif [ "$CONCLUSION" = "success" ]; then
+            echo "PR #$NUMBER not eligible for conclusion=success (autoResolveOnPass off or not Dependabot) — skipping."
+            echo "number=" >> "$GITHUB_OUTPUT"
+          else
+            echo "PR #$NUMBER not eligible for conclusion=$CONCLUSION — skipping."
             echo "number=" >> "$GITHUB_OUTPUT"
           fi
 
@@ -82,8 +105,8 @@ jobs:
           plugin_marketplaces: https://github.com/heronlabs/supera.git
           plugins: supera@supera-marketplace
           prompt: |
-            A pull request (#${{ steps.pr.outputs.number }}) has a failing CI run.
-            Drive it green using the supera pr-watch skill — run the command below. This is a headless run with no human present, so never stop to ask; surface any block as a PR comment.
+            A pull request (#${{ steps.pr.outputs.number }}) needs attention after its CI run.
+            Run the supera pr-watch skill via the command below — it drives a failing run green, or auto-resolves a green Dependabot bump per config. This is a headless run with no human present, so never stop to ask; surface any block as a PR comment.
             /supera:pr-watch ${{ steps.pr.outputs.number }} --non-interactive
           show_full_output: true
           claude_args: '--allowed-tools Bash,Read,Glob,Grep,Agent,Edit,Write,Skill'
