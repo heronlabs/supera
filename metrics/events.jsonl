@@ -1,0 +1,1 @@
+{"schema_version":"1","ts":"2026-06-25T13:09:12Z","repo":"heronlabs/supera","skill":"pr-watch","event":"run","outcome":"success","model":"claude-unknown","stack":"pnpm","run":{"cost_usd":0.9688884999999999,"num_turns":16,"duration_ms":159035,"tokens":{"input":3996,"output":6827,"cache_read":492535,"cache_creation":29619}},"gh":{"run_id":28172247823,"run_attempt":1}}
