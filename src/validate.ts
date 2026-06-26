@@ -16,7 +16,7 @@ import {basename, join} from 'node:path';
 import Ajv2020, {type ValidateFunction} from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import {parse as parseYaml} from 'yaml';
-import {dedupeByRunId, percentile} from './metrics-rollup';
+import {dedupeByRunId, percentile} from './metrics/metrics-rollup';
 import {buildLocalEvent, summarizeTranscriptUsage} from '../hooks/session-end';
 
 const root = process.cwd();

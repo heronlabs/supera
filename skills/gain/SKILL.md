@@ -12,12 +12,12 @@ The local event log is `~/.supera/events.jsonl` (one `metrics-event` JSON per li
 
 ## 1 — Render the dashboard
 
-Reuse the rollup helpers rather than re-deriving the math — `scripts/metrics-rollup.ts` already exports `summarize`, `renderDashboard`, and `percentile`, the same code the daily fleet rollup uses, so the local and fleet views stay consistent. Run them over the local events via the plugin's `jiti`:
+Reuse the rollup helpers rather than re-deriving the math — `src/metrics/metrics-rollup.ts` already exports `summarize`, `renderDashboard`, and `percentile`, the same code the daily fleet rollup uses, so the local and fleet views stay consistent. Run them over the local events via the plugin's `jiti`:
 
 ```bash
 LOCAL=~/.supera/events.jsonl
 node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON -e '
-  const {renderDashboard, summarize, percentile} = await import("${CLAUDE_PLUGIN_ROOT}/scripts/metrics-rollup.ts");
+  const {renderDashboard, summarize, percentile} = await import("${CLAUDE_PLUGIN_ROOT}/src/metrics/metrics-rollup.ts");
   const fs = await import("node:fs");
   const lines = fs.readFileSync(process.argv[1], "utf8").split("\n").map(l=>l.trim()).filter(Boolean).map(l=>JSON.parse(l));
   process.stdout.write(renderDashboard(lines, new Date().toISOString()));
@@ -40,4 +40,4 @@ If the fetch succeeds and is non-empty, run `summarize` over both event sets and
 
 - Read-only. `/gain` never writes `events.jsonl` or the `metrics` branch — the SessionEnd hook owns local capture, and the opt-in `SUPERA_METRICS=1` push owns the fleet write.
 - Local-only by default. A dev's runs reach the fleet only when they set `SUPERA_METRICS=1` (see the hook); `/gain` itself sends nothing.
-- Reuse `scripts/metrics-rollup.ts` helpers — don't re-implement percentiles or the dashboard.
+- Reuse `src/metrics/metrics-rollup.ts` helpers — don't re-implement percentiles or the dashboard.

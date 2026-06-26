@@ -31,3 +31,9 @@ jobs:
       - run: pnpm lint:check
 
       - run: pnpm validate
+
+      - name: 'Test (vitest)'
+        run: pnpm test
+
+      - name: 'Test (bats)'
+        run: sudo apt-get install -y bats && bats tests/scripts/

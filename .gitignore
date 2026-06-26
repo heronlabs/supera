@@ -12,5 +12,9 @@
 node_modules/
 .eslintcache
 
+# test coverage / vitest
+coverage/
+.vitest/
+
 # transient per-run telemetry the skills write (never committed)
 .supera/

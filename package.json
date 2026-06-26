@@ -6,6 +6,8 @@
   "description": "A repo-agnostic change-shipping superagent for Claude Code. Install once; ship changes on any repository with the same pattern — task → worktree → implement + test → PR → babysit CI → done. The PR is the unit of work — there is no external tracker.",
   "devDependencies": {
     "@types/node": "^26",
+    "@vitest/coverage-v8": "^3",
+    "@vitest/ui": "^3",
     "ajv": "^8",
     "ajv-formats": "^3",
     "eslint": "^10",
@@ -15,6 +17,7 @@
     "jiti": "^2",
     "typescript": "~6.0",
     "typescript-eslint": "^8",
+    "vitest": "^3",
     "yaml": "^2"
   },
   "engines": {
@@ -48,7 +51,10 @@
   "scripts": {
     "lint:check": "gts lint && eslint \"**/*.json\" \"**/*.yml\" \"**/*.yaml\" --no-error-on-unmatched-pattern",
     "lint:fix": "gts fix && eslint \"**/*.json\" \"**/*.yml\" \"**/*.yaml\" --fix --no-error-on-unmatched-pattern",
-    "validate": "jiti scripts/validate.ts"
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest",
+    "validate": "jiti src/validate.ts"
   },
   "version": "1.0.2"
 }

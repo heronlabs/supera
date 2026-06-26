@@ -7,7 +7,7 @@
  *
  * The pure helpers (percentile, dedupeByRunId, summarize, renderDashboard) hold
  * the only non-trivial logic on the telemetry path and are exported so
- * scripts/validate.ts exercises them in the repo's single gate. runRollup wires
+ * src/validate.ts exercises them in the repo's single gate. runRollup wires
  * them to the filesystem; main() is the CLI entry the metrics-rollup workflow
  * invokes via jiti.
  */
