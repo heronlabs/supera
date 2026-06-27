@@ -1,6 +1,6 @@
 # supera telemetry — run metrics
 
-_Generated 2026-06-26T10:30:01.370Z from 1 run(s) across the dogfood fleet._
+_Generated 2026-06-27T09:36:02.034Z from 1 run(s) across the dogfood fleet._
 
 ## Per-skill
 
