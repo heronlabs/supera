@@ -1,12 +1,13 @@
 # supera telemetry — run metrics
 
-_Generated 2026-06-28T10:09:30.673Z from 1 run(s) across the dogfood fleet._
+_Generated 2026-06-29T12:10:23.038Z from 13 run(s) across the dogfood fleet._
 
 ## Per-skill
 
 | skill | runs | success | cost p50 / p95 (USD) | turns p50 / p95 | duration p50 / p95 (s) |
 | --- | --- | --- | --- | --- | --- |
-| pr-watch | 1 | 100% | 0.97 / 0.97 | 16 / 16 | 159 / 159 |
+| audit | 11 | 100% | 0.00 / 2.01 | 1 / 22 | 0 / 455 |
+| pr-watch | 2 | 100% | 0.98 / 0.99 | 17 / 17 | 161 / 164 |
 
 ## Regressions
 
