@@ -175,7 +175,7 @@ jobs:
         with:
           stack: <detected stack>
 
-      - uses: anthropics/claude-code-action@428971d2ecd6e3a7cb0ee0da2a3a8b33fdb3678d # v1.0.157
+      - uses: anthropics/claude-code-action@a92e7c70a4da9793dc164451d829089dc057a464 # v1.0.159
         id: claude
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -403,7 +403,7 @@ jobs:
           fi
 
       - if: steps.pr.outputs.number != ''
-        uses: anthropics/claude-code-action@428971d2ecd6e3a7cb0ee0da2a3a8b33fdb3678d # v1.0.157
+        uses: anthropics/claude-code-action@a92e7c70a4da9793dc164451d829089dc057a464 # v1.0.159
         with:
           allowed_bots: '*' # job-level `if:` already gates to dependabot[bot]; '*' avoids the brittle 'dependabot' vs 'dependabot[bot]' login mismatch
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
