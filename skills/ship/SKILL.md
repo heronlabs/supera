@@ -76,20 +76,23 @@ If `DEBUG` is active after this step:
 
 ```bash
 git fetch $REMOTE $BASE
-# Clean up stale worktree from crashed previous run
-if [ -d "$WT_DIR/$SLUG" ] && ! git worktree list | grep -qF "$WT_DIR/$SLUG"; then
-  git worktree remove --force "$WT_DIR/$SLUG" 2>/dev/null || true
+# If branch already exists locally, reuse it instead of failing
+if git show-ref --verify --quiet "refs/heads/$SLUG"; then
+  echo "Branch $SLUG already exists locally — reusing."
+  git worktree add "$WT_DIR/$SLUG" "$SLUG" 2>/dev/null || true
+# If branch exists on remote but not locally, fetch and checkout
+elif git ls-remote --heads "$REMOTE" "$SLUG" | grep -q "$SLUG"; then
+  echo "Branch $SLUG exists on $REMOTE — fetching."
+  git fetch "$REMOTE" "$SLUG"
+  git worktree add "$WT_DIR/$SLUG" "$SLUG"
+else
+  # Clean up stale worktree from crashed previous run
+  if [ -d "$WT_DIR/$SLUG" ] && ! git worktree list | grep -qF "$WT_DIR/$SLUG"; then
+    git worktree remove --force "$WT_DIR/$SLUG" 2>/dev/null || true
+  fi
+  git worktree add "$WT_DIR/$SLUG" -b "$SLUG" "$REMOTE/$BASE"
 fi
-git worktree add $WT_DIR/$SLUG -b $SLUG $REMOTE/$BASE
-cd $WT_DIR/$SLUG
-```
-
-If the worktree already exists for this branch, reuse it (don't error). If the branch already exists on remote but worktree is missing:
-
-```bash
-git fetch $REMOTE $SLUG
-git worktree add $WT_DIR/$SLUG $SLUG
-cd $WT_DIR/$SLUG
+cd "$WT_DIR/$SLUG"
 ```
 
 Install dependencies after creating/entering the worktree:
@@ -109,7 +112,7 @@ If `DEBUG` is active after this step:
 
 Announce: *"Delegating to supera-engineer in worktree `$WT_DIR/$SLUG`."*
 
-Dispatch `supera-engineer` with: the task description, the worktree path, and the path to `.claude/supera.json`. The engineer writes a plan to `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
+Dispatch `supera-engineer` with: the task description, the worktree path, and the path to `.claude/supera.json`. **Do NOT use `isolation: "worktree"`** — ship already owns the worktree. Use `subagent_type: "supera:supera-engineer"` only; the engineer works in the current worktree directory. The engineer writes a plan to `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
 
 Wait for its JSON receipt. Parse it:
 - **All verification `pass`** → done. Surface the summary and files changed.
@@ -138,7 +141,7 @@ case "$TYPE" in feat|fix|docs|refactor|chore|test|ci|perf|style) ;; *) TYPE="cho
 git add -A
 git commit -m "$TYPE: $SUMMARY"
 ```
-`$SUMMARY` is `receipt.summary`. Commit follows `guidelines/commit-conventions.md` — no body, no co-author trailer.
+`$SUMMARY` is `receipt.summary`, truncated to 50 chars maximum (to keep `$TYPE: $SUMMARY` ≤72 chars). Commit follows `guidelines/commit-conventions.md` — no body, no co-author trailer.
 
 If `DEBUG` is active after this step:
   - If commit failed (no changes, or git error), follow the **Step fail pattern**.
@@ -186,6 +189,13 @@ fi
 | **Evidence** | Leave with its comment prompt. |
 | **Risk assessment** | Leave with its comment prompt. |
 | **Post-merge** | Leave with its comment prompt. |
+
+Set `BODY_FILE=".supera/pr-template.md"`.
+
+**If a user template IS found:** Write a filled copy to `.supera/pr-template.md` — copy the template, then fill known sections inline:
+- **Description** → replace the section content (after its heading, before the next `##`) with `receipt.summary`.
+- **Checklist** → for each checkbox line, set `[x]` if the corresponding `receipt.verification` key is `pass`, `[ ]` if `fail`; delete rows for `skipped` keys.
+- Leave all other sections (Motivation, Evidence, Risk, Post-merge) as-is — user fills those.
 
 Set `BODY_FILE=".supera/pr-template.md"`.
 
