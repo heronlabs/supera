@@ -1,7 +1,7 @@
 {
   "name": "supera",
   "description": "End-to-end change-shipping toolkit — isolated worktrees, engineer-driven implementation, commit, push, PR creation, and automated CI monitoring through merge + cleanup. Driven by a per-repo .claude/supera.json config.",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": {
     "name": "Lucas Lacerda"
   },

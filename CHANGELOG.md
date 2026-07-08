@@ -1,3 +1,9 @@
+## v2.0.1 (2026-07-08)
+
+### Bug Fixes
+
+* fix: guard rmdir with non-empty slug check to prevent permission prompt (#68) (3f0db374257e56748314ca1e2dee0e46839de4da)
+
 ## v2.0.0 (2026-07-08)
 
 ### ⚠ BREAKING CHANGES
