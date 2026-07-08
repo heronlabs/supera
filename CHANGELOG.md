@@ -1,3 +1,9 @@
+## v2.0.3 (2026-07-08)
+
+### Bug Fixes
+
+* fix(ship): drop rm -rf fallback from worktree cleanup to avoid permission prompt (1a34f195f84ac0f3f13d5c46dfe853fd98025439)
+
 ## v2.0.2 (2026-07-08)
 
 ### Bug Fixes
