@@ -21,11 +21,6 @@
       "type": "string",
       "examples": ["pnpm build", "npm run build", "cargo build"]
     },
-    "debugMode": {
-      "description": "When true, ship pauses after each step to report status and ask for confirmation or error recovery. Can also be activated per-run via SUPERAS_DEBUG=true env var without changing config.",
-      "type": "boolean",
-      "default": false
-    },
     "lintCommand": {
       "description": "Shell command to lint the project.",
       "type": "string",
