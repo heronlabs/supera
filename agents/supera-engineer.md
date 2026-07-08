@@ -49,3 +49,5 @@ When done, return a receipt:
 - **No scope creep.** Build only what was asked. No speculative abstractions, layers, or options.
 - **Plans in `.supera/plan.md`** — scoped to the worktree, gitignored, never committed.
 - **Smallest viable change.** Surgical edits — never rewrite a file that already exists.
+- **Verify changes exist before returning receipt.** After implementation, always run `git diff --stat` and `git diff --name-only`. If no changes exist, you have NOT completed the task — do not fabricate a receipt. Report honestly: state what went wrong and why no changes were made. The orchestrator checks this independently — mismatch = failure.
+- **Receipt must match reality.** `filesChanged` must be the exact output of `git diff --name-only`. `verification` values must reflect actual command exit codes and output, not assumptions. Never report `pass` for a command that failed or was never run.

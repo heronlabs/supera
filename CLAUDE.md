@@ -9,7 +9,7 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 | `.claude-plugin/plugin.json` | Plugin manifest (name, version). CD bumps version on merge to main. |
 | `.claude-plugin/marketplace.json` | Marketplace entry. CD keeps in sync with `plugin.json`. |
 | `.github/PULL_REQUEST_TEMPLATE.md` | PR body template in the plugin root — used as fallback when the user's repo has none. Sections: Description, Motivation, Approach, Checklist, Evidence, Risk, Post-merge. |
-| `skills/` | `start`, `ship`, `pr-watch` — each a `SKILL.md`. `ship` creates worktrees, delegates to `supera-engineer`, commits, pushes, opens the PR, then hands off to `pr-watch`. `pr-watch` monitors CI, fixes failures, merges when green, cleans up. |
+| `skills/` | `start`, `ship`, `pr-watch`, `insights` — each a `SKILL.md`. `ship` creates worktrees, delegates to `supera-engineer`, commits, pushes, opens the PR, then hands off to `pr-watch`. `pr-watch` monitors CI, fixes failures, merges when green, cleans up. `insights` analyzes shipping lifecycle health, detects failure patterns, auto-fixes known issues. |
 | `agents/` | `supera-engineer` — the single implementer. Writes code + tests in worktree, self-verifies, returns receipt. Never commits — the orchestrator owns the git lifecycle. |
 | `schema/` | `supera.schema.json` — per-repo `.claude/supera.json` contract (**source of truth**). `receipt.schema.json` — engineer → orchestrator JSON handoff. |
 | `guidelines/` | `commit-conventions.md` — canonical commit format. Skills and agents reference it; never restate. |
@@ -24,6 +24,14 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 - **CI is the quality gate.** Engineer self-verifies as pre-flight before `/ship` will commit. `pr-watch` re-runs CI, fixes failures, and merges when green.
 - **Schema and skills stay in sync.** A field skills read must exist in the schema.
 - **No state files.** Context derived from worktree + git branch + GitHub PR. `/ship` re-run in worktree = continuation.
+
+## Agent delegation rules
+
+- **Verify agent output before trusting it.** After any subagent (especially `supera-engineer`) returns, run `git diff --stat` to confirm changes were actually made. If the agent reports completion but no diff exists, apply the edits directly — do not re-delegate. The report's #1 friction: agents claiming completion with zero changes.
+- **Confirm worktree context before edits.** Run `pwd` and verify you're in the intended worktree (`.worktrees/<branch>`) before any Edit or Write operation. Editing the main repo instead of the worktree is a silent defect that requires reverts.
+- **Engineer receipt is a claim, not a fact.** Cross-check `receipt.filesChanged` against `git diff --name-only`. An empty or mismatched receipt means the engineer idled — treat as verification failure, loop back.
+- **Pre-flight before push.** Run `CONFIG.buildCommand` and `CONFIG.lintCommand` in the worktree before pushing. Don't rely solely on the engineer's self-reported verification — 27 incidents of buggy code in the report came from pushing without local validation.
+- **Delegation uses the current worktree.** Never pass `isolation: "worktree"` when dispatching an agent that should work in the ship/pr-watch worktree. Ship already owns the worktree — isolation creates a separate one where changes are invisible to the commit step.
 
 ## Releasing
 

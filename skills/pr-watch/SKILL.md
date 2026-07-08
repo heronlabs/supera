@@ -27,10 +27,30 @@ BRANCH=$(gh pr view $PR --json headRefName -q .headRefName)
 BASE=$(gh pr view $PR --json baseRefName -q .baseRefName)
 ```
 
+**Ensure worktree:** pr-watch needs to be in the branch's worktree. Detect and enter:
+```bash
+# Check if already in the right worktree
+WT_DIR=".worktrees"
+if ! git worktree list | grep -qF "$(pwd)" || [ "$(git branch --show-current)" != "$BRANCH" ]; then
+  # Try to find existing worktree for this branch
+  WT_PATH=$(git worktree list | grep -F "[$BRANCH]" | awk '{print $1}')
+  if [ -n "$WT_PATH" ] && [ -d "$WT_PATH" ]; then
+    cd "$WT_PATH"
+  elif [ -d "$WT_DIR/$BRANCH" ]; then
+    cd "$WT_DIR/$BRANCH"
+  else
+    # No worktree found — create one
+    mkdir -p "$WT_DIR"
+    git worktree add "$WT_DIR/$BRANCH" "$BRANCH"
+    cd "$WT_DIR/$BRANCH"
+  fi
+fi
+```
+
 ## 2 — Check CI
 
 ```bash
-gh pr view $PR --json state,mergeable,statusCheckRollup,reviewThreads
+gh pr view $PR --json state,mergeable,statusCheckRollup,reviews,reviewDecision
 ```
 
 Parse `state`:
@@ -64,7 +84,15 @@ Classify:
 | Transient (network, OOM) | Re-run: `gh run rerun $RUN_ID`. |
 | Unknown | Ask user (in `NONINTERACTIVE`, block — post comment, exit). |
 
-Dispatch `supera-engineer` with the failure log. Wait for receipt. If `ok`, commit + push. If `fail` after 3 attempts on the same failure → block (post comment, exit).
+Dispatch `supera-engineer` with the failure log. **Do NOT use `isolation: "worktree"`** — pr-watch already works in the ship's worktree. Use `subagent_type: "supera:supera-engineer"` only. Wait for receipt.
+
+**Verify engineer made changes before committing:**
+```bash
+git diff --stat
+```
+If diff is empty, the engineer idled — re-delegate or fix directly. Do NOT commit empty changes.
+
+If receipt is `ok` and diff is non-empty, pr-watch commits and pushes the fix. If `fail` after 3 attempts on the same failure → block (post comment, exit).
 
 After fix:
 ```bash
@@ -80,12 +108,19 @@ Proceed to step 3.
 
 ## 3 — Review comments
 
+Check for unresolved review threads:
 ```bash
-gh pr view $PR --json reviewThreads -q '[.reviewThreads[] | select(.isResolved==false)]'
+# Fetch PR review comments via API (thread-level resolution)
+gh api "repos/{owner}/{repo}/pulls/$PR/comments" --jq '.[] | select(.in_reply_to_id == null) | {id: .id, path: .path, line: .line, body: .body}' 2>/dev/null || echo "NO_COMMENTS"
+```
+
+Also check the PR's top-level review state:
+```bash
+gh pr view $PR --json reviews --jq '[.reviews[] | select(.state != "APPROVED") | {author: .author.login, state: .state, body: .body}]'
 ```
 
 For each unresolved thread:
-- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer`, push, reply:
+- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` (no worktree isolation). Verify with `git diff --stat` after agent returns. If diff is non-empty, pr-watch commits + pushes the fix, then reply:
   ```bash
   SHA=$(git rev-parse HEAD)
 gh pr review $PR --comment --body "Addressed in $SHA: <summary>"
@@ -100,10 +135,13 @@ ScheduleWakeup(delaySeconds=120, reason="CI after review fixes on PR #<N>", prom
 ## 4 — Sync with base
 
 ```bash
-gh pr view $PR --json mergeable -q .mergeable
+gh pr view $PR --json mergeStateStatus,mergeable -q '{mergeStateStatus: .mergeStateStatus, mergeable: .mergeable}'
 ```
 
-- **`CONFLICTING`** → rebase onto base, delegate conflicts to engineer, push, reschedule:
+- `mergeStateStatus` values: `CLEAN` (no conflicts), `DIRTY` (conflicts), `UNKNOWN`, `BLOCKED`, `BEHIND`, `UNSTABLE`, `HAS_HOOKS`
+- `mergeable` values: `MERGEABLE`, `CONFLICTING`, `UNKNOWN` (older gh versions may only have this field)
+
+- **`DIRTY` or `CONFLICTING`** → rebase onto base, delegate conflicts to engineer, push, reschedule:
   ```bash
   git fetch $REMOTE $BASE
   git rebase $REMOTE/$BASE
@@ -113,17 +151,32 @@ gh pr view $PR --json mergeable -q .mergeable
   ```
   ScheduleWakeup(delaySeconds=120, reason="CI after rebase on PR #<N>", prompt="/pr-watch <N> [flags]")
   ```
+- **`BEHIND`** → branch is behind base. Rebase or merge base in:
+  ```bash
+  git fetch $REMOTE $BASE
+  git rebase $REMOTE/$BASE
+  git push --force-with-lease $REMOTE $BRANCH
+  ```
+  ```
+  ScheduleWakeup(delaySeconds=120, reason="CI after rebase on PR #<N>", prompt="/pr-watch <N> [flags]")
+  ```
 - **`UNKNOWN`** → wait 60 s, reschedule:
   ```
   ScheduleWakeup(delaySeconds=60, reason="mergeable status unknown on PR #<N>", prompt="/pr-watch <N> [flags]")
   ```
+- **`BLOCKED`** → surface to user (in `NONINTERACTIVE`, block — post comment, exit).
 
 ## 5 — Done check
 
 Ready when:
 - Every CI check is `SUCCESS` or `SKIPPED`
 - Zero unresolved review threads
-- `mergeable` is `MERGEABLE`
+- `mergeStateStatus` is `CLEAN` (or `mergeable` is `MERGEABLE`)
+- `reviewDecision` is `APPROVED` (or no review required: empty/null string)
+  - If `reviewDecision` is `REVIEW_REQUIRED` or `CHANGES_REQUESTED` → wait, reschedule:
+    ```
+    ScheduleWakeup(delaySeconds=120, reason="Waiting for review on PR #<N>", prompt="/pr-watch <N> [flags]")
+    ```
 
 If ready, announce: *"PR #<N> is green and all threads resolved — ready to merge."*
 
