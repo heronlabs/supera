@@ -2,8 +2,7 @@ name: 'Continuous Deployment'
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
     inputs:
       semantic:
@@ -12,9 +11,9 @@ on:
         type: choice
         default: patch
         options:
-          - major
-          - minor
-          - patch
+          - 'major'
+          - 'minor'
+          - 'patch'
 
 permissions:
   contents: write
@@ -25,22 +24,15 @@ concurrency:
 
 jobs:
   release:
-    name: 'Tag, sync manifests, and release'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: heronlabs/action-tag-release-build@v5
-        id: version
+      - uses: heronlabs/action-tag-release-build@5
         with:
-          gh_token: ${{ secrets.GITHUB_TOKEN }}
+          gh_token: ${{ github.token }}
           semantic: ${{ inputs.semantic }}
-          bump_claude: 'true'
+          bump_claude: true
           plugin_dir: '.claude-plugin'
-
-      - uses: heronlabs/action-claude-plugin-build@v2
-        with:
-          version: ${{ steps.version.outputs.version }}
