@@ -1,3 +1,9 @@
+## v2.1.0 (2026-07-08)
+
+### Features
+
+* feat: harden ship/pr-watch with verification gates, bug fixes, and insights skill (fd88522ccd380afa86f8df74efc91a3de9581249)
+
 ## v2.0.4 (2026-07-08)
 
 ### Bug Fixes
