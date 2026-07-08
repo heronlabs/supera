@@ -1,3 +1,9 @@
+## v2.0.4 (2026-07-08)
+
+### Bug Fixes
+
+* fix: cd back to repo root after worktree cleanup (#69) (024fd0dc159228a410a6f4e5b081d345acd55888)
+
 ## v2.0.3 (2026-07-08)
 
 ### Bug Fixes
