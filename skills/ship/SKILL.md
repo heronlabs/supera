@@ -40,7 +40,7 @@ pwd
 git fetch $REMOTE $BASE
 # Clean up stale directory from crashed previous run (not a registered worktree)
 if [ -d "$WT_DIR/$SLUG" ] && ! git worktree list | grep -qF "$WT_DIR/$SLUG"; then
-  git worktree remove --force "$WT_DIR/$SLUG" 2>/dev/null || { [ -n "$SLUG" ] && rmdir "$WT_DIR/$SLUG" 2>/dev/null; } || true
+  git worktree remove --force "$WT_DIR/$SLUG" 2>/dev/null || { [ -n "$SLUG" ] && rm -rf "$WT_DIR/$SLUG"; } || true
 fi
 git worktree add $WT_DIR/$SLUG -b $SLUG $REMOTE/$BASE
 cd $WT_DIR/$SLUG
