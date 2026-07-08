@@ -141,12 +141,18 @@ If the user declines: exit cleanly. The PR is green and ready — they can merge
 
 After merge:
 ```bash
+# Save repo root before cleanup (worktree will be removed)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
 # Find and remove worktree
 WT_PATH=$(git worktree list | grep -F "$BRANCH" | awk '{print $1}')
 [ -n "$WT_PATH" ] && git worktree remove "$WT_PATH" --force
 
 # Delete local branch (only if it matches headRefName exactly)
 [ "$BRANCH" != "$BASE" ] && git branch -d "$BRANCH" 2>/dev/null || true
+
+# Cd back to repo root so shell is not in a deleted directory
+cd "$REPO_ROOT"
 ```
 
 Announce: *"PR #<N> merged. Worktree removed, branch `$BRANCH` deleted."*
