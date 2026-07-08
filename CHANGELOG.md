@@ -1,3 +1,9 @@
+## v2.0.2 (2026-07-08)
+
+### Bug Fixes
+
+* fix(ship): use rm -rf instead of rmdir for stale worktree cleanup (dd350c9bd784e2745a1f25e3f2b0dd8a2c329c5a)
+
 ## v2.0.1 (2026-07-08)
 
 ### Bug Fixes
