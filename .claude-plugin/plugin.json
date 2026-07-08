@@ -1,6 +1,6 @@
 {
   "name": "supera",
-  "description": "Repo-agnostic change-shipping superagent: start, ship (full lifecycle — resume, pause, close-out), pr-watch, refactor, and audit (security auditor). One strong engineer agent does code + tests; behaviour is driven by a per-repo .claude/supera.json so the same skills work across pnpm, npm, cargo, Strapi, and more.",
+  "description": "Repo-agnostic change-shipping toolkit for Claude Code — isolated worktree environments, engineer-driven implementation, PR monitoring through merge + cleanup. The PR is the unit of work.",
   "version": "1.0.3",
   "author": {
     "name": "Lucas Lacerda"
@@ -10,8 +10,7 @@
     "workflow",
     "agents",
     "shipping",
-    "ci",
-    "refactor",
+    "worktree",
     "heronlabs"
   ]
 }

@@ -1,15 +1,8 @@
 {
-  "audits": {
-    "actionPinAllowlist": ["heronlabs/*"],
-    "security": true
-  },
-  "pr": {"base": "main", "remote": "origin"},
-  "review": {"consensus": {"voters": 3}},
-  "stack": "pnpm",
-  "verify": {
-    "install": "pnpm install --frozen-lockfile",
-    "lint": "pnpm lint:check",
-    "test": "pnpm validate"
-  },
-  "worktree": {"base": "main", "dir": ".worktrees"}
+  "baseBranch": "main",
+  "buildCommand": "pnpm lint:check",
+  "lintCommand": "pnpm lint:check",
+  "mergeMethod": "squash",
+  "remote": "origin",
+  "testCommands": {}
 }

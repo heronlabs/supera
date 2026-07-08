@@ -4,12 +4,12 @@
     "name": "Lucas Lacerda"
   },
   "metadata": {
-    "description": "Heron Labs superagent for shipping changes across any repository with one consistent pattern"
+    "description": "Heron Labs superagent for shipping changes across any repository — worktree isolation, engineer implementation, PR monitoring through merge"
   },
   "plugins": [
     {
       "name": "supera",
-      "description": "Repo-agnostic change-shipping superagent: start, ship (full lifecycle), pr-watch, refactor, and audit (security auditor), driven by a per-repo .claude/supera.json config.",
+      "description": "Repo-agnostic change-shipping toolkit: start, ship (worktree + implement), pr-watch (monitor → merge → cleanup), driven by a per-repo .claude/supera.json config.",
       "version": "1.0.3",
       "author": {
         "name": "Lucas Lacerda"
@@ -20,8 +20,7 @@
         "workflow",
         "agents",
         "shipping",
-        "ci",
-        "refactor",
+        "worktree",
         "heronlabs"
       ],
       "category": "workflow"

@@ -1,169 +1,50 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/heronlabs/supera/schema/supera.schema.json",
-  "title": "supera per-repo config",
-  "description": "Lives at <repo>/.claude/supera.json. Tells supera's ship/pr-watch/auditors how to operate in THIS repo. Written by /start; safe to hand-edit.",
+  "$id": "https://heronlabs.com/supera.schema.json",
+  "title": "supera configuration",
+  "description": "Per-repo configuration for supera. Written by /start, read by every skill.",
   "type": "object",
-  "required": ["stack", "verify"],
   "additionalProperties": false,
   "properties": {
-    "stack": {
+    "baseBranch": {
+      "description": "Branch worktrees branch off and PRs target.",
       "type": "string",
-      "description": "Primary toolchain, used to pick audit/verify behaviour.",
+      "default": "main"
+    },
+    "remote": {
+      "description": "Git remote name.",
+      "type": "string",
+      "default": "origin"
+    },
+    "buildCommand": {
+      "description": "Shell command to build the project.",
+      "type": "string",
+      "examples": ["pnpm build", "npm run build", "cargo build"]
+    },
+    "lintCommand": {
+      "description": "Shell command to lint the project.",
+      "type": "string",
+      "examples": ["pnpm lint", "npm run lint", "cargo clippy"]
+    },
+    "testCommands": {
+      "description": "Test commands keyed by layer. /start detects what exists — only keys the repo actually has are emitted.",
+      "type": "object",
+      "additionalProperties": {"type": "string"},
+      "default": {},
       "examples": [
-        "pnpm",
-        "npm",
-        "yarn",
-        "cargo",
-        "strapi",
-        "go",
-        "python",
-        "mixed"
+        {
+          "unit": "pnpm test:unit",
+          "integration": "pnpm test:integration",
+          "e2e": "pnpm test:e2e"
+        },
+        {"unit": "cargo test"}
       ]
     },
-    "verify": {
-      "type": "object",
-      "description": "Commands the engineer runs to self-verify before returning, and pr-watch uses to reproduce CI failures. Any field may be omitted if the stack has no such step.",
-      "additionalProperties": false,
-      "properties": {
-        "install": {
-          "type": "string",
-          "description": "Dependency install, e.g. 'pnpm install --frozen-lockfile'."
-        },
-        "build": {
-          "type": "string",
-          "description": "Build / typecheck, e.g. 'pnpm turbo run build'."
-        },
-        "test": {
-          "type": "string",
-          "description": "Unit tests, e.g. 'pnpm turbo run test:unit'."
-        },
-        "lint": {
-          "type": "string",
-          "description": "Lint, e.g. 'pnpm lint:check'."
-        }
-      }
-    },
-    "worktree": {
-      "type": "object",
-      "description": "How ship creates its isolated workspace.",
-      "additionalProperties": false,
-      "properties": {
-        "dir": {
-          "type": "string",
-          "default": ".worktrees",
-          "description": "Directory (relative to repo root) holding feature worktrees."
-        },
-        "base": {
-          "type": "string",
-          "default": "main",
-          "description": "Branch new work is cut from."
-        },
-        "postCreate": {
-          "type": "string",
-          "description": "Command run inside a fresh worktree, usually the install step. Defaults to verify.install if omitted."
-        }
-      }
-    },
-    "pr": {
-      "type": "object",
-      "description": "Pull-request defaults.",
-      "additionalProperties": false,
-      "properties": {
-        "base": {
-          "type": "string",
-          "default": "main",
-          "description": "PR target branch."
-        },
-        "remote": {
-          "type": "string",
-          "default": "origin",
-          "description": "Git remote to push to."
-        },
-        "mergeMethod": {
-          "type": "string",
-          "enum": ["squash", "merge", "rebase"],
-          "default": "squash",
-          "description": "Merge method `/ship finish` uses to merge a green PR (gh pr merge --<method>) before close-out. Default squash."
-        }
-      }
-    },
-    "audits": {
-      "type": "object",
-      "description": "Optional audit agents /audit, /ship, and /pr-watch can run locally.",
-      "additionalProperties": false,
-      "properties": {
-        "security": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable supera-security-auditor (works on npm/pnpm/yarn/cargo/go)."
-        },
-        "actionPinAllowlist": {
-          "type": "array",
-          "items": {"type": "string"},
-          "default": [],
-          "description": "Glob patterns of `owner/repo` whose unpinned GitHub Actions the security auditor must leave FLOATING (not auto-pin); each matched `uses:` ref is reported once as informational, never flagged. Empty (default) = pin everything (current behaviour)."
-        }
-      }
-    },
-    "review": {
-      "type": "object",
-      "description": "Pre-merge review rigor for /pr-watch. CI remains the quality gate; this only adds review-judgment layers on top.",
-      "additionalProperties": false,
-      "properties": {
-        "consensus": {
-          "type": "object",
-          "description": "Merge-readiness vote run once per /pr-watch cycle, after code-review / test-hygiene / audit fixes are addressed. N independent reviewer agents each adversarially hunt for ONE blocking defect; the PR is declared ready only when at least `quorum` of them clear it. Reviewers judge only — any blocking finding is delegated to supera-engineer, never edited by the reviewer.",
-          "additionalProperties": false,
-          "properties": {
-            "voters": {
-              "type": "integer",
-              "default": 1,
-              "minimum": 1,
-              "maximum": 5,
-              "description": "Independent reviewer agents that vote on merge-readiness. 1 (default) disables the gate — single review pass, the original behaviour."
-            },
-            "quorum": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "APPROVE votes required to declare the PR ready. Defaults to a majority of `voters` (floor(voters/2)+1) when omitted."
-            }
-          }
-        },
-        "lenses": {
-          "type": "array",
-          "description": "Extra specialist review lenses fanned out in parallel (via the Workflow primitive) during /pr-watch step 6a, on top of the base code-review pass — each posts findings as PR comments for more signal per cycle. Empty (default) keeps the single code-review pass. These run on the per-PR hot path, so the set is bounded to the listed specialists; keep the list short.",
-          "items": {
-            "type": "string",
-            "enum": ["silent-failures", "type-design", "test-coverage"]
-          },
-          "uniqueItems": true,
-          "default": []
-        }
-      }
-    },
-    "security": {
-      "type": "object",
-      "description": "Guard rails the engineer and /pr-watch enforce on every change.",
-      "additionalProperties": false,
-      "properties": {
-        "denyPaths": {
-          "type": "array",
-          "items": {"type": "string"},
-          "default": [
-            "**/.env",
-            "**/.env.*",
-            "**/*.pem",
-            "**/*.key",
-            "**/*.p12",
-            "**/*.pfx",
-            "**/id_rsa",
-            "**/id_ed25519",
-            "**/*.keystore"
-          ],
-          "description": "Globs the engineer must never create, modify, or stage, and that /pr-watch refuses to let into a PR (secrets, private keys). A changed file matching any glob is a hard merge blocker surfaced to the user. Set to [] to disable. Omit to use the secret/key defaults."
-        }
-      }
+    "mergeMethod": {
+      "description": "PR merge method.",
+      "type": "string",
+      "enum": ["merge", "squash", "rebase"],
+      "default": "squash"
     }
   }
 }
