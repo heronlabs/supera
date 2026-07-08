@@ -42,6 +42,8 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 - `BASE = CONFIG.baseBranch`
 - `WT_DIR = ".worktrees"`
 - `REMOTE = CONFIG.remote`
+- `BUILD_CMD = CONFIG.buildCommand` (may be empty — skip if unset)
+- `LINT_CMD = CONFIG.lintCommand` (may be empty — skip if unset)
 - `DEBUG` is `true` if `CONFIG.debugMode === true` or the `SUPERAS_DEBUG` env var is `"true"` (case-insensitive). If `DEBUG`: announce `"[DEBUG] Debug mode active — will pause after each step for review."`
 
 ## 1 — Parse task
@@ -126,6 +128,24 @@ If `DEBUG` is active after delegation succeeds:
   - Announce: `[DEBUG] Step 4 — Delegate OK — summary: $receipt.summary`
   - Follow the **Step pass pattern** above.
 
+### 4a — Verify engineer changes
+
+**Before committing, independently verify the engineer actually made changes:**
+
+```bash
+# Verify unstaged or staged changes exist
+git diff --stat
+git diff --cached --stat
+```
+
+If both are empty, the engineer reported completion but made zero changes — **treat as verification failure.** Delegate back to engineer with the specific instruction to make changes, or apply edits directly. Do NOT proceed to commit with no diff.
+
+Cross-check `receipt.filesChanged` against `git diff --name-only` and `git diff --cached --name-only`. Files in the receipt that don't appear in the diff (or vice versa) indicate the engineer worked in a different context — flag this.
+
+If `DEBUG` is active:
+  - Announce: `[DEBUG] Step 4a — Verify changes OK — N files: <list>`
+  - If verification fails, follow the **Step fail pattern**.
+
 ## 5 — Commit
 
 If any verification gate is `fail` after 3 loops, stop — surface the failure, leave changes for manual review.
@@ -149,6 +169,15 @@ If `DEBUG` is active after this step:
   - Follow the **Step pass pattern** above.
 
 ## 6 — Push
+
+**Before pushing, run fast pre-flight checks** to catch issues the engineer may have missed:
+
+```bash
+# Run build if CONFIG.buildCommand is set — catch issues before CI
+# Run lint if CONFIG.lintCommand is set
+```
+
+If build or lint fails: surface the failure. Follow the **Step fail pattern** if `DEBUG` is active. Don't push broken code — delegate back to engineer or fix directly.
 
 ```bash
 git push -u $REMOTE $SLUG

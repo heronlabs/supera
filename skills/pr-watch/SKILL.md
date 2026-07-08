@@ -84,7 +84,15 @@ Classify:
 | Transient (network, OOM) | Re-run: `gh run rerun $RUN_ID`. |
 | Unknown | Ask user (in `NONINTERACTIVE`, block — post comment, exit). |
 
-Dispatch `supera-engineer` with the failure log. **Do NOT use `isolation: "worktree"`** — pr-watch already works in the ship's worktree. Use `subagent_type: "supera:supera-engineer"` only. Wait for receipt. If `ok`, pr-watch commits and pushes the fix. If `fail` after 3 attempts on the same failure → block (post comment, exit).
+Dispatch `supera-engineer` with the failure log. **Do NOT use `isolation: "worktree"`** — pr-watch already works in the ship's worktree. Use `subagent_type: "supera:supera-engineer"` only. Wait for receipt.
+
+**Verify engineer made changes before committing:**
+```bash
+git diff --stat
+```
+If diff is empty, the engineer idled — re-delegate or fix directly. Do NOT commit empty changes.
+
+If receipt is `ok` and diff is non-empty, pr-watch commits and pushes the fix. If `fail` after 3 attempts on the same failure → block (post comment, exit).
 
 After fix:
 ```bash
@@ -112,7 +120,7 @@ gh pr view $PR --json reviews --jq '[.reviews[] | select(.state != "APPROVED") |
 ```
 
 For each unresolved thread:
-- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` (no worktree isolation), pr-watch commits + pushes the fix, then reply:
+- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` (no worktree isolation). Verify with `git diff --stat` after agent returns. If diff is non-empty, pr-watch commits + pushes the fix, then reply:
   ```bash
   SHA=$(git rev-parse HEAD)
 gh pr review $PR --comment --body "Addressed in $SHA: <summary>"
