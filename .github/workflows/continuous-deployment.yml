@@ -35,4 +35,3 @@ jobs:
           gh_token: ${{ github.token }}
           semantic: ${{ inputs.semantic }}
           bump_claude: true
-          plugin_dir: '.claude-plugin'
