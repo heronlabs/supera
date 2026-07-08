@@ -6,6 +6,34 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 Implement a task in an isolated git worktree. Delegate all code + tests to `supera-engineer`. On verification pass: commit, push, open PR, hand off to `pr-watch` for CI monitoring. On verification fail after 3 loops: leave changes for manual review.
 
+## Debug mode
+
+When debug mode is active, ship pauses after each major step to show what happened, let you inspect issues, and decide what to do next.
+
+**Activation**: Debug mode is active if either:
+- `CONFIG.debugMode === true` (set in `.claude/supera.json`)
+- The env var `SUPERAS_DEBUG` is set to `"true"` (case-insensitive)
+
+When active, set `DEBUG=true`. Otherwise `DEBUG` is unset/false.
+
+**Step pass pattern — if `DEBUG` is active after a step succeeds:**
+
+1. Announce: `[DEBUG] Step <N> — <name> OK`
+2. Show concise results (key values, file paths, PR number, etc.).
+3. Ask the user: "Continue to next step? (y/n)"
+4. If "n", stop the process and surface where you stopped.
+
+**Step fail pattern — if `DEBUG` is active after a step fails:**
+
+1. Announce: `[DEBUG] Step <N> — <name> FAILED`
+2. Show the error context: what command ran, what output it produced, and what went wrong.
+3. Ask the user: "Retry, skip, or abort? (r/s/a)"
+4. - **retry (r)**: Re-execute the step's commands and re-check.
+   - **skip (s)**: Log a warning, note why, and continue to the next step.
+   - **abort (a)**: Stop the whole process and surface the failure for manual review.
+
+When `DEBUG` is not active, the skill runs exactly as before — no pauses, no prompts.
+
 ## 0 — Load config
 
 Read `.claude/supera.json` at the repo root into `CONFIG`.
@@ -14,12 +42,17 @@ Read `.claude/supera.json` at the repo root into `CONFIG`.
 - `BASE = CONFIG.baseBranch`
 - `WT_DIR = ".worktrees"`
 - `REMOTE = CONFIG.remote`
+- `DEBUG` is `true` if `CONFIG.debugMode === true` or the `SUPERAS_DEBUG` env var is `"true"` (case-insensitive). If `DEBUG`: announce `"[DEBUG] Debug mode active — will pause after each step for review."`
 
 ## 1 — Parse task
 
 `$ARGUMENTS` is a free-text task description. If empty, ask for one.
 
 Derive a branch slug: lowercase, kebab-case, ≤50 chars, prefixed by type with a dash (`feat-`, `fix-`, `docs-`, `refactor-`, `chore-`). Example: `"add payment retry"` → `feat-add-payment-retry`.
+
+If `DEBUG` is active after this step:
+  - Announce: `[DEBUG] Step 1 — Parse task OK — slug: $SLUG`
+  - Follow the **Step pass pattern** above (ask user to continue).
 
 ## 2 — Detect context
 
@@ -33,6 +66,11 @@ pwd
 **Already in a worktree** → continue implementing in place. The worktree is the workspace. Skip step 3.
 
 **Not in a worktree** → proceed to step 3.
+
+If `DEBUG` is active after this step:
+  - Determine `IN_WORKTREE` (yes/no) from the detection result.
+  - Announce: `[DEBUG] Step 2 — Detect context OK — in_worktree: $IN_WORKTREE`
+  - Follow the **Step pass pattern** above.
 
 ## 3 — Create worktree
 
@@ -63,6 +101,10 @@ elif [ -f Cargo.toml ];         then cargo fetch
 fi
 ```
 
+If `DEBUG` is active after this step:
+  - Announce: `[DEBUG] Step 3 — Create worktree OK — path: $WT_DIR/$SLUG`
+  - Follow the **Step pass pattern** above.
+
 ## 4 — Plan and delegate
 
 Announce: *"Delegating to supera-engineer in worktree `$WT_DIR/$SLUG`."*
@@ -72,6 +114,14 @@ Dispatch `supera-engineer` with: the task description, the worktree path, and th
 Wait for its JSON receipt. Parse it:
 - **All verification `pass`** → done. Surface the summary and files changed.
 - **Any `fail`** → delegate back to engineer with the failure output (max 3 loops). If still failing after 3, surface the failure.
+
+If `DEBUG` is active during the delegation loop:
+  - Before each automatic retry, follow the **Step fail pattern** — let the user choose retry, skip, or abort instead of auto-retrying.
+  - If the user chooses "skip", proceed as if verification passed and continue to the next step.
+
+If `DEBUG` is active after delegation succeeds:
+  - Announce: `[DEBUG] Step 4 — Delegate OK — summary: $receipt.summary`
+  - Follow the **Step pass pattern** above.
 
 ## 5 — Commit
 
@@ -90,6 +140,11 @@ git commit -m "$TYPE: $SUMMARY"
 ```
 `$SUMMARY` is `receipt.summary`. Commit follows `guidelines/commit-conventions.md` — no body, no co-author trailer.
 
+If `DEBUG` is active after this step:
+  - If commit failed (no changes, or git error), follow the **Step fail pattern**.
+  - If commit succeeded, announce: `[DEBUG] Step 5 — Commit OK — SHA: $(git rev-parse HEAD)`
+  - Follow the **Step pass pattern** above.
+
 ## 6 — Push
 
 ```bash
@@ -97,6 +152,11 @@ git push -u $REMOTE $SLUG
 ```
 
 If branch already exists on remote (push rejected), surface the error — user resolves.
+
+If `DEBUG` is active after this step:
+  - If push failed, follow the **Step fail pattern** (user may fix remote state before retrying).
+  - If push succeeded, announce: `[DEBUG] Step 6 — Push OK — pushed $SLUG to $REMOTE`
+  - Follow the **Step pass pattern** above.
 
 ## 7 — Create PR
 
@@ -143,11 +203,20 @@ else
 fi
 ```
 
+If `DEBUG` is active after this step:
+  - If PR creation failed (no PR number resolved), follow the **Step fail pattern**.
+  - If PR creation succeeded, announce: `[DEBUG] Step 7 — Create PR OK — #$PR`
+  - Follow the **Step pass pattern** above.
+
 ## 8 — Hand off to pr-watch
 
 Announce: *"PR #$PR created. Handing off to pr-watch — monitoring CI, fixing failures, merging when green."*
 
 Invoke the `pr-watch` skill with `$PR`.
+
+If `DEBUG` is active after this step:
+  - Announce: `[DEBUG] Step 8 — Hand off to pr-watch OK — PR #$PR handed off`
+  - If the handoff failed, follow the **Step fail pattern** (user may want to inspect the PR before retrying).
 
 ## Rules
 
