@@ -1,10 +1,11 @@
 {
   "name": "supera",
-  "description": "Repo-agnostic change-shipping toolkit for Claude Code — isolated worktree environments, engineer-driven implementation, PR monitoring through merge + cleanup. The PR is the unit of work.",
+  "description": "End-to-end change-shipping toolkit — isolated worktrees, engineer-driven implementation, commit, push, PR creation, and automated CI monitoring through merge + cleanup. Driven by a per-repo .claude/supera.json config.",
   "version": "1.0.3",
   "author": {
     "name": "Lucas Lacerda"
   },
+  "repository": "heronlabs/supera",
   "license": "MIT",
   "keywords": [
     "workflow",

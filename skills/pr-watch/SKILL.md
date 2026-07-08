@@ -8,10 +8,10 @@ Monitor an open PR until it is ready to merge. Watch CI, fix failures, address r
 
 ## 0 — Load config
 
-Read `.claude/supera.json` into `CONFIG`. If absent, proceed with sensible git/gh defaults.
-- `MERGE_METHOD = CONFIG.mergeMethod`
-- `BASE = CONFIG.baseBranch`
-- `REMOTE = CONFIG.remote`
+Read `.claude/supera.json` into `CONFIG`. Apply schema defaults for any missing key:
+- `MERGE_METHOD = CONFIG.mergeMethod || "squash"`
+- `BASE = CONFIG.baseBranch || "main"`
+- `REMOTE = CONFIG.remote || "origin"`
 
 ## 1 — Resolve the PR
 
@@ -47,7 +47,13 @@ ScheduleWakeup(delaySeconds=90, reason="CI running on PR #<N>", prompt="/pr-watc
 Identify the failing job:
 ```bash
 RUN_ID=$(gh run list --branch $BRANCH --limit 1 --json databaseId -q '.[0].databaseId')
-gh run view $RUN_ID --log-failed
+[ "$RUN_ID" = "null" ] || [ -z "$RUN_ID" ] && echo "NO_RUNS"
+[ "$RUN_ID" != "null" ] && [ -n "$RUN_ID" ] && gh run view $RUN_ID --log-failed
+```
+
+If `NO_RUNS`: CI hasn't started yet. Reschedule and exit:
+```
+ScheduleWakeup(delaySeconds=120, reason="CI not started yet on PR #<N>", prompt="/pr-watch <N> [flags]")
 ```
 
 Classify:
@@ -55,10 +61,10 @@ Classify:
 |---|---|
 | Build / typecheck / test / lint | Delegate to `supera-engineer` with the log excerpt + CONFIG commands. |
 | Lockfile drift | Run install in worktree, commit updated lockfile. |
-| Transient (network, OOM) | Re-run is acceptable. |
+| Transient (network, OOM) | Re-run: `gh run rerun $RUN_ID`. |
 | Unknown | Ask user (in `NONINTERACTIVE`, block — post comment, exit). |
 
-Dispatch `supera-engineer` with the failure log. Wait for receipt. If `ok`, commit + push. If `fail` after 2 attempts on the same failure → block (post comment, exit).
+Dispatch `supera-engineer` with the failure log. Wait for receipt. If `ok`, commit + push. If `fail` after 3 attempts on the same failure → block (post comment, exit).
 
 After fix:
 ```bash
@@ -81,7 +87,8 @@ gh pr view $PR --json reviewThreads -q '[.reviewThreads[] | select(.isResolved==
 For each unresolved thread:
 - **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer`, push, reply:
   ```bash
-  gh pr review $PR --comment --body "Addressed in <sha>: <summary>"
+  SHA=$(git rev-parse HEAD)
+gh pr review $PR --comment --body "Addressed in $SHA: <summary>"
   ```
 - **Question / design discussion** → surface to user (in `NONINTERACTIVE`, block — post comment, exit).
 
@@ -96,8 +103,20 @@ ScheduleWakeup(delaySeconds=120, reason="CI after review fixes on PR #<N>", prom
 gh pr view $PR --json mergeable -q .mergeable
 ```
 
-- **`CONFLICTING`** → rebase, delegate conflicts to engineer, `git push --force-with-lease $REMOTE $BRANCH`. Reschedule.
-- **`UNKNOWN`** → wait briefly, reschedule.
+- **`CONFLICTING`** → rebase onto base, delegate conflicts to engineer, push, reschedule:
+  ```bash
+  git fetch $REMOTE $BASE
+  git rebase $REMOTE/$BASE
+  # if conflicts: delegate conflicted files to supera-engineer
+  git push --force-with-lease $REMOTE $BRANCH
+  ```
+  ```
+  ScheduleWakeup(delaySeconds=120, reason="CI after rebase on PR #<N>", prompt="/pr-watch <N> [flags]")
+  ```
+- **`UNKNOWN`** → wait 60 s, reschedule:
+  ```
+  ScheduleWakeup(delaySeconds=60, reason="mergeable status unknown on PR #<N>", prompt="/pr-watch <N> [flags]")
+  ```
 
 ## 5 — Done check
 
@@ -110,22 +129,24 @@ If ready, announce: *"PR #<N> is green and all threads resolved — ready to mer
 
 ## 6 — Merge
 
-If the user confirms merge (or `NONINTERACTIVE` is false and all gates green):
+If the user confirms merge and all gates are green:
 
 ```bash
 gh pr merge $PR --$MERGE_METHOD
 ```
+
+If the user declines: exit cleanly. The PR is green and ready — they can merge anytime. In `NONINTERACTIVE` mode: announce ready, post a comment, exit — merging stays the user's decision.
 
 ## 7 — Clean up
 
 After merge:
 ```bash
 # Find and remove worktree
-WT_PATH=$(git worktree list | grep "$BRANCH" | awk '{print $1}')
-[ -n "$WT_PATH" ] && git worktree remove "$WT_PATH" --force 2>/dev/null
+WT_PATH=$(git worktree list | grep -F "$BRANCH" | awk '{print $1}')
+[ -n "$WT_PATH" ] && git worktree remove "$WT_PATH" --force
 
-# Delete local branch
-[ "$BRANCH" != "$BASE" ] && git branch -D "$BRANCH" 2>/dev/null
+# Delete local branch (only if it matches headRefName exactly)
+[ "$BRANCH" != "$BASE" ] && git branch -d "$BRANCH" 2>/dev/null || true
 ```
 
 Announce: *"PR #<N> merged. Worktree removed, branch `$BRANCH` deleted."*

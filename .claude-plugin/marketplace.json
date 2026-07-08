@@ -1,15 +1,16 @@
 {
   "name": "supera-marketplace",
   "owner": {
-    "name": "Lucas Lacerda"
+    "name": "Lucas Lacerda",
+    "github": "lucaslacerdacl"
   },
   "metadata": {
-    "description": "Heron Labs superagent for shipping changes across any repository — worktree isolation, engineer implementation, PR monitoring through merge"
+    "description": "End-to-end change-shipping automation — worktree isolation, engineer implementation, commit, push, PR creation, CI monitoring, merge, and cleanup. Zero manual steps from task to merge."
   },
   "plugins": [
     {
       "name": "supera",
-      "description": "Repo-agnostic change-shipping toolkit: start, ship (worktree + implement), pr-watch (monitor → merge → cleanup), driven by a per-repo .claude/supera.json config.",
+      "description": "End-to-end change-shipping toolkit: start (bootstrap repo config), ship (worktree → implement → commit → push → PR → hand off to pr-watch), pr-watch (monitor CI → fix failures → merge → cleanup). Driven by a per-repo .claude/supera.json config.",
       "version": "1.0.3",
       "author": {
         "name": "Lucas Lacerda"

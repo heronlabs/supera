@@ -24,15 +24,20 @@ Inspect the repo root for marker files. Identify the package manager and default
 
 Ground each command in what the repo actually runs:
 
-1. **CI pipeline** — inspect `.github/workflows/*.yml`. Lift the exact build/test/lint invocations CI runs.
+1. **CI pipeline** — inspect `.github/workflows/*.{yml,yaml}`. Lift the exact build/test/lint invocations CI runs.
 2. **Declared scripts** — no CI, but `package.json` has scripts: read them (build ← `build`/`compile`, test ← `test:unit`/`test`, lint ← `lint:check`/`lint`) and confirm.
-3. **Ask** — no CI, nothing declared: ask the user. Seed with §1's candidates.
+3. **Ask** — no CI, nothing declared: ask the user. Seed with §1's candidates. If no candidates (no lockfile detected), ask directly: "What commands should supera use for build, lint, and test?"
+
+## 3 — Detect base branch
 
 ```bash
-git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main
+# Try origin/HEAD first, fall back to gh CLI, then repo default
+BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+[ -z "$BASE" ] && BASE=$(gh repo view --json defaultBranch -q .defaultBranch 2>/dev/null)
+[ -z "$BASE" ] && BASE="main"
 ```
 
-## 3 — Detect test layers
+## 4 — Detect test layers
 
 Scan `package.json` scripts (or equivalent) for test layering:
 - `test:unit` → `{"unit": "<manager> test:unit"}`
@@ -42,11 +47,14 @@ Scan `package.json` scripts (or equivalent) for test layering:
 
 Only emit keys the repo actually has. Don't invent layers.
 
-For non-JS stacks: `cargo test` → `{"unit": "cargo test"}`, `go test ./...` → `{"unit": "go test ./..."}`.
+For non-JS stacks: inspect for layered test conventions.
+- Cargo: `cargo test` → `{"unit": "cargo test"}`. If `tests/` dir or `#[cfg(test)]` with integration patterns, add `"integration": "cargo test --test '*'"`
+- Go: `go test ./...` → `{"unit": "go test ./..."}`. If `test/integration/` or `_integration_test.go` files, split: `{"unit": "go test $(go list ./... | grep -v integration)", "integration": "go test ./test/integration/..."}`
+- Single test command → `{"unit": "<detected>"}`
 
-## 4 — Confirm and write
+## 5 — Confirm and write
 
-Show the proposed config and ask the user to confirm or tweak. Then write `.claude/supera.json`:
+Show the proposed config. Use `AskUserQuestion` to confirm or let the user tweak values. Then write `.claude/supera.json`:
 
 ```jsonc
 {
@@ -65,7 +73,7 @@ Show the proposed config and ask the user to confirm or tweak. Then write `.clau
 
 Omit any command the repo doesn't have.
 
-## 5 — Write guardrails into CLAUDE.md
+## 6 — Write guardrails into CLAUDE.md
 
 Insert a marker-delimited block into the repo's root `CLAUDE.md`:
 
@@ -84,10 +92,10 @@ Insert a marker-delimited block into the repo's root `CLAUDE.md`:
 - `CLAUDE.md` exists without markers → append after existing content.
 - Markers already present → replace only between markers (idempotent).
 
-## 6 — Report
+## 7 — Report
 
-Print the written path and a compact summary. Tell the user:
-"> `.claude/supera.json` written. Commit it so the config travels with the repo. Run `/ship <task>` to ship."
+Print the written path and a compact summary. If `.claude/` is gitignored, warn the user to un-ignore `.claude/supera.json`. Tell the user:
+"> `.claude/supera.json` written. Ensure it's tracked by git, then commit. Run `/ship <task>` to ship."
 
 ## Rules
 

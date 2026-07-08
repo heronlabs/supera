@@ -10,3 +10,4 @@
 
 # supera plans (per-worktree, never committed)
 .supera/
+.serena/

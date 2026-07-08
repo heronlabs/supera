@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://heronlabs.com/supera.schema.json",
+  "$id": "urn:supera:config",
   "title": "supera configuration",
   "description": "Per-repo configuration for supera. Written by /start, read by every skill.",
   "type": "object",
@@ -27,8 +27,9 @@
       "examples": ["pnpm lint", "npm run lint", "cargo clippy"]
     },
     "testCommands": {
-      "description": "Test commands keyed by layer. /start detects what exists — only keys the repo actually has are emitted.",
+      "description": "Test commands keyed by layer (e.g., unit, integration, e2e). /start detects what exists — only keys the repo actually has are emitted. Unknown keys are ignored by skills.",
       "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*$" },
       "additionalProperties": {"type": "string"},
       "default": {},
       "examples": [
