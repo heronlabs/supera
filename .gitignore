@@ -1,13 +1,15 @@
 # OS
 .DS_Store
 
-# editor
+# Editor
 .idea/
 .vscode/
+.claude/settings.local.json
 
-# transient worktrees
+# Dependencies
+node_modules/
+
+# Supera
 .worktrees/
-
-# supera plans (per-worktree, never committed)
 .supera/
 .serena/
