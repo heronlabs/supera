@@ -74,6 +74,8 @@ Announce: *"Delegating to supera-engineer in worktree `$WT_DIR/$SLUG`."*
 
 Dispatch `supera-engineer` with: the task description, the worktree path, and the path to `.claude/supera.json`. **Do NOT use `isolation: "worktree"`** — ship already owns the worktree. Use `subagent_type: "supera:supera-engineer"` only; the engineer works in the current worktree directory. The engineer writes a plan to `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
 
+**SendMessage guard:** Before the subagent sends structured messages back to the orchestrator (e.g., its JSON receipt), it must load the SendMessage tool schema into its prompt by calling `ToolSearch` with `query: "select: SendMessage"`. Without this, typed parameters may be rejected with `InputValidationError`.
+
 Wait for its JSON receipt. Parse it:
 - **All verification `pass`** → done. Surface the summary and files changed.
 - **Any `fail`** → delegate back to engineer with the failure output (max 3 loops). If still failing after 3, surface the failure.

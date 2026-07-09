@@ -86,6 +86,8 @@ Classify:
 
 Dispatch `supera-engineer` with the failure log. **Do NOT use `isolation: "worktree"`** — pr-watch already works in the ship's worktree. Use `subagent_type: "supera:supera-engineer"` only. Wait for receipt.
 
+**SendMessage guard:** Before the subagent sends structured messages back to the orchestrator (e.g., its JSON receipt), it must load the SendMessage tool schema into its prompt by calling `ToolSearch` with `query: "select: SendMessage"`. Without this, typed parameters may be rejected with `InputValidationError`.
+
 **Verify engineer made changes before committing:**
 ```bash
 git diff --stat
@@ -120,7 +122,7 @@ gh pr view $PR --json reviews --jq '[.reviews[] | select(.state != "APPROVED") |
 ```
 
 For each unresolved thread:
-- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` (no worktree isolation). Verify with `git diff --stat` after agent returns. If diff is non-empty, pr-watch commits + pushes the fix, then reply:
+- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` (no worktree isolation). **SendMessage guard:** before the subagent communicates its receipt, instruct it to load SendMessage's schema via `ToolSearch` with `query: "select: SendMessage"`. Verify with `git diff --stat` after agent returns. If diff is non-empty, pr-watch commits + pushes the fix, then reply:
   ```bash
   SHA=$(git rev-parse HEAD)
 gh pr review $PR --comment --body "Addressed in $SHA: <summary>"
@@ -194,8 +196,8 @@ If the user declines: exit cleanly. The PR is green and ready — they can merge
 
 After merge:
 ```bash
-# Save repo root before cleanup (worktree will be removed)
-REPO_ROOT=$(git rev-parse --show-toplevel)
+# Save repo root from git common directory (resolves to main repo, not worktree)
+REPO_ROOT=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
 
 # Find and remove worktree
 WT_PATH=$(git worktree list | grep -F "$BRANCH" | awk '{print $1}')
