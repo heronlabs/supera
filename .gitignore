@@ -11,3 +11,4 @@
 # supera plans (per-worktree, never committed)
 .supera/
 .serena/
+node_modules
