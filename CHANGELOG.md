@@ -1,3 +1,9 @@
+## v2.1.1 (2026-07-09)
+
+### Bug Fixes
+
+* fix: SendMessage guard and worktree cleanup cd fix (#71) (1d362ecdde90fb3afc1b2e91495db6ba4497e0b0)
+
 ## v2.1.0 (2026-07-08)
 
 ### Features

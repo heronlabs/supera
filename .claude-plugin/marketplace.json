@@ -11,7 +11,7 @@
     {
       "name": "supera",
       "description": "End-to-end change-shipping toolkit: start (bootstrap repo config), ship (worktree → implement → commit → push → PR → hand off to pr-watch), pr-watch (monitor CI → fix failures → merge → cleanup). Driven by a per-repo .claude/supera.json config.",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "author": {
         "name": "Lucas Lacerda"
       },
