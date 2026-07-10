@@ -1,3 +1,9 @@
+## v2.1.3 (2026-07-10)
+
+### Bug Fixes
+
+* fix: repair supera.json config and README badge (#75) (6eee0d4939a4f94de244dcf837dc427034a71718)
+
 ## v2.1.2 (2026-07-09)
 
 
