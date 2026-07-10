@@ -175,5 +175,5 @@ guidelines/
 [plugin-url]: https://claude.com/claude-code
 [license-badge]: https://img.shields.io/badge/License-MIT-blue.svg
 [license-url]: ./LICENSE
-[version-badge]: https://img.shields.io/badge/version-1.0.3-44cc11
+[version-badge]: https://img.shields.io/github/v/release/heronlabs/supera
 [releases-url]: https://github.com/heronlabs/supera/releases
