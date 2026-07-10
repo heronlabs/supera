@@ -1,8 +1,6 @@
 {
   "baseBranch": "main",
-  "buildCommand": "pnpm lint:check",
-  "lintCommand": "pnpm lint:check",
-  "mergeMethod": "squash",
   "remote": "origin",
-  "testCommands": {}
+  "testCommands": {},
+  "mergeMethod": "squash"
 }
