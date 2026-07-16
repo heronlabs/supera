@@ -5,23 +5,24 @@
     "github": "lucaslacerdacl"
   },
   "metadata": {
-    "description": "End-to-end change-shipping automation — worktree isolation, engineer implementation, commit, push, PR creation, CI monitoring, merge, and cleanup. Zero manual steps from task to merge."
+    "description": "Autonomous AI agent for shipping code — implements changes end-to-end using OpenAI tool-calling. TypeScript runtime with structured tool execution."
   },
   "plugins": [
     {
       "name": "supera",
-      "description": "End-to-end change-shipping toolkit: start (bootstrap repo config), ship (worktree → implement → commit → push → PR → hand off to pr-watch), pr-watch (monitor CI → fix failures → merge → cleanup). Driven by a per-repo .claude/supera.json config.",
-      "version": "2.1.3",
+      "description": "Autonomous AI agent for shipping code — implements changes end-to-end using OpenAI tool-calling. TypeScript runtime with structured tool execution. Worktrees, implementation, verification, commit, push, PR lifecycle.",
+      "version": "3.0.0",
       "author": {
         "name": "Lucas Lacerda"
       },
       "source": "./",
       "license": "MIT",
       "keywords": [
-        "workflow",
-        "agents",
+        "ai-agent",
+        "openai",
+        "tool-calling",
         "shipping",
-        "worktree",
+        "code-generation",
         "heronlabs"
       ],
       "category": "workflow"
