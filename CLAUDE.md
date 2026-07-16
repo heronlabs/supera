@@ -10,7 +10,7 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 | `.claude-plugin/marketplace.json` | Marketplace entry. CD keeps in sync with `plugin.json`. |
 | `.github/PULL_REQUEST_TEMPLATE.md` | PR body template in the plugin root — used as fallback when the user's repo has none. Sections: Description, Motivation, Approach, Checklist, Evidence, Risk, Post-merge. |
 | `skills/` | `start`, `ship`, `pr-watch`, `insights` — each a `SKILL.md`. `ship` creates worktrees, delegates to `supera-engineer`, commits, pushes, opens the PR, then hands off to `pr-watch`. `pr-watch` monitors CI, fixes failures, merges when green, cleans up. `insights` analyzes shipping lifecycle health, detects failure patterns, auto-fixes known issues. |
-| `agents/` | `supera-engineer` — the single implementer. Writes code + tests in worktree, self-verifies, returns receipt. Never commits — the orchestrator owns the git lifecycle. |
+| `agents/` | `supera-engineer` — the canonical implementer (Claude-based). Writes code + tests in worktree, self-verifies, returns receipt. `supera-openai-engineer` — autonomous alternative using the official Node.js `openai` library. Same process, same receipt format. Both never commit — the orchestrator owns the git lifecycle. |
 | `schema/` | `supera.schema.json` — per-repo `.claude/supera.json` contract (**source of truth**). `receipt.schema.json` — engineer → orchestrator JSON handoff. |
 | `guidelines/` | `commit-conventions.md` — canonical commit format. Skills and agents reference it; never restate. |
 
