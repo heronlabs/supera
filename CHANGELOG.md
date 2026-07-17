@@ -1,3 +1,9 @@
+## v2.1.4 (2026-07-17)
+
+### Bug Fixes
+
+* fix: update action-tag-release-build to v6 in CI workflow and documentation (60a96d05c89519ad91dbb53274d2abe151b8adc4)
+
 ## v2.1.3 (2026-07-10)
 
 ### Bug Fixes
