@@ -1,0 +1,31 @@
+{
+  "name": "supera",
+  "version": "3.0.0",
+  "description": "Autonomous AI agent for shipping code — worktrees, implementation, verification, PR lifecycle. Runs on OpenAI with structured tool calling.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "supera": "dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "schema/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "openai": "^4.78.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

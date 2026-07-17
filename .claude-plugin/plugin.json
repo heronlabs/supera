@@ -1,17 +1,19 @@
 {
   "name": "supera",
-  "description": "End-to-end change-shipping toolkit — isolated worktrees, engineer-driven implementation, commit, push, PR creation, and automated CI monitoring through merge + cleanup. Driven by a per-repo .claude/supera.json config.",
-  "version": "2.1.3",
+  "description": "Autonomous AI agent for shipping code — implements changes end-to-end using OpenAI tool-calling. Worktrees, implementation, verification, commit, push, PR lifecycle. TypeScript runtime with structured tool execution.",
+  "version": "3.0.0",
   "author": {
     "name": "Lucas Lacerda"
   },
   "repository": "heronlabs/supera",
   "license": "MIT",
   "keywords": [
-    "workflow",
-    "agents",
+    "ai-agent",
+    "openai",
+    "tool-calling",
     "shipping",
-    "worktree",
+    "workflow",
+    "code-generation",
     "heronlabs"
   ]
 }
