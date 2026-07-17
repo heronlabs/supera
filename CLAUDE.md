@@ -35,7 +35,7 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 
 ## Releasing
 
-CD runs on merge to `main`: `heronlabs/action-tag-release-build@v5` bumps version from Conventional Commits, syncs `plugin.json` + `marketplace.json` (and creates `package.json` if absent), tags, releases. Consumers pick up on `/plugin update`.
+CD runs on merge to `main`: `heronlabs/action-tag-release-build@v6` bumps version from Conventional Commits, syncs `plugin.json` + `marketplace.json` (and creates `package.json` if absent), tags, releases. Consumers pick up on `/plugin update`.
 
 1. Edit skill/agent/schema, open PR.
 2. **Don't hand-bump `version`** — CD owns it. Bump inferred from merge commit: `feat:` → minor, breaking change (`!`) → major, else patch.
