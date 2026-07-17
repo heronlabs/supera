@@ -3,17 +3,6 @@ import { NodeFsService } from "../../infrastructure/filesystem/node-fs-service.j
 import { ChildProcessService } from "../../infrastructure/terminal/child-process-service.js";
 import { GitService } from "../../infrastructure/git/git-service.js";
 
-/**
- * Builds the ToolRegistration array for the agent.
- *
- * Each tool maps a file system, shell, or git operation to an OpenAI
- * function definition. Handlers wrap the operation in try/catch and
- * return deterministic error strings so the model can self-correct.
- *
- * Tool argument parsing is intentionally simple — no Zod here.
- * This matches the reference repo's pattern of lightweight type guards.
- */
-
 function error(tool: string, message: string): string {
   return `ERROR ${tool}: ${message}`;
 }

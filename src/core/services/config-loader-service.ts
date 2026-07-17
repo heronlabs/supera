@@ -7,13 +7,6 @@ import { success, failure } from "../types/result.js";
 
 const CONFIG_FILE = ".claude/supera.json";
 
-/**
- * Loads and validates .claude/supera.json from the repo root.
- *
- * Walks up from startDir until it finds the config file.
- * Merges user values with sensible defaults.
- */
-
 export class ConfigLoaderService {
   load(startDir?: string): Result<SuperaConfig> {
     const dir = startDir ?? process.cwd();

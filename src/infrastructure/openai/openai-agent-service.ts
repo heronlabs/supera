@@ -16,17 +16,6 @@ export interface AgentRunConfig {
   readonly maxIterations: number;
 }
 
-/**
- * Runs the agent loop via OpenAI's chat completions API.
- *
- * Implements the AgentRunner interface. This is the "brain" —
- * it sends the system prompt + task to the model, executes tool calls,
- * feeds observations back, and parses the receipt when the model finishes.
- *
- * Tool handlers MUST be synchronous and return deterministic strings.
- * Errors are returned as strings (not thrown) so the model can self-correct.
- */
-
 interface ToolCallDelta {
   id: string;
   type: "function";
@@ -76,7 +65,6 @@ export class OpenAIAgentService {
 
         const msg = choice.message;
 
-        // No tool calls → model produced final content. Try to parse receipt.
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
           messages.push({
             role: "assistant",
@@ -87,11 +75,9 @@ export class OpenAIAgentService {
           if (receipt) {
             return success(receipt);
           }
-          // No receipt yet — model may still be reasoning. Continue loop.
           continue;
         }
 
-        // Push assistant message with tool calls
         messages.push({
           role: "assistant",
           content: msg.content ?? null,
@@ -107,7 +93,6 @@ export class OpenAIAgentService {
           ),
         });
 
-        // Execute each tool call, push results
         for (const tc of msg.tool_calls) {
           const handler = handlerMap.get(tc.function.name);
           let result: string;
@@ -151,10 +136,6 @@ export class OpenAIAgentService {
   }
 }
 
-/**
- * Try to extract a JSON receipt from the model's final content.
- * Supports both plain JSON and ```json ... ``` code blocks.
- */
 function tryParseReceipt(content: string | null): Receipt | null {
   if (!content) return null;
 
@@ -170,7 +151,6 @@ function tryParseReceipt(content: string | null): Receipt | null {
   }
 }
 
-/** Minimal type guard for Receipt shape. */
 function isReceipt(value: unknown): value is Receipt {
   if (typeof value !== "object" || value === null) return false;
   const r = value as Record<string, unknown>;

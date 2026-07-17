@@ -14,13 +14,6 @@ import { GhService } from "./infrastructure/gh/gh-service.js";
 import { NodeFsService } from "./infrastructure/filesystem/node-fs-service.js";
 import { OpenAIAgentService } from "./infrastructure/openai/openai-agent-service.js";
 
-// ──── Composition root ─────────────────────────────────────────────────
-
-/**
- * Wires the full object graph via manual constructor injection.
- * Follows the exact pattern from action-tag-release-build's CommandsFactory.
- */
-
 export class CommandsFactory {
   static makeShip(): ShipCommand {
     const cwd = process.cwd();
@@ -33,7 +26,6 @@ export class CommandsFactory {
     const worktree = new WorktreeService(git, shell);
     const promptService = new SystemPromptService();
 
-    // AgentRunner — swappable backend (OpenAI today, Claude tomorrow)
     const apiKey = process.env["OPENAI_API_KEY"];
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY environment variable is required");
@@ -57,8 +49,6 @@ export class CommandsFactory {
     return new StartCommand();
   }
 }
-
-// ──── CLI entry ────────────────────────────────────────────────────────
 
 const USAGE = [
   "supera — Autonomous AI agent for shipping code.",
@@ -121,7 +111,6 @@ async function main(): Promise<void> {
           `[supera] Verification: ${JSON.stringify(outputs.receipt.verification)}\n`,
         );
 
-        // Print receipt to stdout for orchestrator consumption
         process.stdout.write(
           `${JSON.stringify(outputs.receipt, null, 2)}\n`,
         );

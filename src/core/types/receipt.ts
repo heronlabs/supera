@@ -1,8 +1,3 @@
-/**
- * Handoff from the AI agent back to the orchestrator.
- * Schema: schema/receipt.schema.json
- */
-
 export type VerificationValue = "pass" | "fail" | "skipped";
 
 export interface Receipt {
@@ -12,7 +7,6 @@ export interface Receipt {
   readonly notes?: string;
 }
 
-/** Check whether all non-skipped verification gates passed. */
 export function receiptAllPass(receipt: Receipt): boolean {
   return Object.values(receipt.verification).every(
     (v) => v === "pass" || v === "skipped",

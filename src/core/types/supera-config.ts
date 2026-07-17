@@ -1,8 +1,3 @@
-/**
- * Per-repo configuration loaded from .claude/supera.json.
- * Schema is defined in schema/supera.schema.json — this type mirrors it.
- */
-
 export interface SuperaConfig {
   readonly baseBranch: string;
   readonly remote: string;

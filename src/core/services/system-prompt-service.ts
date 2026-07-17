@@ -1,13 +1,3 @@
-/**
- * Builds the system prompt that defines the supera agent's behavior.
- *
- * This replaces the old markdown-based agent definitions (supera-engineer.md,
- * ship/SKILL.md, etc.) with a single compiled prompt. The prompt encodes
- * the full workflow: orient → plan → implement → verify → fix → receipt.
- *
- * Injected into every agent run as the first message.
- */
-
 export class SystemPromptService {
   build(): string {
     return `You are supera — an autonomous AI agent that ships code end-to-end.

@@ -11,13 +11,6 @@ import { success, failure } from "../../core/types/result.js";
 
 const REPO_ROOT: string = process.cwd();
 
-/**
- * Node.js filesystem adapter.
- *
- * Implements FileSystem interface. All paths are validated against
- * the repo root to prevent path traversal.
- */
-
 export class NodeFsService {
   readFile(path: string, offset?: number, limit?: number): Result<string> {
     try {
@@ -127,8 +120,6 @@ export class NodeFsService {
         return failure(new Error(`Path not found: ${path ?? "."}`));
       }
 
-      // Delegate to grep via the execSync — this is a filesystem concern,
-      // not a shell concern, because grep reads from disk.
       const { execSync } = require("node:child_process") as {
         execSync: typeof import("node:child_process").execSync;
       };
@@ -148,12 +139,11 @@ export class NodeFsService {
       );
     } catch (error: unknown) {
       const execErr = error as { status?: number };
-      if (execErr.status === 1) return success([]); // grep returns 1 on no matches
+      if (execErr.status === 1) return success([]);
       return failure(error);
     }
   }
 
-  /** Resolve a path, rejecting traversal outside the repo root. */
   private resolve(rawPath: string): string {
     const resolved = resolve(rawPath);
     if (!resolved.startsWith(REPO_ROOT)) {

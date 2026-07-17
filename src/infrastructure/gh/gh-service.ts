@@ -4,13 +4,6 @@ import type { Result } from "../../core/types/result.js";
 import { success, failure } from "../../core/types/result.js";
 import { ChildProcessService } from "../terminal/child-process-service.js";
 
-/**
- * GitHub CLI operations.
- *
- * Thin wrapper around `gh`. Follows the pattern from
- * action-tag-release-build's GhService.
- */
-
 export interface PullRequestInfo {
   readonly number: number;
   readonly url: string;
@@ -30,7 +23,6 @@ export class GhService {
     this.shell = shell;
   }
 
-  /** Create a pull request. Returns the PR URL. */
   createPr(params: {
     readonly base: string;
     readonly head: string;
@@ -46,7 +38,6 @@ export class GhService {
 
     const result = this.shell.exec(cmd);
     if (!result.ok) {
-      // Try fallback — PR might already exist
       const existing = this.shell.exec(
         `gh pr list --head "${params.head}" --json url -q '.[0].url'`,
       );
@@ -63,7 +54,6 @@ export class GhService {
     return success(result.data.stdout.trim());
   }
 
-  /** View PR details as JSON. */
   viewPr(prNumber: number): Result<PullRequestInfo> {
     const result = this.shell.exec(
       `gh pr view ${prNumber} --json number,url,headRefName,baseRefName,state,mergeable,reviewDecision`,
@@ -82,7 +72,6 @@ export class GhService {
     }
   }
 
-  /** Merge a PR. */
   mergePr(prNumber: number, method: "merge" | "squash" | "rebase"): Result<void> {
     const result = this.shell.exec(
       `gh pr merge ${prNumber} --${method}`,
@@ -94,7 +83,6 @@ export class GhService {
     return success(undefined);
   }
 
-  /** Post a comment on a PR. */
   commentOnPr(prNumber: number, body: string): Result<void> {
     const tmpFile = join(this.cwd, ".supera", ".pr-comment.tmp.md");
     try {
@@ -115,7 +103,6 @@ export class GhService {
     return success(undefined);
   }
 
-  /** Get PR checks status. */
   checksStatus(prNumber: number): Result<string> {
     const result = this.shell.exec(
       `gh pr view ${prNumber} --json statusCheckRollup -q '.statusCheckRollup[] | "\(.name): \(.conclusion // "PENDING")"'`,

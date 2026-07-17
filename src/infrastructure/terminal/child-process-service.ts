@@ -11,15 +11,6 @@ export interface ShellOutput {
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 600_000;
 
-/**
- * Executes shell commands via Node's child_process.execSync.
- *
- * Follows the exact pattern from action-tag-release-build:
- * - exec() returns { ok, data } | { ok, error }
- * - execChain() returns a chainable result for fluent sequences
- * - Never throws — all errors are captured in the Result type
- */
-
 type ExecChainResult = ChainResult | FailedChainResult;
 
 export interface ChainResult {
@@ -97,7 +88,6 @@ export class ChildProcessService {
     }
   }
 
-  /** Check if a command exists on PATH. */
   hasCommand(cmd: string): boolean {
     const result = this.exec(`which ${cmd}`);
     return result.ok && result.data.exitCode === 0;

@@ -1,15 +1,8 @@
-import type { Result, VoidResult } from "../types/result.js";
+import type { Result } from "../types/result.js";
 import type { SuperaConfig } from "../types/supera-config.js";
 import type { VerificationValue } from "../types/receipt.js";
-import { success, failure, ok } from "../types/result.js";
+import { success, failure } from "../types/result.js";
 import { ChildProcessService } from "../../infrastructure/terminal/child-process-service.js";
-
-/**
- * Runs the verification gates: build, lint, and test layers.
- *
- * Reads commands from SuperaConfig. Each gate that is configured
- * gets a 'pass' or 'fail'. Unconfigured gates are 'skipped'.
- */
 
 export interface VerificationResult {
   readonly allPassed: boolean;
@@ -25,12 +18,10 @@ export class VerificationService {
     this.cwd = cwd ?? process.cwd();
   }
 
-  /** Run all configured verification gates. */
   verify(config: SuperaConfig): Result<VerificationResult> {
     const gates: Record<string, VerificationValue> = {};
     let allPassed = true;
 
-    // Build
     if (config.buildCommand) {
       const result = this.exec(config.buildCommand);
       if (!result.ok) {
@@ -42,7 +33,6 @@ export class VerificationService {
       }
     }
 
-    // Lint
     if (config.lintCommand) {
       const result = this.exec(config.lintCommand);
       if (!result.ok) {
@@ -54,7 +44,6 @@ export class VerificationService {
       }
     }
 
-    // Test layers (unit, integration, e2e, ...)
     const testLayers = Object.keys(config.testCommands);
     for (const layer of testLayers) {
       const cmd = config.testCommands[layer];
@@ -72,7 +61,6 @@ export class VerificationService {
       }
     }
 
-    // If no gates at all, report empty
     if (Object.keys(gates).length === 0) {
       gates["build"] = "skipped";
       gates["lint"] = "skipped";
