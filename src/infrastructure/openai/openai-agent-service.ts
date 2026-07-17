@@ -6,11 +6,15 @@ import type {
 import type { Result } from "../../core/types/result.js";
 import type { Receipt } from "../../core/types/receipt.js";
 import type { ToolRegistration } from "../../core/types/tool-definition.js";
-import type {
-  AgentRunner,
-  AgentRunnerConfig,
-} from "../../core/interfaces/agent-runner.js";
 import { success, failure } from "../../core/types/result.js";
+
+export interface AgentRunConfig {
+  readonly systemPrompt: string;
+  readonly task: string;
+  readonly tools: readonly ToolRegistration[];
+  readonly model: string;
+  readonly maxIterations: number;
+}
 
 /**
  * Runs the agent loop via OpenAI's chat completions API.
@@ -32,14 +36,14 @@ interface ToolCallDelta {
   };
 }
 
-export class OpenAIAgentService implements AgentRunner {
+export class OpenAIAgentService {
   private readonly apiKey: string;
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
   }
 
-  async run(config: AgentRunnerConfig): Promise<Result<Receipt>> {
+  async run(config: AgentRunConfig): Promise<Result<Receipt>> {
     const openai = new OpenAI({ apiKey: this.apiKey });
 
     const tools: ChatCompletionTool[] = config.tools.map((t) => t.definition);

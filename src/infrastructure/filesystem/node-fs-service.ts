@@ -7,7 +7,6 @@ import {
 } from "node:fs";
 import { resolve, relative } from "node:path";
 import type { Result } from "../../core/types/result.js";
-import type { FileSystem } from "../../core/interfaces/file-system.js";
 import { success, failure } from "../../core/types/result.js";
 
 const REPO_ROOT: string = process.cwd();
@@ -19,7 +18,7 @@ const REPO_ROOT: string = process.cwd();
  * the repo root to prevent path traversal.
  */
 
-export class NodeFsService implements FileSystem {
+export class NodeFsService {
   readFile(path: string, offset?: number, limit?: number): Result<string> {
     try {
       const safe = this.resolve(path);

@@ -1,6 +1,6 @@
 import type { ToolRegistration, ToolArgs } from "../types/tool-definition.js";
-import type { FileSystem } from "../interfaces/file-system.js";
-import type { Shell } from "../interfaces/shell.js";
+import { NodeFsService } from "../../infrastructure/filesystem/node-fs-service.js";
+import { ChildProcessService } from "../../infrastructure/terminal/child-process-service.js";
 import { GitService } from "../../infrastructure/git/git-service.js";
 
 /**
@@ -20,8 +20,8 @@ function error(tool: string, message: string): string {
 
 export class ToolBuilder {
   static build(
-    fs: FileSystem,
-    shell: Shell,
+    fs: NodeFsService,
+    shell: ChildProcessService,
     git: GitService,
   ): readonly ToolRegistration[] {
     return [

@@ -2,7 +2,7 @@ import type { Result } from "../types/result.js";
 import type { SuperaConfig } from "../types/supera-config.js";
 import type { Receipt } from "../types/receipt.js";
 import type { ToolRegistration } from "../types/tool-definition.js";
-import type { AgentRunner } from "../interfaces/agent-runner.js";
+import type { OpenAIAgentService } from "../../infrastructure/openai/openai-agent-service.js";
 import { success, failure } from "../types/result.js";
 import { receiptAllPass } from "../types/receipt.js";
 import { GitService } from "../../infrastructure/git/git-service.js";
@@ -41,7 +41,7 @@ export class ShipOrchestratorService {
   private readonly gh: GhService;
   private readonly shell: ChildProcessService;
   private readonly fs: NodeFsService;
-  private readonly agent: AgentRunner;
+  private readonly agent: OpenAIAgentService;
   private readonly worktree: WorktreeService;
   private readonly promptService: SystemPromptService;
 
@@ -50,7 +50,7 @@ export class ShipOrchestratorService {
     gh: GhService,
     shell: ChildProcessService,
     fs: NodeFsService,
-    agent: AgentRunner,
+    agent: OpenAIAgentService,
     worktree: WorktreeService,
     promptService: SystemPromptService,
   ) {

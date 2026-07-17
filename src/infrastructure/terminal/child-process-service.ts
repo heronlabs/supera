@@ -1,7 +1,12 @@
 import { execSync } from "node:child_process";
-import type { Result, VoidResult } from "../../core/types/result.js";
-import type { Shell, ShellOutput } from "../../core/interfaces/shell.js";
-import { success, failure, ok } from "../../core/types/result.js";
+import type { Result } from "../../core/types/result.js";
+import { success, failure } from "../../core/types/result.js";
+
+export interface ShellOutput {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+}
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 600_000;
@@ -29,7 +34,7 @@ export interface FailedChainResult {
   execChain(_nextCommand: string): ExecChainResult;
 }
 
-export class ChildProcessService implements Shell {
+export class ChildProcessService {
   private readonly cwd: string;
 
   constructor(cwd: string) {
