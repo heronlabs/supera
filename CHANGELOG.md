@@ -1,3 +1,9 @@
+## v2.1.5 (2026-08-22)
+
+### Miscellaneous Chores
+
+* other: Refactor supera-engineer process and update receipt schema (715c17ec6a304e5a8908ea44ed4781d2799f77bd)
+
 ## v2.1.4 (2026-07-17)
 
 ### Bug Fixes
