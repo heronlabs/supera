@@ -30,8 +30,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: heronlabs/action-tag-release-build@v6
+      - uses: heronlabs/action-tag-release-build@v7
         with:
-          gh_token: ${{ github.token }}
+          ghToken: ${{ github.token }}
           semantic: ${{ inputs.semantic }}
-          bump_claude: true
+          bumpClaude: true

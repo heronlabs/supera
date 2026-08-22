@@ -4,16 +4,15 @@
 [![License: MIT][license-badge]][license-url]
 [![Version][version-badge]][releases-url]
 
-> **Claude Code plugin** for end-to-end change shipping — isolated worktrees, engineer-driven implementation, commit, push, PR creation, and automated CI monitoring through merge + cleanup. Zero manual steps from task to merge.
+> **Claude Code plugin** for end-to-end change shipping — isolated worktrees, engineer-driven implementation, commit, push, PR creation, and automated CI monitoring until green. Merging stays manual. Zero manual steps from task to a green PR.
 
-`/ship` creates a git worktree, delegates to `supera-engineer` (code + tests + self-verify), commits, pushes, opens the PR, and hands off to `/pr-watch`. `/pr-watch` monitors CI, fixes failures, addresses review comments, merges when green, then tears down the worktree. No state files, no labels, no bot markers — context comes from git + GitHub.
+`/ship` creates a git worktree, delegates to `supera-engineer` (code + tests + self-verify), commits, pushes, opens the PR, and hands off to `/pr-watch`. `/pr-watch` monitors CI, fixes failures, addresses review comments, and reports when the PR is green and ready — it **never merges**. After you merge, it tears down the worktree. No state files, no labels, no bot markers — context comes from git + GitHub.
 
 ## Contents
 
 - [Install](#install)
 - [Quickstart](#quickstart)
 - [Commands](#commands)
-  - [/start](#start)
   - [/ship](#ship)
   - [/pr-watch](#pr-watch)
 - [Configuration](#configuration)
@@ -35,16 +34,11 @@
 
 ```text
 cd your-repo
-/start                                               # once per repo — detects stack, writes config
 /ship "add retry with exponential backoff on timeout" # worktree → implement → commit → push → PR → pr-watch
-# pr-watch monitors CI, fixes failures, merges when green, cleans up
+# pr-watch monitors CI, fixes failures, reports ready when green — you merge, it cleans up
 ```
 
 ## Commands
-
-### /start
-
-Bootstrap a repo for supera. Detects the toolchain (pnpm, npm, yarn, cargo, go), lifts build/test/lint commands from CI or `package.json` scripts, detects test layers (`unit`, `integration`, `e2e`), writes `.claude/supera.json`, and inserts guardrails into `CLAUDE.md`. Safe to re-run — existing config is shown before overwriting.
 
 ### /ship
 
@@ -66,7 +60,7 @@ Uses the repo's PR template if one exists, falls back to supera's own `.github/P
 /pr-watch --non-interactive  # headless mode — never prompts
 ```
 
-Monitors an open PR until merge. Polls CI — on failure, delegates to `supera-engineer` with the log, pushes the fix, and reschedules. Addresses actionable review comments. Syncs with base (rebase on conflict). Merges when every check is green and all threads are resolved. Removes the worktree and deletes the local branch after merge.
+Monitors an open PR until it is green and ready to merge. Polls CI — on failure, delegates to `supera-engineer` with the log, pushes the fix, and reschedules. Addresses actionable review comments. Syncs with base (rebase on conflict). When every check is green and all threads are resolved, announces ready and exits — **merging is always yours**. Re-run after merging to remove the worktree and delete the local branch.
 
 | Scenario | Behavior |
 |---|---|
@@ -78,53 +72,34 @@ Monitors an open PR until merge. Polls CI — on failure, delegates to `supera-e
 | Review — clear code request | Delegate to engineer, push, reply to thread. |
 | Review — design question | Surface to user (non-interactive: post comment, exit). |
 | Base diverged — conflict | Rebase, delegate conflicts to engineer, force-with-lease push. |
-| All green, all threads resolved | Merge (user confirms in interactive mode). |
-| PR merged | Remove worktree, delete local branch. |
+| All green, all threads resolved | Announce ready, exit — user merges. |
+| PR merged (by user) | Remove worktree, delete local branch. |
 
 ## Configuration
 
-`.claude/supera.json` — written by `/start`, read by every skill. Safe to hand-edit.
+None. Supera is zero-config — everything is detected from the repo itself:
 
-```jsonc
-{
-  "baseBranch": "main",
-  "remote": "origin",
-  "buildCommand": "pnpm build",
-  "lintCommand": "pnpm lint",
-  "testCommands": {
-    "unit": "pnpm test:unit",
-    "integration": "pnpm test:integration",
-    "e2e": "pnpm test:e2e"
-  },
-  "mergeMethod": "squash"
-}
-```
+| Value | Detected from |
+|---|---|
+| Base branch | GitHub default branch (`gh repo view`), fallback `origin/HEAD`. |
+| Remote | The sole git remote, or `origin` when several exist. |
+| Build / lint commands | Declared scripts (`package.json`), `Makefile` targets, or CI workflows. |
+| Test layers | Script names (`test:unit`, `test:integration`, `test:e2e`) or repo test setup. |
 
-| Key | Type | Description | Default |
-|---|---|---|---|
-| `baseBranch` | string | Branch worktrees branch off, PRs target. | `main` |
-| `remote` | string | Git remote name. | `origin` |
-| `buildCommand` | string | Shell command to build / typecheck. | — |
-| `lintCommand` | string | Shell command to lint. | — |
-| `testCommands` | object | Test commands keyed by layer. `/start` only emits keys the repo has. | `{}` |
-| `mergeMethod` | string | PR merge method: `merge`, `squash`, or `rebase`. | `squash` |
-
-Every key is optional — omit commands the repo doesn't have. Keys absent from the file fall back to schema defaults (`baseBranch: "main"`, `remote: "origin"`, `mergeMethod: "squash"`, `testCommands: {}`). Only `baseBranch`, `remote`, and `mergeMethod` should always be present — omit build/lint/test only when the repo genuinely lacks them.
+A repo with no build, lint, or tests just skips those gates.
 
 ## Architecture
 
-Three skills orchestrate, one agent implements. Nothing repo-specific is hardcoded — commands, branches, and remotes come from `.claude/supera.json`.
+Two skills orchestrate, one agent implements. Nothing repo-specific is hardcoded and no config file exists — commands, branches, and remotes are detected from the target repo.
 
 ```
 skills/
-  start/SKILL.md        # bootstrap — detect stack, write config, insert guardrails
   ship/SKILL.md         # orchestrate — worktree → engineer → verify → commit → push → PR → pr-watch
-  pr-watch/SKILL.md     # monitor — CI → fix → review → merge → cleanup
+  pr-watch/SKILL.md     # monitor — CI → fix → review → report ready (never merges) → cleanup
 agents/
   supera-engineer.md    # implement — orient → plan → code + tests → self-verify → receipt
 schema/
-  supera.schema.json    # per-repo config contract (source of truth)
-  receipt.schema.json   # engineer → orchestrator JSON handoff
+  receipt.schema.json   # engineer → orchestrator JSON handoff (source of truth)
 guidelines/
   commit-conventions.md # canonical commit format — referenced, never restated
 .github/
@@ -136,13 +111,11 @@ guidelines/
 
 ## How it works
 
-**`/start`** inspects the repo root for marker files (`pnpm-lock.yaml`, `package-lock.json`, `Cargo.toml`, `go.mod`), identifies the package manager, lifts commands from CI workflows or declared scripts, detects test layers from script names, and writes `.claude/supera.json`. Also inserts a guardrails block into `CLAUDE.md` — idempotent via marker comments.
+**`/ship`** parses the task into a branch slug (`feat-add-retry`), creates a git worktree off the base branch (or detects it's already in one), installs dependencies, and dispatches `supera-engineer` with the task. The engineer writes a plan to `.supera/plan.md` (gitignored), implements code AND tests, runs build → lint → test layers in order, and returns a JSON receipt. If any gate fails, `/ship` loops back to the engineer with the failure output (max 3 attempts). On all gates passing: commits with a conventional-commit message, pushes the branch, opens a PR (using the repo's template or supera's fallback), and hands off to `pr-watch` for CI monitoring.
 
-**`/ship`** parses the task into a branch slug (`feat-add-retry`), creates a git worktree off the base branch (or detects it's already in one), installs dependencies, and dispatches `supera-engineer` with the task + config path. The engineer writes a plan to `.supera/plan.md` (gitignored), implements code AND tests, runs build → lint → test layers in order, and returns a JSON receipt. If any gate fails, `/ship` loops back to the engineer with the failure output (max 3 attempts). On all gates passing: commits with a conventional-commit message, pushes the branch, opens a PR (using the repo's template or supera's fallback), and hands off to `pr-watch` for CI monitoring.
+**`supera-engineer`** orients on the repo's own conventions (reads CLAUDE.md, existing code, test patterns), detects the repo's build/lint/test commands, writes a checkbox plan, implements with surgical edits (never rewrites whole files), and self-verifies: build → lint → test layers in order. Returns a receipt with `pass` / `fail` / `skipped` for each gate. Tool-agnostic — uses whatever the user has installed.
 
-**`supera-engineer`** orients on the repo's own conventions (reads CLAUDE.md, existing code, test patterns), writes a checkbox plan, implements with surgical edits (never rewrites whole files), and self-verifies: `buildCommand` → `lintCommand` → `testCommands` in layer order. Returns a receipt with `pass` / `fail` / `skipped` for each gate. Tool-agnostic — uses whatever the user has installed.
-
-**`/pr-watch`** resolves the PR from args or current branch, polls CI via `gh pr view --json state,mergeable,statusCheckRollup`, classifies failures, delegates fixes to the engineer, addresses review threads, syncs with base, merges when green, and cleans up the worktree + local branch. Uses `ScheduleWakeup` to wait between polls — never spin-loops.
+**`/pr-watch`** resolves the PR from args or current branch, polls CI via `gh pr view --json state,mergeable,statusCheckRollup`, classifies failures, delegates fixes to the engineer, addresses review threads, syncs with base, and announces ready when green — it never merges. Once the user has merged, a re-run cleans up the worktree + local branch. Uses `ScheduleWakeup` to wait between polls — never spin-loops.
 
 ## Safety
 
@@ -161,7 +134,7 @@ guidelines/
 
 ## Notes
 
-- **`/ship` goes end-to-end** — commits, pushes, opens a PR, and hands off to `pr-watch`. No manual steps between task and merge.
+- **`/ship` goes end-to-end up to merge** — commits, pushes, opens a PR, and hands off to `pr-watch`. No manual steps between task and a green PR; merging is always yours.
 - **`/pr-watch` needs an open PR.** `/ship` creates one automatically, or open one manually for existing branches.
 - **`--non-interactive` mode** is for headless CI runs. At every decision point, instead of prompting it posts a blocking comment and exits.
 - **Install commands** are detected from lockfiles (`pnpm install --frozen-lockfile`, `npm ci`, `yarn install --immutable`, `cargo fetch`). No hardcoded package manager.

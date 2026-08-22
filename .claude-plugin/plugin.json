@@ -1,17 +1,11 @@
 {
-  "name": "supera",
-  "description": "End-to-end change-shipping toolkit — isolated worktrees, engineer-driven implementation, commit, push, PR creation, and automated CI monitoring through merge + cleanup. Driven by a per-repo .claude/supera.json config.",
-  "version": "2.1.4",
   "author": {
     "name": "Lucas Lacerda"
   },
-  "repository": "heronlabs/supera",
+  "description": "End-to-end change-shipping toolkit — isolated worktrees, engineer-driven implementation, commit, push, PR creation, and automated CI monitoring until green. Merging stays manual. Zero per-repo config — commands and branches detected from the repo.",
+  "keywords": ["workflow", "agents", "shipping", "worktree", "heronlabs"],
   "license": "MIT",
-  "keywords": [
-    "workflow",
-    "agents",
-    "shipping",
-    "worktree",
-    "heronlabs"
-  ]
+  "name": "supera",
+  "repository": "heronlabs/supera",
+  "version": "2.1.4"
 }

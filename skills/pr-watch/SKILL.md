@@ -1,25 +1,28 @@
 ---
 name: pr-watch
-description: Monitor an open PR until ready to merge — watch CI, fix failures via supera-engineer, address review comments, merge when green, then clean up worktree. Repo-agnostic: reads .claude/supera.json for commands.
+description: Monitor an open PR until it is green and ready to merge — watch CI, fix failures via supera-engineer, address review comments, report when ready. Never merges — merging is always the user's action. Repo-agnostic: detects commands from the repo itself.
 allowed-tools: Bash, Read, Glob, Grep, Agent
 ---
 
-Monitor an open PR until it is ready to merge. Watch CI, fix failures, address review comments. When green and approved, merge and clean up.
+Monitor an open PR until it is ready to merge. Watch CI, fix failures, address review comments. When green and approved, report ready — **never merge**. Clean up after the user has merged.
 
-## 0 — Load config
+## 0 — Detect repo context
 
-Read `.claude/supera.json` into `CONFIG`. Apply schema defaults for any missing key:
-- `MERGE_METHOD = CONFIG.mergeMethod || "squash"`
-- `BASE = CONFIG.baseBranch || "main"`
-- `REMOTE = CONFIG.remote || "origin"`
+No config file — everything is derived from git + GitHub:
+- `REMOTE`: the sole git remote, or `origin` when several exist.
+- `BASE` / `BRANCH`: from the PR itself (step 1).
 
 ## 1 — Resolve the PR
 
 Parse `$ARGUMENTS`:
 - A number → the PR number.
 - `--non-interactive` → `NONINTERACTIVE=true` (headless, no prompts).
+- `--tick <n>` → `TICK=n` (wakeup counter; default `0` when absent).
+- `--unknown <n>` → `UNKNOWN_COUNT=n` (consecutive `UNKNOWN` mergeability checks; default `0` when absent — see step 4).
 - Empty → detect from current branch: `gh pr view --json number -q .number`.
 - Neither works → ask the user (in `NONINTERACTIVE` mode, exit — nothing to act on).
+
+**Stop condition:** `MAX_TICKS = 20`. If `TICK >= MAX_TICKS`, stop watching — do NOT reschedule. Announce: *"pr-watch stopped after $MAX_TICKS checks — PR #<N> is still <current state>. Re-run `/pr-watch <N>` to resume watching."* (in `NONINTERACTIVE` mode, post that as a PR comment). Every `ScheduleWakeup` below passes `--tick <TICK+1>` so the counter survives across wakeups — no state files.
 
 ```bash
 PR=<number>
@@ -54,13 +57,13 @@ gh pr view $PR --json state,mergeable,statusCheckRollup,reviews,reviewDecision
 ```
 
 Parse `state`:
-- **`MERGED`** → clean up and exit (step 7).
+- **`MERGED`** → clean up and exit (step 6).
 - **`CLOSED`** (not merged) → announce abandoned and exit.
 
 ### CI running or queued
 Wait. Reschedule:
 ```
-ScheduleWakeup(delaySeconds=90, reason="CI running on PR #<N>", prompt="/pr-watch <N> [--non-interactive if set]")
+ScheduleWakeup(delaySeconds=90, reason="CI running on PR #<N>", prompt="/pr-watch <N> --tick <TICK+1> [--non-interactive if set]")
 ```
 
 ### CI failed
@@ -73,13 +76,13 @@ RUN_ID=$(gh run list --branch $BRANCH --limit 1 --json databaseId -q '.[0].datab
 
 If `NO_RUNS`: CI hasn't started yet. Reschedule and exit:
 ```
-ScheduleWakeup(delaySeconds=120, reason="CI not started yet on PR #<N>", prompt="/pr-watch <N> [flags]")
+ScheduleWakeup(delaySeconds=120, reason="CI not started yet on PR #<N>", prompt="/pr-watch <N> --tick <TICK+1> [flags]")
 ```
 
 Classify:
 | Failure | Action |
 |---|---|
-| Build / typecheck / test / lint | Delegate to `supera-engineer` with the log excerpt + CONFIG commands. |
+| Build / typecheck / test / lint | Delegate to `supera-engineer` with the log excerpt — it detects the repo's own commands. |
 | Lockfile drift | Run install in worktree, commit updated lockfile. |
 | Transient (network, OOM) | Re-run: `gh run rerun $RUN_ID`. |
 | Unknown | Ask user (in `NONINTERACTIVE`, block — post comment, exit). |
@@ -92,7 +95,12 @@ Dispatch `supera-engineer` with the failure log. **Do NOT use `isolation: "workt
 ```bash
 git diff --stat
 ```
-If diff is empty, the engineer idled — re-delegate or fix directly. Do NOT commit empty changes.
+If the diff is empty, the engineer made zero changes. **Check `receipt.notes` before delegating back** — never enter a delegation loop on an empty diff:
+
+- **Notes legitimately explain the empty diff** (no code change needed — e.g., flaky test, CI-side config, already fixed on the branch) → do NOT re-delegate. Act on the notes (e.g., re-run CI) or surface to the user (in `NONINTERACTIVE`, post comment, exit).
+- **Notes are empty or claim a fix was made** → the engineer idled. Re-delegate **once**, with the failure log and the explicit instruction to make changes (counts toward the 3-attempt max). If the diff is empty again, stop delegating — fix directly or block (post comment, exit).
+
+Do NOT commit empty changes.
 
 If receipt is `ok` and diff is non-empty, pr-watch commits and pushes the fix. If `fail` after 3 attempts on the same failure → block (post comment, exit).
 
@@ -102,7 +110,7 @@ git push $REMOTE $BRANCH
 ```
 Reschedule and exit:
 ```
-ScheduleWakeup(delaySeconds=120, reason="CI re-run after fix on PR #<N>", prompt="/pr-watch <N> [flags]")
+ScheduleWakeup(delaySeconds=120, reason="CI re-run after fix on PR #<N>", prompt="/pr-watch <N> --tick <TICK+1> [flags]")
 ```
 
 ### CI passed
@@ -122,16 +130,16 @@ gh pr view $PR --json reviews --jq '[.reviews[] | select(.state != "APPROVED") |
 ```
 
 For each unresolved thread:
-- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` (no worktree isolation). **SendMessage guard:** before the subagent communicates its receipt, instruct it to load SendMessage's schema via `ToolSearch` with `query: "select: SendMessage"`. Verify with `git diff --stat` after agent returns. If diff is non-empty, pr-watch commits + pushes the fix, then reply:
-  ```bash
-  SHA=$(git rev-parse HEAD)
+- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` (no worktree isolation). **SendMessage guard:** before the subagent communicates its receipt, instruct it to load SendMessage's schema via `ToolSearch` with `query: "select: SendMessage"`. Verify with `git diff --stat` after agent returns. If the diff is empty, apply the same empty-diff check as step 2 — `receipt.notes` first, at most one re-delegate. If non-empty, pr-watch commits + pushes the fix, then reply:
+```bash
+SHA=$(git rev-parse HEAD)
 gh pr review $PR --comment --body "Addressed in $SHA: <summary>"
-  ```
+```
 - **Question / design discussion** → surface to user (in `NONINTERACTIVE`, block — post comment, exit).
 
 After fixes, reschedule:
 ```
-ScheduleWakeup(delaySeconds=120, reason="CI after review fixes on PR #<N>", prompt="/pr-watch <N> [flags]")
+ScheduleWakeup(delaySeconds=120, reason="CI after review fixes on PR #<N>", prompt="/pr-watch <N> --tick <TICK+1> [flags]")
 ```
 
 ## 4 — Sync with base
@@ -151,7 +159,7 @@ gh pr view $PR --json mergeStateStatus,mergeable -q '{mergeStateStatus: .mergeSt
   git push --force-with-lease $REMOTE $BRANCH
   ```
   ```
-  ScheduleWakeup(delaySeconds=120, reason="CI after rebase on PR #<N>", prompt="/pr-watch <N> [flags]")
+  ScheduleWakeup(delaySeconds=120, reason="CI after rebase on PR #<N>", prompt="/pr-watch <N> --tick <TICK+1> [flags]")
   ```
 - **`BEHIND`** → branch is behind base. Rebase or merge base in:
   ```bash
@@ -160,12 +168,15 @@ gh pr view $PR --json mergeStateStatus,mergeable -q '{mergeStateStatus: .mergeSt
   git push --force-with-lease $REMOTE $BRANCH
   ```
   ```
-  ScheduleWakeup(delaySeconds=120, reason="CI after rebase on PR #<N>", prompt="/pr-watch <N> [flags]")
+  ScheduleWakeup(delaySeconds=120, reason="CI after rebase on PR #<N>", prompt="/pr-watch <N> --tick <TICK+1> [flags]")
   ```
-- **`UNKNOWN`** → wait 60 s, reschedule:
+- **`UNKNOWN`** → GitHub is still computing mergeability; it normally resolves in seconds. Bounded retry via an `--unknown <n>` counter (parsed like `--tick`, default `0`):
+  - `UNKNOWN_COUNT >= 3` → stop retrying — treat like `BLOCKED`: surface to user (in `NONINTERACTIVE`, post comment, exit). Status stuck at `UNKNOWN` this long means GitHub can't compute it — a human needs to look.
+  - Otherwise wait 60 s, reschedule with the counter bumped:
   ```
-  ScheduleWakeup(delaySeconds=60, reason="mergeable status unknown on PR #<N>", prompt="/pr-watch <N> [flags]")
+  ScheduleWakeup(delaySeconds=60, reason="mergeable status unknown on PR #<N>", prompt="/pr-watch <N> --tick <TICK+1> --unknown <UNKNOWN_COUNT+1> [flags]")
   ```
+  Every other reschedule path omits `--unknown`, so the counter resets to 0 once the status resolves.
 - **`BLOCKED`** → surface to user (in `NONINTERACTIVE`, block — post comment, exit).
 
 ## 5 — Done check
@@ -177,24 +188,16 @@ Ready when:
 - `reviewDecision` is `APPROVED` (or no review required: empty/null string)
   - If `reviewDecision` is `REVIEW_REQUIRED` or `CHANGES_REQUESTED` → wait, reschedule:
     ```
-    ScheduleWakeup(delaySeconds=120, reason="Waiting for review on PR #<N>", prompt="/pr-watch <N> [flags]")
+    ScheduleWakeup(delaySeconds=120, reason="Waiting for review on PR #<N>", prompt="/pr-watch <N> --tick <TICK+1> [flags]")
     ```
 
-If ready, announce: *"PR #<N> is green and all threads resolved — ready to merge."*
+If ready, announce and exit: *"PR #<N> is green and all threads resolved — ready to merge. Merge it when you're ready, then re-run `/pr-watch <N>` to clean up the worktree."*
 
-## 6 — Merge
+**pr-watch never merges.** Not on green, not on approval, not when asked to "finish the PR" — merging is always the user's action, performed by the user. In `NONINTERACTIVE` mode: announce ready, post a comment, exit.
 
-If the user confirms merge and all gates are green:
+## 6 — Clean up
 
-```bash
-gh pr merge $PR --$MERGE_METHOD
-```
-
-If the user declines: exit cleanly. The PR is green and ready — they can merge anytime. In `NONINTERACTIVE` mode: announce ready, post a comment, exit — merging stays the user's decision.
-
-## 7 — Clean up
-
-After merge:
+Runs only when the PR is observed as `MERGED` (step 2):
 ```bash
 # Save repo root from git common directory (resolves to main repo, not worktree)
 REPO_ROOT=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
@@ -220,12 +223,14 @@ Headless CI runs. Never prompt. At every decision point flagged above:
   gh pr comment $PR --body "Blocked (non-interactive): <reason>"
   ```
 - CI failures, clear code requests, merge conflicts still delegate to engineer and push as normal.
-- A clean, green PR still announces ready — merging stays the user's decision.
+- A clean, green PR announces ready and exits — merging stays the user's decision.
 
 ## Rules
 
-- Read `.claude/supera.json` for commands — don't assume pnpm/npm.
+- **Never merge the PR.** No `gh pr merge`, ever — report ready and stop.
+- Detect commands from the repo (declared scripts, Makefile, CI workflows) — don't assume pnpm/npm.
 - **Don't spin-poll** — `ScheduleWakeup` and exit at every wait.
+- **Bounded watch** — every reschedule passes `--tick <TICK+1>`; at `MAX_TICKS` (20) announce and stop instead of rescheduling. The user resumes with a fresh `/pr-watch <N>`.
 - Never push `--force` — only `--force-with-lease` after rebase.
 - Never remove `BASE` or its worktree.
 - Commit hygiene follows `guidelines/commit-conventions.md`.

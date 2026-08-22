@@ -6,16 +6,18 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 Implement a task in an isolated git worktree. Delegate all code + tests to `supera-engineer`. On verification pass: commit, push, open PR, hand off to `pr-watch` for CI monitoring. On verification fail after 3 loops: leave changes for manual review.
 
-## 0 — Load config
+## 0 — Detect repo context
 
-Read `.claude/supera.json` at the repo root into `CONFIG`.
+No config file — everything is derived from the repo itself:
 
-- **If it does not exist:** tell the user `"This repo isn't set up for supera yet — run /start first."` and stop.
-- `BASE = CONFIG.baseBranch`
 - `WT_DIR = ".worktrees"`
-- `REMOTE = CONFIG.remote`
-- `BUILD_CMD = CONFIG.buildCommand` (may be empty — skip if unset)
-- `LINT_CMD = CONFIG.lintCommand` (may be empty — skip if unset)
+- `REMOTE`: the sole git remote, or `origin` when several exist.
+- `BASE`: the default branch —
+  ```bash
+  BASE=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null) \
+    || BASE=$(git symbolic-ref --short refs/remotes/$REMOTE/HEAD | cut -d/ -f2-)
+  ```
+- `BUILD_CMD` / `LINT_CMD`: detect from the repo — declared scripts (`package.json` `build` / `lint`), `Makefile` targets, or the commands CI workflows run. May be empty — skip the gate if the repo has none.
 
 ## 1 — Parse task
 
@@ -72,7 +74,7 @@ fi
 
 Announce: *"Delegating to supera-engineer in worktree `$WT_DIR/$SLUG`."*
 
-Dispatch `supera-engineer` with: the task description, the worktree path, and the path to `.claude/supera.json`. **Do NOT use `isolation: "worktree"`** — ship already owns the worktree. Use `subagent_type: "supera:supera-engineer"` only; the engineer works in the current worktree directory. The engineer writes a plan to `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
+Dispatch `supera-engineer` with: the task description and the worktree path. The engineer detects the repo's own build/lint/test commands. **Do NOT use `isolation: "worktree"`** — ship already owns the worktree. Use `subagent_type: "supera:supera-engineer"` only; the engineer works in the current worktree directory. The engineer writes a plan to `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
 
 **SendMessage guard:** Before the subagent sends structured messages back to the orchestrator (e.g., its JSON receipt), it must load the SendMessage tool schema into its prompt by calling `ToolSearch` with `query: "select: SendMessage"`. Without this, typed parameters may be rejected with `InputValidationError`.
 
@@ -90,7 +92,12 @@ git diff --stat
 git diff --cached --stat
 ```
 
-If both are empty, the engineer reported completion but made zero changes — **treat as verification failure.** Delegate back to engineer with the specific instruction to make changes, or apply edits directly. Do NOT proceed to commit with no diff.
+If both are empty, the engineer made zero changes. **Check `receipt.notes` before delegating back** — never enter a delegation loop on an empty diff:
+
+- **Notes legitimately explain the empty diff** (task already implemented, nothing to change, blocked on missing info) → do NOT re-delegate. Surface the notes to the user and stop.
+- **Notes are empty or claim work was done** → the engineer idled. Treat as verification failure and re-delegate **once**, with the explicit instruction to make changes (counts toward the 3-loop max). If the diff is empty again, stop delegating — apply the edits directly or surface the failure.
+
+Either way: do NOT proceed to commit with no diff.
 
 Cross-check `receipt.filesChanged` against `git diff --name-only` and `git diff --cached --name-only`. Files in the receipt that don't appear in the diff (or vice versa) indicate the engineer worked in a different context — flag this.
 
@@ -116,8 +123,8 @@ git commit -m "$TYPE: $SUMMARY"
 **Before pushing, run fast pre-flight checks** to catch issues the engineer may have missed:
 
 ```bash
-# Run build if CONFIG.buildCommand is set — catch issues before CI
-# Run lint if CONFIG.lintCommand is set
+# Run BUILD_CMD if detected — catch issues before CI
+# Run LINT_CMD if detected
 ```
 
 If build or lint fails: surface the failure. Don't push broken code — delegate back to engineer or fix directly.
@@ -182,13 +189,13 @@ fi
 
 ## 8 — Hand off to pr-watch
 
-Announce: *"PR #$PR created. Handing off to pr-watch — monitoring CI, fixing failures, merging when green."*
+Announce: *"PR #$PR created. Handing off to pr-watch — monitoring CI and fixing failures until green. Merging stays yours."*
 
 Invoke the `pr-watch` skill with `$PR`.
 
 ## Rules
 
-- Read `.claude/supera.json` first — never hardcode commands or branches.
+- Detect commands and branches from the repo (declared scripts, Makefile, CI workflows) — never assume a package manager or branch name.
 - Never remove `BASE` or its worktree.
 - **Idempotent** — re-run in a dirty worktree picks up where engineer left off. No state tracking needed.
 - Never commit to base directly. Commits only on the feature branch in the worktree.

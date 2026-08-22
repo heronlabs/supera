@@ -1,30 +1,24 @@
 {
+  "metadata": {
+    "description": "End-to-end change-shipping automation — worktree isolation, engineer implementation, commit, push, PR creation, and CI monitoring until green. Merging stays manual."
+  },
   "name": "supera-marketplace",
   "owner": {
-    "name": "Lucas Lacerda",
-    "github": "lucaslacerdacl"
-  },
-  "metadata": {
-    "description": "End-to-end change-shipping automation — worktree isolation, engineer implementation, commit, push, PR creation, CI monitoring, merge, and cleanup. Zero manual steps from task to merge."
+    "github": "lucaslacerdacl",
+    "name": "Lucas Lacerda"
   },
   "plugins": [
     {
-      "name": "supera",
-      "description": "End-to-end change-shipping toolkit: start (bootstrap repo config), ship (worktree → implement → commit → push → PR → hand off to pr-watch), pr-watch (monitor CI → fix failures → merge → cleanup). Driven by a per-repo .claude/supera.json config.",
-      "version": "2.1.4",
       "author": {
         "name": "Lucas Lacerda"
       },
-      "source": "./",
+      "category": "workflow",
+      "description": "End-to-end change-shipping toolkit: ship (worktree → implement → commit → push → PR → hand off to pr-watch), pr-watch (monitor CI → fix failures → report ready; never merges). Zero per-repo config — commands and branches detected from the repo.",
+      "keywords": ["workflow", "agents", "shipping", "worktree", "heronlabs"],
       "license": "MIT",
-      "keywords": [
-        "workflow",
-        "agents",
-        "shipping",
-        "worktree",
-        "heronlabs"
-      ],
-      "category": "workflow"
+      "name": "supera",
+      "source": "./",
+      "version": "2.1.4"
     }
   ]
 }

@@ -1,35 +1,35 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:supera:receipt",
-  "title": "supera-engineer receipt",
-  "description": "Handoff from supera-engineer to the orchestrator. One receipt per implementation run.",
-  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "required": ["summary", "filesChanged", "verification"],
+  "description": "Handoff from supera-engineer to the orchestrator. One receipt per implementation run.",
   "properties": {
-    "summary": {
-      "description": "One-line description of what was implemented.",
-      "type": "string",
-      "minLength": 1
-    },
     "filesChanged": {
       "description": "Paths of files modified, created, or deleted, relative to repo root. May be empty for pure deletion tasks — use receipt.notes to explain.",
-      "type": "array",
       "items": {"type": "string"},
-      "minItems": 0
-    },
-    "verification": {
-      "description": "Verification output per layer. Keys must match CONFIG keys: 'build' (if buildCommand set), 'lint' (if lintCommand set), plus one per testCommands entry. No other keys. Values: pass, fail, skipped.",
-      "type": "object",
-      "additionalProperties": {
-        "type": "string",
-        "enum": ["pass", "fail", "skipped"]
-      },
-      "minProperties": 0
+      "minItems": 0,
+      "type": "array"
     },
     "notes": {
       "description": "Optional: warnings, caveats, or context for the orchestrator. Use to flag 'no test infrastructure', 'no lint config', or any deviation from the standard process.",
       "type": "string"
+    },
+    "summary": {
+      "description": "One-line description of what was implemented.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "verification": {
+      "additionalProperties": {
+        "enum": ["pass", "fail", "skipped"],
+        "type": "string"
+      },
+      "description": "Verification output per layer. Keys: 'build', 'lint', plus one per detected test layer (e.g., unit, integration, e2e). No other keys. Values: pass, fail, skipped.",
+      "minProperties": 0,
+      "type": "object"
     }
-  }
+  },
+  "required": ["summary", "filesChanged", "verification"],
+  "title": "supera-engineer receipt",
+  "type": "object"
 }
