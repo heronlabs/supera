@@ -87,9 +87,7 @@ Classify:
 | Transient (network, OOM) | Re-run: `gh run rerun $RUN_ID`. |
 | Unknown | Ask user (in `NONINTERACTIVE`, block — post comment, exit). |
 
-Dispatch `supera-engineer` with the failure log. **Do NOT use `isolation: "worktree"`** — pr-watch already works in the ship's worktree. Use `subagent_type: "supera:supera-engineer"` only. Wait for receipt.
-
-**SendMessage guard:** Before the subagent sends structured messages back to the orchestrator (e.g., its JSON receipt), it must load the SendMessage tool schema into its prompt by calling `ToolSearch` with `query: "select: SendMessage"`. Without this, typed parameters may be rejected with `InputValidationError`.
+Dispatch `supera-engineer` with the failure log. **Do NOT use `isolation: "worktree"` and do NOT pass `name:`** — ship already owns the worktree, and a named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Use `subagent_type: "supera:supera-engineer"` only — the receipt arrives as the Agent tool's result; no separate message back to the orchestrator. Wait for receipt.
 
 **Verify engineer made changes before committing:**
 ```bash
@@ -130,7 +128,7 @@ gh pr view $PR --json reviews --jq '[.reviews[] | select(.state != "APPROVED") |
 ```
 
 For each unresolved thread:
-- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer` (no worktree isolation). **SendMessage guard:** before the subagent communicates its receipt, instruct it to load SendMessage's schema via `ToolSearch` with `query: "select: SendMessage"`. Verify with `git diff --stat` after agent returns. If the diff is empty, apply the same empty-diff check as step 2 — `receipt.notes` first, at most one re-delegate. If non-empty, pr-watch commits + pushes the fix, then reply:
+- **Clear code request** (rename, extract, null check, add test) → delegate to `supera-engineer`. **Do NOT use `isolation: "worktree"` and do NOT pass `name:`** — ship already owns the worktree, and a named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Use `subagent_type: "supera:supera-engineer"` only — the receipt arrives as the Agent tool's result; no separate message back to the orchestrator. Verify with `git diff --stat` after agent returns. If the diff is empty, apply the same empty-diff check as step 2 — `receipt.notes` first, at most one re-delegate. If non-empty, pr-watch commits + pushes the fix, then reply:
 ```bash
 SHA=$(git rev-parse HEAD)
 gh pr review $PR --comment --body "Addressed in $SHA: <summary>"

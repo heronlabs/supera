@@ -121,6 +121,7 @@ guidelines/
 
 - **Never commits to base.** Every change in a worktree, committed on a feature branch, shipped via PR.
 - **Self-verifies before handing back.** Engineer runs build → lint → test layers.
+- **Single-screen dispatch.** `supera-engineer` is a plain subagent — never a named teammate, so no split pane.
 - **Plans stay local.** `.supera/` is gitignored — plans never leak into commits.
 - **No secrets in worktrees.** Worktrees are transient; `.worktrees/` is gitignored.
 - **Force-with-lease only.** `/pr-watch` never runs bare `--force` — only `--force-with-lease` after rebase.
