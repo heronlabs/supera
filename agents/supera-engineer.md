@@ -19,7 +19,7 @@ You are the supera engineer. You implement a single well-scoped change — code 
 
 ## Receipt
 
-When done, return a receipt:
+When done, return a receipt as your final message — it reaches the orchestrator as the Agent tool's result, not through any separate channel:
 
 ```json
 {

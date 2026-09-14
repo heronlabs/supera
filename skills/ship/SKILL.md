@@ -74,9 +74,7 @@ fi
 
 Announce: *"Delegating to supera-engineer in worktree `$WT_DIR/$SLUG`."*
 
-Dispatch `supera-engineer` with: the task description and the worktree path. The engineer detects the repo's own build/lint/test commands. **Do NOT use `isolation: "worktree"`** — ship already owns the worktree. Use `subagent_type: "supera:supera-engineer"` only; the engineer works in the current worktree directory. The engineer writes a plan to `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
-
-**SendMessage guard:** Before the subagent sends structured messages back to the orchestrator (e.g., its JSON receipt), it must load the SendMessage tool schema into its prompt by calling `ToolSearch` with `query: "select: SendMessage"`. Without this, typed parameters may be rejected with `InputValidationError`.
+Dispatch `supera-engineer` with: the task description and the worktree path. The engineer detects the repo's own build/lint/test commands. **Do NOT use `isolation: "worktree"` and do NOT pass `name:`** — ship already owns the worktree, and a named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Use `subagent_type: "supera:supera-engineer"` only — the receipt arrives as the Agent tool's result; no separate message back to the orchestrator. The engineer works in the current worktree directory: it writes a plan to `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
 
 Wait for its JSON receipt. Parse it:
 - **All verification `pass`** → done. Surface the summary and files changed.

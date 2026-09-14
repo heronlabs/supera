@@ -32,6 +32,7 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 - **Engineer receipt is a claim, not a fact.** Cross-check `receipt.filesChanged` against `git diff --name-only`. An empty or mismatched receipt means the engineer idled — treat as verification failure, loop back.
 - **Pre-flight before push.** Run the detected build and lint commands in the worktree before pushing. Don't rely solely on the engineer's self-reported verification — 27 incidents of buggy code in the report came from pushing without local validation.
 - **Delegation uses the current worktree.** Never pass `isolation: "worktree"` when dispatching an agent that should work in the ship/pr-watch worktree. Ship already owns the worktree — isolation creates a separate one where changes are invisible to the commit step.
+- **Delegation stays on one screen.** Never pass `name:` when dispatching an agent. A named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Unnamed, the engineer is a plain subagent and its receipt arrives as the Agent tool's result.
 
 ## Releasing
 
