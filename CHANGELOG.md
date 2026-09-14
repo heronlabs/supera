@@ -1,3 +1,9 @@
+## v2.1.6 (2026-09-14)
+
+### Bug Fixes
+
+* fix: dispatch engineer unnamed to keep one screen (#80) (7cc63d180e99d8ceb7c76ace725fc58dcdfdb815)
+
 ## v2.1.5 (2026-08-22)
 
 ### Miscellaneous Chores
