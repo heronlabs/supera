@@ -1,3 +1,9 @@
+## v2.2.0 (2026-10-07)
+
+### Features
+
+* feat: validate engineer receipt with a SubagentStop hook (#84) (e24ee518d1db01f15ef69f8515279672d91987ec)
+
 ## v2.1.10 (2026-10-07)
 
 ### Miscellaneous Chores
