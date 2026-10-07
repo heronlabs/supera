@@ -1,3 +1,9 @@
+## v2.1.7 (2026-10-07)
+
+### Bug Fixes
+
+* fix: harden ship worktree detection and PR metadata (#82) (e8d5090251d19da538523f727ad7b5cd8d8fa32e)
+
 ## v2.1.6 (2026-09-14)
 
 ### Bug Fixes
