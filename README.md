@@ -57,23 +57,27 @@ Uses the repo's PR template if one exists, falls back to supera's own `.github/P
 ```text
 /pr-watch         # detects PR from current branch
 /pr-watch 42      # watch specific PR
+/pr-watch 42 43   # watch several PRs in one loop
 /pr-watch --non-interactive  # headless mode — never prompts
 ```
 
-Monitors an open PR until it is green and ready to merge. Polls CI — on failure, delegates to `supera-engineer` with the log, pushes the fix, and reschedules. Addresses actionable review comments. Syncs with base (rebase on conflict). When every check is green and all threads are resolved, announces ready and exits — **merging is always yours**. Re-run after merging to remove the worktree and delete the local branch.
+Monitors open PRs until they are merged. Waits on CI — on failure, delegates to `supera-engineer` with the log, pushes the fix, and keeps watching. Addresses actionable review comments. Syncs with base (rebase on conflict). When every check is green and all threads are resolved, announces ready and keeps watching — **merging is always yours**. After you merge, it removes the worktree, deletes the local and remote branch, and fast-forwards your local base.
 
 | Scenario | Behavior |
 |---|---|
-| CI running / queued | Wait 90 s, reschedule. |
-| CI failed — code error | Delegate to `supera-engineer`, push fix, reschedule. |
-| CI failed — lockfile drift | Run install, commit updated lockfile, push, reschedule. |
-| CI failed — transient (network, OOM) | Re-run acceptable. |
-| CI failed — unknown | Surface to user (non-interactive: post comment, exit). |
+| CI running | Wait on a checks watcher, with a long wakeup as fallback. |
+| No CI on pull requests | Treat CI as none, continue to review and ready checks. |
+| CI queued — runners offline | Tell the user once, wait with long delays. |
+| CI failed — code error | Delegate to `supera-engineer`, push fix, keep watching. |
+| CI failed — pre-existing on base / unrelated advisory | Never fixed inline — reuse an open fix PR or open a side PR via `/ship`, rebase once it merges. |
+| CI failed — lockfile drift | Run install, commit updated lockfile, push. |
+| CI failed — transient (network, first OOM) | Re-run. A repeated OOM goes to the engineer. |
+| CI failed — unknown | Surface to user (non-interactive: post comment), stop watching that PR. |
 | Review — clear code request | Delegate to engineer, push, reply to thread. |
-| Review — design question | Surface to user (non-interactive: post comment, exit). |
+| Review — design question | Surface to user (non-interactive: post comment), stop watching that PR. |
 | Base diverged — conflict | Rebase, delegate conflicts to engineer, force-with-lease push. |
-| All green, all threads resolved | Announce ready, exit — user merges. |
-| PR merged (by user) | Remove worktree, delete local branch. |
+| All green, all threads resolved | Announce ready, keep watching (up to 8 h) — user merges. |
+| PR merged (by user) | Remove worktree, delete local + remote branch, fast-forward local base. |
 
 ## Configuration
 
@@ -115,7 +119,7 @@ guidelines/
 
 **`supera-engineer`** orients on the repo's own conventions (reads CLAUDE.md, existing code, test patterns), detects the repo's build/lint/test commands, writes a checkbox plan, implements with surgical edits (never rewrites whole files), and self-verifies: build → lint → test layers in order. Returns a receipt with `pass` / `fail` / `skipped` for each gate. Tool-agnostic — uses whatever the user has installed.
 
-**`/pr-watch`** resolves the PR from args or current branch, polls CI via `gh pr view --json state,mergeable,statusCheckRollup`, classifies failures, delegates fixes to the engineer, addresses review threads, syncs with base, and announces ready when green — it never merges. Once the user has merged, a re-run cleans up the worktree + local branch. Uses `ScheduleWakeup` to wait between polls — never spin-loops.
+**`/pr-watch`** resolves the PRs from args or current branch, reads CI via `gh pr view --json state,mergeable,statusCheckRollup`, classifies failures, delegates fixes to the engineer, addresses review threads, syncs with base, and announces ready when green — it never merges. It keeps watching until the user merges, then cleans up the worktree and the local + remote branch. Waits on a checks watcher (Monitor or background Bash) with one `ScheduleWakeup` per loop as fallback — never spin-loops.
 
 ## Safety
 
