@@ -1,3 +1,9 @@
+## v2.1.9 (2026-10-07)
+
+### Bug Fixes
+
+* fix: watch PRs until merged and triage CI failures (#83) (7bcffa65acd8d3b9b0fa4a3f7c28df6d7fbd15f3)
+
 ## v2.1.8 (2026-10-07)
 
 ### Bug Fixes
