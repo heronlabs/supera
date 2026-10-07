@@ -44,6 +44,7 @@ cd your-repo
 
 ```text
 /ship "add retry with exponential backoff on timeout"
+/ship "drop the legacy config input" --breaking   # commit and PR title get the "!" (major bump)
 ```
 
 End-to-end automation from task to open PR. Creates an isolated git worktree off the base branch, installs dependencies, delegates implementation to `supera-engineer` (code + tests + self-verify). On verification pass: commits, pushes, opens a PR, and hands off to `pr-watch` for CI monitoring. On verification fail after 3 attempts: leaves changes for manual review.
