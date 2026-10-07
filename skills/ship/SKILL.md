@@ -31,17 +31,13 @@ Derive a branch slug from `TASK`: lowercase, kebab-case, ≤50 chars, prefixed b
 
 ## 2 — Detect context
 
-Check if we're already in a supera worktree. Human-readable git output (including `git worktree list`) may be rewritten by shell hooks — don't parse it; compare `rev-parse` paths, which differ only inside a linked worktree:
+Check if we're already in a supera worktree. Human-readable git output (including `git worktree list`) may be rewritten by shell hooks — don't parse it; the script compares `rev-parse` paths, which differ only inside a linked worktree:
 
 ```bash
 pwd
-CUR=$(git branch --show-current)
-GITDIR=$(git rev-parse --path-format=absolute --git-dir)
-COMMONDIR=$(git rev-parse --path-format=absolute --git-common-dir)
-IN_WORKTREE=false
-if [ "$GITDIR" != "$COMMONDIR" ] && [ -n "$CUR" ] && [ "$CUR" != "$BASE" ]; then IN_WORKTREE=true; fi
-echo "IN_WORKTREE=$IN_WORKTREE CUR=$CUR"
+"${CLAUDE_SKILL_DIR}/scripts/detect-worktree.sh" "$BASE"
 ```
+Args: `BASE`. Prints `IN_WORKTREE=true|false` and `CUR=<branch>` — `true` only in a linked worktree on a branch other than `BASE` (a detached worktree is `false`).
 
 **Already in a worktree** (`IN_WORKTREE=true`) → continue implementing in place. The worktree is the workspace; `SLUG=$CUR` (the branch, not a re-derived slug). Skip step 3.
 
@@ -50,35 +46,18 @@ echo "IN_WORKTREE=$IN_WORKTREE CUR=$CUR"
 Either way, keep `.supera/` out of commits — add it to the repo-local exclude file, shared by every worktree of the repo. Never edit the user's `.gitignore`.
 
 ```bash
-EXCLUDE=$(git rev-parse --path-format=absolute --git-path info/exclude)
-mkdir -p "$(dirname "$EXCLUDE")"
-grep -qxF '.supera/' "$EXCLUDE" 2>/dev/null || printf '\n.supera/\n' >> "$EXCLUDE"
+"${CLAUDE_SKILL_DIR}/scripts/exclude-supera.sh"
 ```
+No args. Appends `.supera/` to `info/exclude` once — idempotent, creates `info/` when missing.
 
 ## 3 — Create worktree
 
 ```bash
-cd "$(git rev-parse --show-toplevel)"
-git fetch $REMOTE $BASE
-git worktree prune   # drop registrations whose directory is gone
-# If branch already exists locally, reuse it instead of failing
-if git show-ref --verify --quiet "refs/heads/$SLUG"; then
-  echo "Branch $SLUG already exists locally — reusing."
-  git worktree add "$WT_DIR/$SLUG" "$SLUG" 2>/dev/null || true
-# If branch exists on remote but not locally, fetch and checkout
-elif git ls-remote --exit-code --heads "$REMOTE" "refs/heads/$SLUG" >/dev/null; then
-  echo "Branch $SLUG exists on $REMOTE — fetching."
-  git fetch "$REMOTE" "$SLUG"
-  git worktree add "$WT_DIR/$SLUG" "$SLUG"
-else
-  # Branch exists nowhere, so a worktree at the path is left over from a crashed run
-  [ -e "$WT_DIR/$SLUG/.git" ] && git worktree remove --force "$WT_DIR/$SLUG"
-  git worktree add "$WT_DIR/$SLUG" -b "$SLUG" "$REMOTE/$BASE"
-fi
-cd "$WT_DIR/$SLUG"
+WT=$("${CLAUDE_SKILL_DIR}/scripts/create-worktree.sh" "$WT_DIR" "$REMOTE" "$BASE" "$SLUG") && cd "$WT" && pwd
 ```
+Args: `WT_DIR REMOTE BASE SLUG`. Fetches `BASE` and prunes registrations whose directory is gone, then reuses the local branch `SLUG` (and its worktree, if it has one), else fetches `SLUG` from `REMOTE`, else creates `SLUG` off `$REMOTE/$BASE` — replacing a worktree a crashed run left at the path. New worktrees go to `$WT_DIR/$SLUG` under the main checkout. Prints the worktree path.
 
-If `git worktree add` fails because `$WT_DIR/$SLUG` exists and isn't a worktree, surface it — the user removes it.
+If it exits non-zero because `$WT_DIR/$SLUG` exists and isn't a worktree, surface its message — the user removes it. The script never deletes a directory that isn't a registered worktree.
 
 Install dependencies after creating/entering the worktree:
 ```bash
@@ -104,7 +83,7 @@ Wait for its JSON receipt. Parse it:
 **Before committing, independently verify the engineer's changes** with the same command it uses for `filesChanged` (includes untracked files, excludes `.supera/`), plus the plan's file list:
 
 ```bash
-CHANGED=$(git status --porcelain --untracked-files=all --no-renames | cut -c4- | grep -v '^\.supera/')
+CHANGED=$("${CLAUDE_PLUGIN_ROOT}/scripts/changed-files.sh")
 PLANNED=$(sed -n '/^## Files/,/^## /p' .supera/plan.md 2>/dev/null | grep '^- ' | sed 's/^- *//; s/`//g; s/[[:space:]]*$//')
 EXTRA=$(comm -23 <(printf '%s\n' "$CHANGED" | sort) <(printf '%s\n' "$PLANNED" | sort))
 ```
