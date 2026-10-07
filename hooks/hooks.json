@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/validate-receipt.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "^supera:supera-engineer$"
+      }
+    ]
+  }
+}
