@@ -100,15 +100,22 @@ Two skills orchestrate, one agent implements. Nothing repo-specific is hardcoded
 ```
 skills/
   ship/SKILL.md         # orchestrate — worktree → engineer → verify → commit → push → PR → pr-watch
+  ship/scripts/         # detect-worktree, exclude-supera, create-worktree
   pr-watch/SKILL.md     # monitor — CI → fix → review → report ready (never merges) → cleanup
+  pr-watch/scripts/     # ensure-worktree, has-pr-ci, cleanup
 agents/
   supera-engineer.md    # implement — orient → plan → code + tests → self-verify → receipt
+scripts/
+  changed-files.sh      # changed paths incl. untracked, minus .supera/ — shared by skills and agent
+tests/                  # bats — scripts against throwaway git repos, plus repo-integrity checks
+Makefile                # make lint (shellcheck, jq, frontmatter YAML) · make test (bats)
 schema/
   receipt.schema.json   # engineer → orchestrator JSON handoff (source of truth)
 guidelines/
   commit-conventions.md # canonical commit format — referenced, never restated
 .github/
   PULL_REQUEST_TEMPLATE.md # PR body template — fallback when user's repo has none
+  workflows/            # continuous-integration (make lint + make test on PRs), continuous-deployment
 .claude-plugin/
   plugin.json           # manifest — CD bumps version on merge to main
   marketplace.json      # marketplace entry — CD keeps in sync

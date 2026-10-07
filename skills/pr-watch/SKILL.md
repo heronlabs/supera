@@ -27,9 +27,9 @@ Code fixes go to `supera-engineer`: dispatch with `subagent_type: "supera:supera
 
 pr-watch edits directly only trivial fixes: lint/format, typos, conflict markers, mechanical few-line fixes. Anything touching logic or tests goes to the engineer.
 
-After every fix, verify there are changes (`git status --porcelain` includes untracked new files; `.supera/` is excluded):
+After every fix, verify there are changes (the script prints every `git status --porcelain` path, untracked new files included; `.supera/` is excluded; nothing when clean):
 ```bash
-[ -z "$(git status --porcelain --untracked-files=all --no-renames | cut -c4- | grep -v '^\.supera/')" ] && echo "EMPTY_DIFF"
+[ -z "$("${CLAUDE_PLUGIN_ROOT}/scripts/changed-files.sh")" ] && echo "EMPTY_DIFF"
 ```
 On `EMPTY_DIFF`, **check `receipt.notes` before delegating back** — never enter a delegation loop on an empty diff:
 - **Notes legitimately explain the empty diff** (no code change needed — e.g., flaky test, CI-side config, already fixed on the branch) → do NOT re-delegate. Act on the notes (e.g., re-run CI) or block.
@@ -79,13 +79,9 @@ BASE=$(gh pr view $PR --json baseRefName -q .baseRefName)
 ```
 Skip the rest when `gh pr view $PR --json state -q .state` is `MERGED` or `CLOSED` — go straight to step 2.
 ```bash
-# git-dir differs from the common dir only inside a linked worktree
-if [ "$(git rev-parse --path-format=absolute --git-dir)" = "$COMMON" ] || [ "$(git branch --show-current)" != "$BRANCH" ]; then
-  [ -d "$WT_DIR/$BRANCH" ] || { git fetch "$REMOTE" "$BRANCH" && git worktree add "$WT_DIR/$BRANCH" "$BRANCH"; }
-  cd "$WT_DIR/$BRANCH"
-fi
-[ "$(git branch --show-current)" = "$BRANCH" ] || echo "WRONG_CHECKOUT"
+WT=$("${CLAUDE_SKILL_DIR}/scripts/ensure-worktree.sh" "$WT_DIR" "$REMOTE" "$BRANCH") && cd "$WT" && pwd
 ```
+Args: `WT_DIR REMOTE BRANCH`. Stays in the current linked worktree when it is on `BRANCH`; otherwise uses `$WT_DIR/$BRANCH`, fetching `BRANCH` and adding the worktree when the directory is missing. Prints that checkout's root, or prints `WRONG_CHECKOUT` (stderr) and exits 1 when it isn't on `BRANCH`.
 `WRONG_CHECKOUT` → block.
 
 ## Waiting
@@ -126,9 +122,10 @@ Parse `state`:
 ### No checks reported
 Decide whether CI exists for this PR:
 ```bash
-[ -z "$(grep -rlsE '(^|[[:space:],[])pull_request(_target)?([[:space:]]*:|[],[:space:]]|$)' .github/workflows)" ] && echo "NO_PR_CI"
+"${CLAUDE_SKILL_DIR}/scripts/has-pr-ci.sh"
 gh pr view $PR --json createdAt,commits --jq '[.createdAt, .commits[-1].committedDate] | map(fromdateiso8601) | max | now - . > 600'
 ```
+Run from the worktree root. The script lists the workflow files that trigger on `pull_request`/`pull_request_target` (exit 0), else prints `NO_PR_CI` (exit 1).
 `NO_PR_CI` (no workflow triggers on `pull_request`/`pull_request_target`), or `true` (PR created / head committed over 10 min ago and still no checks) → CI is **none**: proceed to step 3 as if passed. Otherwise wait 120 s.
 
 ### CI running or queued
@@ -248,18 +245,9 @@ A fix, rebase, failing check, or new review while `ready` is set → remove `rea
 
 Runs only when the PR is observed as `MERGED` (step 2). Starts and ends at the repo root:
 ```bash
-cd "$REPO_ROOT"
-git worktree prune
-WT_PATH=$(git for-each-ref --format='%(worktreepath)' "refs/heads/$BRANCH")
-[ -n "$WT_PATH" ] && [ "$WT_PATH" != "$REPO_ROOT" ] && git worktree remove --force "$WT_PATH"
-# Squash merges leave the branch unmerged locally — -D, safe because the PR is MERGED
-[ "$BRANCH" != "$BASE" ] && git show-ref --verify --quiet "refs/heads/$BRANCH" && git branch -D "$BRANCH"
-git ls-remote --exit-code "$REMOTE" "refs/heads/$BRANCH" >/dev/null && git push "$REMOTE" --delete "$BRANCH"
-# Fast-forward local base only when the main checkout is on it and clean — never reset or force
-if [ "$(git branch --show-current)" = "$BASE" ] && [ -z "$(git status --porcelain)" ]; then
-  git fetch "$REMOTE" "$BASE" && git merge --ff-only "$REMOTE/$BASE"
-fi
+cd "$REPO_ROOT" && "${CLAUDE_SKILL_DIR}/scripts/cleanup.sh" "$REMOTE" "$BASE" "$BRANCH"
 ```
+Args: `REMOTE BASE BRANCH`. Prunes, removes exactly `BRANCH`'s worktree (never the main checkout), deletes `BRANCH` with `-D` (squash merges leave it unmerged locally — safe because the PR is MERGED) and on `REMOTE` when it is still there, then fast-forwards local `BASE` only when the main checkout is on it and clean — never resets or forces. Idempotent; refuses `BRANCH` = `BASE`. Non-zero exit → surface git's message.
 
 Then, for every watched PR with `waits=<N>`: ensure its worktree (step 1), rebase (step 4, `BEHIND`), remove that flag. `cd "$REPO_ROOT"` again.
 

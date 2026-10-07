@@ -39,9 +39,9 @@ When done, return a receipt matching `${CLAUDE_PLUGIN_ROOT}/schema/receipt.schem
 }
 ```
 
-- `filesChanged` is the exact output of this command, run from the worktree root — it includes untracked files and excludes `.supera/` even where it isn't gitignored:
+- `filesChanged` is the exact output of this command, run from the worktree root — one path per line, it includes untracked files, lists a rename as both paths, and excludes `.supera/` even where it isn't gitignored:
   ```bash
-  git status --porcelain --untracked-files=all --no-renames | cut -c4- | grep -v '^\.supera/'
+  "${CLAUDE_PLUGIN_ROOT}/scripts/changed-files.sh"
   ```
 - `verification` keys are `build`, `lint`, plus one per detected test layer. Run them in that order.
 - Value is `pass`, `fail`, or `skipped` (when the repo has no such command).
