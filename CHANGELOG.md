@@ -1,3 +1,9 @@
+## v2.1.8 (2026-10-07)
+
+### Bug Fixes
+
+* fix: verify engineer changes with git status --porcelain (#81) (3fec0e0ac397ae997794137d9d45921c21b0699a)
+
 ## v2.1.7 (2026-10-07)
 
 ### Bug Fixes
