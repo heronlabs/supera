@@ -1,3 +1,9 @@
+## v2.1.10 (2026-10-07)
+
+### Miscellaneous Chores
+
+* other: move skill git steps into tested scripts and add PR CI (#85) (91e3e612fe8d9a2bafa17518a8aa48945d82a7c5)
+
 ## v2.1.9 (2026-10-07)
 
 ### Bug Fixes
