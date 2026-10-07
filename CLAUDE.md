@@ -17,7 +17,7 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 ## Core invariants
 
 - **Nothing repo-specific is hardcoded, and no config file exists.** Commands, branches, and remotes are detected from the target repo itself (declared scripts, Makefile, CI workflows, git remotes, GitHub default branch).
-- **Skills orchestrate, agents implement.** `/ship` and `/pr-watch` route lifecycle and delegate all application code to `supera-engineer`. Guidelines are canonical — a rule in two documents is a defect.
+- **Skills orchestrate, agents implement.** `/ship` and `/pr-watch` route lifecycle and delegate application code to `supera-engineer`. They fix trivial things directly — lint/format, typos, conflict markers, mechanical few-line fixes; anything touching logic or tests goes to the engineer. Guidelines are canonical — a rule in two documents is a defect.
 - **Ship goes end-to-end up to merge.** Engineer writes code + tests → ship commits, pushes, opens PR, and hands off to `pr-watch` for CI monitoring. No manual steps between `/ship` and a green PR (unless verification fails after 3 attempts — then manual review required). **Merging is always the user's action.**
 - **Nothing commits to base directly.** Every change via worktree/branch. Only `/ship` commits — on the feature branch. Engineers never commit.
 - **PR is the ticket.** Git/GitHub-native — no external tracker. PR body uses the user's template if present, falls back to `.github/PULL_REQUEST_TEMPLATE.md`.
@@ -27,10 +27,10 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 
 ## Agent delegation rules
 
-- **Verify agent output before trusting it.** After any subagent (especially `supera-engineer`) returns, run `git diff --stat` to confirm changes were actually made. If the agent reports completion but no diff exists, apply the edits directly — do not re-delegate. The report's #1 friction: agents claiming completion with zero changes.
-- **Confirm worktree context before edits.** Run `pwd` and verify you're in the intended worktree (`.worktrees/<branch>`) before any Edit or Write operation. Editing the main repo instead of the worktree is a silent defect that requires reverts.
-- **Engineer receipt is a claim, not a fact.** Cross-check `receipt.filesChanged` against `git diff --name-only`. An empty or mismatched receipt means the engineer idled — treat as verification failure, loop back.
-- **Pre-flight before push.** Run the detected build and lint commands in the worktree before pushing. Don't rely solely on the engineer's self-reported verification — 27 incidents of buggy code in the report came from pushing without local validation.
+- **Verify agent output before trusting it.** After any subagent (especially `supera-engineer`) returns, run `git status --porcelain` (not `git diff` — it misses untracked files), excluding `.supera/`, to confirm changes were made. If none exist, check `receipt.notes`, re-delegate at most once, then fix directly only if trivial — otherwise surface the failure.
+- **Confirm worktree context before edits.** Run `pwd` and verify you're in the intended worktree (`.worktrees/<branch>`) before any Edit or Write operation.
+- **Engineer receipt is a claim, not a fact.** Cross-check `receipt.filesChanged` against the same `git status --porcelain` paths, and those paths against the `## Files` list in `.supera/plan.md`. An empty or mismatched receipt means the engineer idled — treat as verification failure, loop back. Extra files not justified in `receipt.notes` go back to the engineer to revert or justify.
+- **Pre-flight before push.** Run the detected build and lint commands in the worktree before pushing. Don't rely solely on the engineer's self-reported verification.
 - **Delegation uses the current worktree.** Never pass `isolation: "worktree"` when dispatching an agent that should work in the ship/pr-watch worktree. Ship already owns the worktree — isolation creates a separate one where changes are invisible to the commit step.
 - **Delegation stays on one screen.** Never pass `name:` when dispatching an agent. A named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Unnamed, the engineer is a plain subagent and its receipt arrives as the Agent tool's result.
 

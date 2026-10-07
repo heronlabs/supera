@@ -74,30 +74,31 @@ fi
 
 Announce: *"Delegating to supera-engineer in worktree `$WT_DIR/$SLUG`."*
 
-Dispatch `supera-engineer` with: the task description and the worktree path. The engineer detects the repo's own build/lint/test commands. **Do NOT use `isolation: "worktree"` and do NOT pass `name:`** — ship already owns the worktree, and a named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Use `subagent_type: "supera:supera-engineer"` only — the receipt arrives as the Agent tool's result; no separate message back to the orchestrator. The engineer works in the current worktree directory: it writes a plan to `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
+Dispatch `supera-engineer` with: the task description, the worktree path, and the base ref `$REMOTE/$BASE` — the engineer reads existing code and versions from it, never from the local base branch. Use `subagent_type: "supera:supera-engineer"` only — **no `isolation: "worktree"`** (ship owns the worktree) and **no `name:`** (it splits the user's screen). The receipt arrives as the Agent tool's result. The engineer writes `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
 
 Wait for its JSON receipt. Parse it:
 - **All verification `pass`** → done. Surface the summary and files changed.
-- **Any `fail`** → delegate back to engineer with the failure output (max 3 loops). If still failing after 3, surface the failure.
+- **Any `fail`** → if trivial (lint/format, typos, conflict markers, mechanical few-line fixes), fix it directly. Anything touching logic or tests goes back to the engineer with the failure output (max 3 loops). If still failing after 3, surface the failure.
 
 ### 4a — Verify engineer changes
 
-**Before committing, independently verify the engineer actually made changes:**
+**Before committing, independently verify the engineer's changes** with the same command it uses for `filesChanged` (includes untracked files, excludes `.supera/`), plus the plan's file list:
 
 ```bash
-# Verify unstaged or staged changes exist
-git diff --stat
-git diff --cached --stat
+CHANGED=$(git status --porcelain --untracked-files=all --no-renames | cut -c4- | grep -v '^\.supera/')
+PLANNED=$(sed -n '/^## Files/,/^## /p' .supera/plan.md 2>/dev/null | grep '^- ' | sed 's/^- *//; s/`//g; s/[[:space:]]*$//')
+EXTRA=$(comm -23 <(printf '%s\n' "$CHANGED" | sort) <(printf '%s\n' "$PLANNED" | sort))
 ```
 
-If both are empty, the engineer made zero changes. **Check `receipt.notes` before delegating back** — never enter a delegation loop on an empty diff:
+If `CHANGED` is empty, the engineer made zero changes. **Check `receipt.notes` before delegating back** — never enter a delegation loop on an empty diff:
 
 - **Notes legitimately explain the empty diff** (task already implemented, nothing to change, blocked on missing info) → do NOT re-delegate. Surface the notes to the user and stop.
-- **Notes are empty or claim work was done** → the engineer idled. Treat as verification failure and re-delegate **once**, with the explicit instruction to make changes (counts toward the 3-loop max). If the diff is empty again, stop delegating — apply the edits directly or surface the failure.
+- **Notes are empty or claim work was done** → the engineer idled. Treat as verification failure and re-delegate **once**, with the explicit instruction to make changes (counts toward the 3-loop max). If `CHANGED` is empty again, stop delegating — fix directly if trivial, otherwise surface the failure.
 
-Either way: do NOT proceed to commit with no diff.
+Either way: do NOT proceed to commit with no changes.
 
-Cross-check `receipt.filesChanged` against `git diff --name-only` and `git diff --cached --name-only`. Files in the receipt that don't appear in the diff (or vice versa) indicate the engineer worked in a different context — flag this.
+- **Receipt** — `receipt.filesChanged` must match `CHANGED`. Any mismatch means the engineer worked in a different context — flag it.
+- **Scope** — `EXTRA` lists changed files missing from the plan's `## Files`. Surface any not justified in `receipt.notes` and send them back to the engineer to revert or justify (counts toward the 3-loop max).
 
 ## 5 — Commit
 
