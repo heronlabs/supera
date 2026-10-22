@@ -1,3 +1,9 @@
+## v2.3.0 (2026-10-22)
+
+### Features
+
+* feat: wait in background pollers with an event cap in pr-watch (#86) (5f551b81d56229a6bdcd277bab41ecf052b2f71f)
+
 ## v2.2.0 (2026-10-07)
 
 ### Features
