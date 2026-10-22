@@ -1,3 +1,9 @@
+## v2.4.0 (2026-10-22)
+
+### Features
+
+* feat: add not_run receipt value and bound engineer verification (#87) (675d4596510621be579d4f0d1a7f58212bef8f2e)
+
 ## v2.3.0 (2026-10-22)
 
 ### Features
