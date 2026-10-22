@@ -1,0 +1,1 @@
+{"statusCheckRollup":[{"__typename":"CheckRun","completedAt":null,"conclusion":null,"detailsUrl":"https://github.com/heronlabs/supera/actions/runs/123/job/456","name":"lint","startedAt":"2026-01-01T10:00:00Z","status":"IN_PROGRESS","workflowName":"Continuous Integration"}]}

@@ -1,0 +1,48 @@
+#!/bin/sh
+# Fake gh for the bats tests: replays canned output from the scenario directory
+# in GH_SHIM_SCENARIO (set by gh_scenario in tests/gh-fixtures.bash).
+#
+# A call's key is its arguments before the first flag joined with `_`, every
+# other character outside [A-Za-z0-9_.-] turned into `_` and runs of `_`
+# squeezed: `pr view 154 --json state` -> pr_view_154,
+# `api repos/{owner}/{repo}/pulls/154/comments --paginate` ->
+# api_repos_owner_repo_pulls_154_comments. Flags and their values are ignored,
+# so a script must put every positional before every flag and filter JSON
+# itself rather than with --jq.
+#
+# The Nth call of a key (counted in .calls/<key>) prints <key>.<N>.out, else
+# <key>.out, and exits with the code in <key>.<N>.code, else <key>.code, else
+# 0. A key with only a .code file prints nothing — a failing gh. With neither
+# file: `gh-shim: no fixture for <key>` on stderr, exit 99. A <key>.<N>.sleep
+# or <key>.sleep file holds seconds to sleep before answering — a blocking gh.
+set -eu
+
+dir=${GH_SHIM_SCENARIO:?gh-shim: GH_SHIM_SCENARIO is not set}
+
+key=
+for arg in "$@"; do
+  case $arg in -*) break ;; esac
+  key="$key${key:+_}$arg"
+done
+key=$(printf '%s' "$key" | tr -c 'A-Za-z0-9_.-' '_' | tr -s '_')
+
+mkdir -p "$dir/.calls"
+n=$(cat "$dir/.calls/$key" 2>/dev/null || echo 0)
+n=$((n + 1))
+printf '%s\n' "$n" >"$dir/.calls/$key"
+
+out="$dir/$key.$n.out"
+[ -f "$out" ] || out="$dir/$key.out"
+code="$dir/$key.$n.code"
+[ -f "$code" ] || code="$dir/$key.code"
+
+if [ ! -f "$out" ] && [ ! -f "$code" ]; then
+  echo "gh-shim: no fixture for $key" >&2
+  exit 99
+fi
+pause="$dir/$key.$n.sleep"
+[ -f "$pause" ] || pause="$dir/$key.sleep"
+[ ! -f "$pause" ] || sleep "$(tr -d '[:space:]' <"$pause")"
+[ ! -f "$out" ] || cat "$out"
+[ ! -f "$code" ] || exit "$(tr -d '[:space:]' <"$code")"
+exit 0
