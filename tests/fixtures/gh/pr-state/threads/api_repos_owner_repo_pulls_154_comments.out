@@ -1,0 +1,1 @@
+[{"id":1,"in_reply_to_id":null,"path":"skills/pr-watch/scripts/wait-for.sh","line":12,"body":"Rename this."},{"id":2,"in_reply_to_id":1,"path":"skills/pr-watch/scripts/wait-for.sh","line":12,"body":"Done."},{"id":3,"in_reply_to_id":null,"path":"tests/wait-for.bats","line":40,"body":"Add a test for CLOSED."}]
