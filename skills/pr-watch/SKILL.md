@@ -138,7 +138,13 @@ gh run view $RUN_ID --log-failed
 ```
 An empty run id is an external status → classify from its `detailsUrl` (`gh pr view $PR --json statusCheckRollup`).
 
-**Pre-existing or unrelated?** Compare with the base branch's latest run of the same workflow:
+**Not run locally?** Ship records in the PR body the layers the engineer did not run before the commit:
+```bash
+"${CLAUDE_SKILL_DIR}/scripts/not-run-lanes.sh" "$PR"
+```
+Args: `PR`. Prints the lanes of the last `<!-- supera: not_run=... -->` marker in the PR body, one per line (`e2e`, `integration`, …), nothing when there is none. Exit 1 with `not-run-lanes: gh failed: pr view` on stderr → run it once more; failing again → block with that message. A failing job whose name or workflow matches a listed lane is **caused by the PR**: delegate to `supera-engineer` with the log excerpt — never classify it as pre-existing, and skip the base comparison below for it.
+
+**Pre-existing or unrelated?** Compare the remaining failures with the base branch's latest run of the same workflow:
 ```bash
 gh run list --branch "$BASE" --workflow "$WORKFLOW" --limit 1 --json conclusion,databaseId
 gh run view $BASE_RUN_ID --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name'

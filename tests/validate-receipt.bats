@@ -96,7 +96,7 @@ reason() { jq -r '.reason' "$SANDBOX/stdout"; }
   run_hook
 
   assert_block
-  [ "$(reason)" = "Receipt check failed: verification.unit is \"ok\", expected one of \"pass\", \"fail\", \"skipped\". $TRAILER" ]
+  [ "$(reason)" = "Receipt check failed: verification.unit is \"ok\", expected one of \"pass\", \"fail\", \"skipped\", \"not_run\". $TRAILER" ]
 }
 
 @test "missing filesChanged: blocks naming the key" {
@@ -123,7 +123,24 @@ reason() { jq -r '.reason' "$SANDBOX/stdout"; }
   run_hook
 
   assert_block
-  [ "$(reason)" = "Receipt check failed: verification.unit is \"ok\", expected one of \"pass\", \"fail\", \"skipped\". $TRAILER" ]
+  [ "$(reason)" = "Receipt check failed: verification.unit is \"ok\", expected one of \"pass\", \"fail\", \"skipped\", \"not_run\". $TRAILER" ]
+}
+
+@test "accepts not_run as a verification value" {
+  event valid-not-run.md
+
+  run_hook
+
+  assert_pass
+}
+
+@test "blocks an unknown verification value" {
+  event bad-value.md
+
+  run_hook
+
+  assert_block
+  [ "$(reason)" = "Receipt check failed: verification.unit is \"later\", expected one of \"pass\", \"fail\", \"skipped\", \"not_run\". $TRAILER" ]
 }
 
 @test "extra top-level key: blocks naming the key" {
