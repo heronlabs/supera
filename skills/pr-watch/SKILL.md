@@ -2,7 +2,7 @@
 name: pr-watch
 description: Monitor one or more open PRs until merged — watch CI, fix failures via supera-engineer, address review comments, report when ready, keep watching until the user merges, then clean up. Never merges — merging is always the user's action. Repo-agnostic — detects commands from the repo itself.
 argument-hint: "<PR> [<PR>...] [--non-interactive]"
-allowed-tools: Bash, Read, Edit, Write, Glob, Grep, Agent, Skill, Monitor, ScheduleWakeup
+allowed-tools: Bash, Read, Edit, Write, Glob, Grep, Agent, Skill, Monitor, ScheduleWakeup, SendMessage
 ---
 
 Monitor open PRs until they are merged. Watch CI, fix failures, address review comments. When green and approved, report ready — **never merge** — and keep watching until the user merges, then clean up.
@@ -23,19 +23,12 @@ Human-readable git output may be rewritten by shell hooks; don't parse it. Decid
 
 ## Delegation
 
-Code fixes go to `supera-engineer`: dispatch with `subagent_type: "supera:supera-engineer"` only. **Do NOT use `isolation: "worktree"` and do NOT pass `name:`** — pr-watch already owns the worktree, and a named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. The receipt arrives as the Agent tool's result; wait for it.
-
-pr-watch edits directly only trivial fixes: lint/format, typos, conflict markers, mechanical few-line fixes. Anything touching logic or tests goes to the engineer.
-
-After every fix, verify there are changes (the script prints every `git status --porcelain` path, untracked new files included; `.supera/` is excluded; nothing when clean):
+Code fixes go to `supera-engineer`; the dispatch form, the agent id, the deadline, the receipt checks, the empty-diff rule and the trivial-fix boundary follow `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md`. Right after each dispatch, launch the deadline with Bash `run_in_background` — its `ENGINEER_DEADLINE` notification is not an event, so the passthrough carries `--tick <TICK>` unchanged:
 ```bash
-[ -z "$("${CLAUDE_PLUGIN_ROOT}/scripts/changed-files.sh")" ] && echo "EMPTY_DIFF"
+"${CLAUDE_PLUGIN_ROOT}/scripts/deadline.sh" 3600 "/pr-watch <N>[:flags] [<M>[:flags] ...] --tick <TICK> [--non-interactive]"
 ```
-On `EMPTY_DIFF`, **check `receipt.notes` before delegating back** — never enter a delegation loop on an empty diff:
-- **Notes legitimately explain the empty diff** (no code change needed — e.g., flaky test, CI-side config, already fixed on the branch) → do NOT re-delegate. Act on the notes (e.g., re-run CI) or block.
-- **Notes are empty or claim a fix was made** → the engineer idled. Re-delegate **once**, with the failure and the explicit instruction to make changes (counts toward the 3-attempt max). Empty again → stop delegating — fix directly or block.
 
-Do NOT commit empty changes. With changes: commit, then `git push $REMOTE $BRANCH`. Receipt still `fail` after 3 attempts on the same failure → block.
+After every fix, verify there are changes per the guideline (on an empty diff, "stop" means block; a re-delegation counts toward the 3-attempt max). With changes: commit, then `git push $REMOTE $BRANCH`. Receipt still `fail` after 3 attempts on the same failure → block.
 
 **Block** = surface the reason to the user (in `NONINTERACTIVE`, post a comment — see below) and drop that PR from the watch list; the other PRs keep being watched.
 

@@ -11,17 +11,18 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 | `.github/PULL_REQUEST_TEMPLATE.md` | PR body template in the plugin root — used as fallback when the user's repo has none. Sections: Description, Motivation, Approach, Checklist, Evidence, Risk, Post-merge. |
 | `.github/workflows/` | `continuous-integration.yml` — PR CI, `make lint` + `make test` on GitHub-hosted `ubuntu-24.04`. `continuous-deployment.yml` — release on merge to main. |
 | `skills/` | `ship`, `pr-watch` — each a `SKILL.md`. `ship` creates worktrees, delegates to `supera-engineer`, commits, pushes, opens the PR, then hands off to `pr-watch`. `pr-watch` monitors CI, fixes failures, reports ready when green — **never merges**; cleans up after the user merges. Each skill's deterministic git steps live in `skills/<skill>/scripts/`, called as `${CLAUDE_SKILL_DIR}/scripts/<name>.sh` — SKILL.md says *what* to run and the contract (args → output/exit code), the script holds *how*. |
-| `scripts/` | Scripts shared by the skills and the agent — `changed-files.sh` (changed paths incl. untracked, minus `.supera/`). Called as `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.sh`. Scripts take every input as an argument: shell state doesn't persist between Bash calls. |
+| `scripts/` | Scripts shared by the skills and the agent — `changed-files.sh` (changed paths incl. untracked, minus `.supera/`), `deadline.sh` (sleeps, then prints `ENGINEER_DEADLINE` — the engineer deadline the skills launch in the background). Called as `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.sh`. Scripts take every input as an argument: shell state doesn't persist between Bash calls. |
 | `agents/` | `supera-engineer` — the single implementer. Writes code + tests in worktree, self-verifies, returns receipt. Never commits — the orchestrator owns the git lifecycle. |
 | `tests/` | bats — one file per script group, run against throwaway git repos (bare remote + clone + linked worktrees + squash merges); `git-fixtures.bash` holds the shared setup. `repo-integrity.bats` checks that every `${CLAUDE_SKILL_DIR}`/`${CLAUDE_PLUGIN_ROOT}` path exists (scripts executable) and that no SKILL.md or agent contains a `$<digit>` token — Claude Code replaces those with skill arguments. |
 | `Makefile` | `make lint` — shellcheck on every script and test, `jq empty` on the schema, strict-YAML parse of every SKILL.md/agent frontmatter. `make test` — bats. |
 | `schema/` | `receipt.schema.json` — engineer → orchestrator JSON handoff (**source of truth**). |
-| `guidelines/` | `commit-conventions.md` — canonical commit format. Skills and agents reference it; never restate. |
+| `hooks/` | `hooks.json` registers `validate-receipt.sh` on `SubagentStop` for `supera-engineer` — validates the receipt in the agent's final message against `schema/receipt.schema.json`; when missing or invalid, blocks the stop once so the engineer returns a corrected receipt (one retry). |
+| `guidelines/` | `commit-conventions.md` — canonical commit format. `delegation.md` — how skills dispatch `supera-engineer`, bound it with a deadline, verify its receipt, and where their own direct fixes stop. Skills and agents reference them; never restate. |
 
 ## Core invariants
 
 - **Nothing repo-specific is hardcoded, and no config file exists.** Commands, branches, and remotes are detected from the target repo itself (declared scripts, Makefile, CI workflows, git remotes, GitHub default branch).
-- **Skills orchestrate, agents implement.** `/ship` and `/pr-watch` route lifecycle and delegate application code to `supera-engineer`. They fix trivial things directly — lint/format, typos, conflict markers, mechanical few-line fixes; anything touching logic or tests goes to the engineer. Guidelines are canonical — a rule in two documents is a defect.
+- **Skills orchestrate, agents implement.** `/ship` and `/pr-watch` route lifecycle and delegate application code to `supera-engineer`; what they fix directly is bounded by `guidelines/delegation.md`. Guidelines are canonical — a rule in two documents is a defect.
 - **Ship goes end-to-end up to merge.** Engineer writes code + tests → ship commits, pushes, opens PR, and hands off to `pr-watch` for CI monitoring. No manual steps between `/ship` and a green PR (unless verification fails after 3 attempts — then manual review required). **Merging is always the user's action.**
 - **Nothing commits to base directly.** Every change via worktree/branch. Only `/ship` commits — on the feature branch. Engineers never commit.
 - **PR is the ticket.** Git/GitHub-native — no external tracker. PR body uses the user's template if present, falls back to `.github/PULL_REQUEST_TEMPLATE.md`.
@@ -31,12 +32,7 @@ This repo **is** a Claude Code plugin. It ships skills + an agent that run in *o
 
 ## Agent delegation rules
 
-- **Verify agent output before trusting it.** After any subagent (especially `supera-engineer`) returns, run `git status --porcelain` (not `git diff` — it misses untracked files), excluding `.supera/`, to confirm changes were made. If none exist, check `receipt.notes`, re-delegate at most once, then fix directly only if trivial — otherwise surface the failure.
-- **Confirm worktree context before edits.** Run `pwd` and verify you're in the intended worktree (`.worktrees/<branch>`) before any Edit or Write operation.
-- **Engineer receipt is a claim, not a fact.** Cross-check `receipt.filesChanged` against the same `git status --porcelain` paths, and those paths against the `## Files` list in `.supera/plan.md`. An empty or mismatched receipt means the engineer idled — treat as verification failure, loop back. Extra files not justified in `receipt.notes` go back to the engineer to revert or justify.
-- **Pre-flight before push.** Run the detected build and lint commands in the worktree before pushing. Don't rely solely on the engineer's self-reported verification.
-- **Delegation uses the current worktree.** Never pass `isolation: "worktree"` when dispatching an agent that should work in the ship/pr-watch worktree. Ship already owns the worktree — isolation creates a separate one where changes are invisible to the commit step.
-- **Delegation stays on one screen.** Never pass `name:` when dispatching an agent. A named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Unnamed, the engineer is a plain subagent and its receipt arrives as the Agent tool's result.
+How `/ship` and `/pr-watch` dispatch `supera-engineer` (dispatch form, agent id), bound it with a deadline, verify its receipt against the actual changes and the plan, handle an empty diff, and where their own direct fixes stop is defined once in `guidelines/delegation.md`. Follow it whenever you delegate — in this repo too.
 
 ## Releasing
 

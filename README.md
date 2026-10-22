@@ -107,12 +107,16 @@ agents/
   supera-engineer.md    # implement — orient → plan → code + tests → self-verify → receipt
 scripts/
   changed-files.sh      # changed paths incl. untracked, minus .supera/ — shared by skills and agent
+  deadline.sh           # engineer deadline — sleeps, prints ENGINEER_DEADLINE; launched in the background after each dispatch
+hooks/
+  validate-receipt.sh   # SubagentStop — validates the engineer's receipt against the schema, blocks the stop once for a retry
 tests/                  # bats — scripts against throwaway git repos, plus repo-integrity checks
 Makefile                # make lint (shellcheck, jq, frontmatter YAML) · make test (bats)
 schema/
   receipt.schema.json   # engineer → orchestrator JSON handoff (source of truth)
 guidelines/
   commit-conventions.md # canonical commit format — referenced, never restated
+  delegation.md         # dispatch form, engineer deadline, receipt checks, trivial-fix boundary — referenced, never restated
 .github/
   PULL_REQUEST_TEMPLATE.md # PR body template — fallback when user's repo has none
   workflows/            # continuous-integration (make lint + make test on PRs), continuous-deployment
@@ -133,6 +137,7 @@ guidelines/
 
 - **Never commits to base.** Every change in a worktree, committed on a feature branch, shipped via PR.
 - **Self-verifies before handing back.** Engineer runs build → lint → test layers.
+- **Bounded engineers.** Every `supera-engineer` dispatch starts a 1 h deadline. If it fires before the receipt, the engineer is told once to return the receipt with the current state (unverified gates `not_run`); a second deadline surfaces the stall to you.
 - **Single-screen dispatch.** `supera-engineer` is a plain subagent — never a named teammate, so no split pane.
 - **Plans stay local.** `.supera/` is gitignored — plans never leak into commits.
 - **No secrets in worktrees.** Worktrees are transient; `.worktrees/` is gitignored.
