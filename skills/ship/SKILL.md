@@ -74,9 +74,16 @@ Announce: *"Delegating to supera-engineer in worktree `$WT_DIR/$SLUG`."*
 
 Dispatch `supera-engineer` with: the task description, the worktree path, and the base ref `$REMOTE/$BASE` — the engineer reads existing code and versions from it, never from the local base branch. Use `subagent_type: "supera:supera-engineer"` only — **no `isolation: "worktree"`** (ship owns the worktree) and **no `name:`** (it splits the user's screen). The receipt arrives as the Agent tool's result. The engineer writes `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
 
-Wait for its JSON receipt. Parse it:
-- **All verification `pass`** → done. Surface the summary and files changed.
-- **Any `fail`** → if trivial (lint/format, typos, conflict markers, mechanical few-line fixes), fix it directly. Anything touching logic or tests goes back to the engineer with the failure output (max 3 loops). If still failing after 3, surface the failure.
+Wait for its JSON receipt. Write it to `.supera/receipt.json` in the worktree, then check its `not_run` lanes:
+
+```bash
+MARKER=$("${CLAUDE_SKILL_DIR}/scripts/not-run-marker.sh" .supera/receipt.json)
+```
+Args: the receipt file. Prints `<!-- supera: not_run=<lane>[,<lane>] -->` — the verification keys valued `not_run`, sorted — or nothing when there is none; `MARKER` is that line (step 7). Exits 3 with `not_run on <key> is not accepted: run it or report fail` on stderr when `build`, `lint` or `unit` is `not_run`; exits 1 when the file is not a JSON receipt (re-save it from the Agent result).
+
+Parse the receipt:
+- **Every gate `pass` or `skipped`, or `not_run` accepted by the script (`integration`, `e2e`, other long layers)** → done. Surface the summary, the files changed and each `not_run` gate with its reason from `receipt.notes`.
+- **Any `fail`, or the script exited 3** → treat exactly alike: if trivial (lint/format, typos, conflict markers, mechanical few-line fixes), fix it directly. Anything touching logic or tests goes back to the engineer with the failure output — the stderr message, for exit 3 (max 3 loops). If still failing after 3, surface the failure.
 
 ### 4a — Verify engineer changes
 
@@ -168,20 +175,20 @@ fi
 | **Description** | `receipt.summary`. When `BREAKING=true`, add a line saying what breaks. |
 | **Motivation** | Replace the comment prompt with the task description (`TASK`) — it is the user's "why". Keep any issue reference it contains. |
 | **Approach** | Bullet list of `receipt.filesChanged` with a one-line note per file from the engineer's plan. |
-| **Checklist** | Fill checkboxes from `receipt.verification`: `pass` → `[x]`, `fail` → `[ ]`, `skipped` → remove that row. Tick "Breaking change documented" when `BREAKING=true`. |
-| **Evidence** | Replace the comment prompt with the verification actually run: each `receipt.verification` gate and result, then each step 6 pre-flight command and result (including any surfaced pre-existing audit advisory). |
+| **Checklist** | Fill checkboxes from `receipt.verification`: `pass` → `[x]`, `fail` or `not_run` → `[ ]`, `skipped` → remove that row. Tick "Breaking change documented" when `BREAKING=true`. |
+| **Evidence** | Replace the comment prompt with the verification actually run: each `receipt.verification` gate and result — a `not_run` gate as "not run locally: <its reason from `receipt.notes`>" — then each step 6 pre-flight command and result (including any surfaced pre-existing audit advisory). |
 | **Risk assessment** | Leave with its comment prompt. |
 | **Post-merge** | Leave with its comment prompt. |
 
-Set `BODY_FILE=".supera/pr-template.md"`.
+Set `BODY_FILE=".supera/pr-template.md"`. When `MARKER` is non-empty, append it as the very last line of `.supera/pr-template.md` — pr-watch reads it from the PR body.
 
 **If a user template IS found:** Write a filled copy to `.supera/pr-template.md` — copy the template, then fill known sections inline:
 - **Description** → replace the section content (after its heading, before the next `##`) with `receipt.summary` (plus what breaks, when `BREAKING=true`).
-- **Checklist** → for each checkbox line, set `[x]` if the corresponding `receipt.verification` key is `pass`, `[ ]` if `fail`; delete rows for `skipped` keys; tick a breaking-change row when `BREAKING=true`.
+- **Checklist** → for each checkbox line, set `[x]` if the corresponding `receipt.verification` key is `pass`, `[ ]` if `fail` or `not_run`; delete rows for `skipped` keys; tick a breaking-change row when `BREAKING=true`.
 - **Motivation** and **Evidence** (or the template's equivalent headings, matched case-insensitively) → fill as in the table above.
 - Leave all other sections (Risk, Post-merge, …) as-is — user fills those.
 
-Set `BODY_FILE=".supera/pr-template.md"`.
+Set `BODY_FILE=".supera/pr-template.md"`. When `MARKER` is non-empty, append it as the very last line of `.supera/pr-template.md`, after the user's sections — pr-watch reads it from the PR body.
 
 ```bash
 PR_URL=$(gh pr create \
@@ -213,4 +220,4 @@ Invoke the `pr-watch` skill with `$PR`.
 - Never commit to base directly. Commits only on the feature branch in the worktree.
 - Commit hygiene follows `${CLAUDE_PLUGIN_ROOT}/guidelines/commit-conventions.md`.
 - The orchestrator fixes only trivial issues directly (lint/format, typos, conflict markers); all other code goes through `supera-engineer`.
-- Only commit/push/PR when all verification gates pass. An audit advisory that already exists on base doesn't block (step 6).
+- Only commit/push/PR when every verification gate is `pass`, `skipped`, or a `not_run` the marker script accepts (step 4). An audit advisory that already exists on base doesn't block (step 6).

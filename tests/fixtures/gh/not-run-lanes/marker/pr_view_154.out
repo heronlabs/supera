@@ -1,0 +1,1 @@
+{"body":"## Description\r\n\r\nAdd a one-line README.\r\n\r\n## Evidence\r\n\r\n- e2e: not run locally: no spec under e2e/ covers README.md\r\n- integration: not run locally: the suite takes 40 min\r\n\r\n<!-- supera: not_run=e2e,integration -->\r\n"}

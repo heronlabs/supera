@@ -21,10 +21,10 @@
     },
     "verification": {
       "additionalProperties": {
-        "enum": ["pass", "fail", "skipped"],
+        "enum": ["pass", "fail", "skipped", "not_run"],
         "type": "string"
       },
-      "description": "Verification output per layer. Keys: 'build', 'lint', plus one per detected test layer (e.g., unit, integration, e2e). No other keys. Values: pass, fail, skipped.",
+      "description": "Verification output per layer. Keys: 'build', 'lint', plus one per detected test layer (e.g., unit, integration, e2e). No other keys. Values: pass, fail, skipped, not_run. `skipped`: the repo has no such layer. `not_run`: the layer exists but was not executed — say why in `notes`.",
       "minProperties": 0,
       "type": "object"
     }
