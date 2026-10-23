@@ -53,6 +53,8 @@ Uses the repo's PR template if one exists, falls back to supera's own `.github/P
 
 **Idempotent.** Re-run in a dirty worktree picks up where the engineer left off. If the worktree already exists for the branch, it reuses it.
 
+**Refuses tasks that change no repo files** — a one-off command, download, deploy, or inspection stops before any worktree is created; do it directly.
+
 ### /pr-watch
 
 ```text
@@ -66,7 +68,7 @@ Monitors open PRs until they are merged. Waits on CI — on failure, delegates t
 
 | Scenario | Behavior |
 |---|---|
-| CI running | Wait on a checks watcher, with a long wakeup as fallback. |
+| CI running | Wait on a background `wait-for.sh` checks poller — one wake when CI finishes or fails. |
 | No CI on pull requests | Treat CI as none, continue to review and ready checks. |
 | CI queued — runners offline | Tell the user once, wait with long delays. |
 | CI failed — code error | Delegate to `supera-engineer`, push fix, keep watching. |
@@ -95,16 +97,17 @@ A repo with no build, lint, or tests just skips those gates.
 
 ## Architecture
 
-Two skills orchestrate, one agent implements. Nothing repo-specific is hardcoded and no config file exists — commands, branches, and remotes are detected from the target repo.
+Two skills orchestrate, one agent implements, one reviews. Nothing repo-specific is hardcoded and no config file exists — commands, branches, and remotes are detected from the target repo.
 
 ```
 skills/
   ship/SKILL.md         # orchestrate — worktree → engineer → verify → commit → push → PR → pr-watch
-  ship/scripts/         # detect-worktree, exclude-supera, create-worktree
+  ship/scripts/         # detect-worktree, exclude-supera, create-worktree, review-scope, not-run-marker
   pr-watch/SKILL.md     # monitor — CI → fix → review → report ready (never merges) → cleanup
-  pr-watch/scripts/     # ensure-worktree, has-pr-ci, cleanup
+  pr-watch/scripts/     # ensure-worktree, has-pr-ci, cleanup, pr-state, wait-for, not-run-lanes
 agents/
   supera-engineer.md    # implement — orient → plan → code + tests → self-verify → receipt
+  supera-reviewer.md    # review — diff-only check of the engineer's change before ship commits → JSON findings
 scripts/
   changed-files.sh      # changed paths incl. untracked, minus .supera/ — shared by skills and agent
   deadline.sh           # engineer deadline — sleeps, prints ENGINEER_DEADLINE; launched in the background after each dispatch
@@ -114,6 +117,7 @@ tests/                  # bats — scripts against throwaway git repos, plus rep
 Makefile                # make lint (shellcheck, jq, frontmatter YAML) · make test (bats)
 schema/
   receipt.schema.json   # engineer → orchestrator JSON handoff (source of truth)
+  review.schema.json    # reviewer → orchestrator findings (blocker, important, minor)
 guidelines/
   commit-conventions.md # canonical commit format — referenced, never restated
   delegation.md         # dispatch form, engineer deadline, receipt checks, trivial-fix boundary — referenced, never restated
@@ -127,18 +131,18 @@ guidelines/
 
 ## How it works
 
-**`/ship`** parses the task into a branch slug (`feat-add-retry`), creates a git worktree off the base branch (or detects it's already in one), installs dependencies, and dispatches `supera-engineer` with the task. The engineer writes a plan to `.supera/plan.md` (gitignored), implements code AND tests, runs build → lint → test layers in order, and returns a JSON receipt. If any gate fails, `/ship` loops back to the engineer with the failure output (max 3 attempts). On all gates passing: commits with a conventional-commit message, pushes the branch, opens a PR (using the repo's template or supera's fallback), and hands off to `pr-watch` for CI monitoring.
+**`/ship`** parses the task into a branch slug (`feat-add-retry`), creates a git worktree off the base branch (or detects it's already in one), installs dependencies, and dispatches `supera-engineer` with the task. The engineer writes a plan to `.supera/plan.md` (gitignored), implements code AND tests, runs build → lint → test layers in order, and returns a JSON receipt. Every engineer dispatch runs under a 1 h deadline. If any gate fails, `/ship` loops back to the engineer with the failure output (max 3 attempts). On all gates passing, `supera-reviewer` reads the diff only — skipped for docs-only or ≤ 20-line changes — and a `blocker` left open stops the commit. Then `/ship` commits with a conventional-commit message, pushes the branch, opens a PR (using the repo's template or supera's fallback), and hands off to `pr-watch` for CI monitoring.
 
-**`supera-engineer`** orients on the repo's own conventions (reads CLAUDE.md, existing code, test patterns), detects the repo's build/lint/test commands, writes a checkbox plan, implements with surgical edits (never rewrites whole files), and self-verifies: build → lint → test layers in order. Returns a receipt with `pass` / `fail` / `skipped` for each gate. Tool-agnostic — uses whatever the user has installed.
+**`supera-engineer`** orients on the repo's own conventions (reads CLAUDE.md, existing code, test patterns), detects the repo's build/lint/test commands, writes a checkbox plan, implements with surgical edits (never rewrites whole files), and self-verifies: build → lint → test layers in order. Returns a receipt with `pass` / `fail` / `skipped` / `not_run` for each gate — `skipped` means the repo has no such layer; `not_run` means the layer exists but was not executed, and `notes` says why. Tool-agnostic — uses whatever the user has installed.
 
-**`/pr-watch`** resolves the PRs from args or current branch, reads CI via `gh pr view --json state,mergeable,statusCheckRollup`, classifies failures, delegates fixes to the engineer, addresses review threads, syncs with base, and announces ready when green — it never merges. It keeps watching until the user merges, then cleans up the worktree and the local + remote branch. Waits on a checks watcher (Monitor or background Bash) with one `ScheduleWakeup` per loop as fallback — never spin-loops.
+**`/pr-watch`** resolves the PRs from args or current branch, reads each PR's state in one `pr-state.sh` call, classifies failures, delegates fixes to the engineer, addresses review threads, syncs with base, and announces ready when green — it never merges. It keeps watching until the user merges, then cleans up the worktree and the local + remote branch. Every wait is one background `wait-for.sh` poller per PR that wakes the session on the state change — no `ScheduleWakeup` while a poller is alive, never a spin-loop. Bounded: `MAX_EVENTS` (30) per loop, a timeout on every poller, 8 h for the ready phase.
 
 ## Safety
 
 - **Never commits to base.** Every change in a worktree, committed on a feature branch, shipped via PR.
 - **Self-verifies before handing back.** Engineer runs build → lint → test layers.
 - **Bounded engineers.** Every `supera-engineer` dispatch starts a 1 h deadline. If it fires before the receipt, the engineer is told once to return the receipt with the current state (unverified gates `not_run`); a second deadline surfaces the stall to you.
-- **Single-screen dispatch.** `supera-engineer` is a plain subagent — never a named teammate, so no split pane.
+- **Single-screen dispatch.** `supera-engineer` and `supera-reviewer` are plain subagents — never named teammates, so no split pane.
 - **Plans stay local.** `.supera/` is gitignored — plans never leak into commits.
 - **No secrets in worktrees.** Worktrees are transient; `.worktrees/` is gitignored.
 - **Force-with-lease only.** `/pr-watch` never runs bare `--force` — only `--force-with-lease` after rebase.

@@ -9,41 +9,29 @@ Monitor open PRs until they are merged. Watch CI, fix failures, address review c
 
 ## 0 — Detect repo context
 
-No config file — everything is derived from git + GitHub:
+No config file — everything is derived from git + GitHub. Human-readable git output may be rewritten by shell hooks; don't parse it — decide from `git rev-parse`, `git for-each-ref`, exit codes, and `$(git status --porcelain)` tests.
 - `REMOTE`: the sole git remote, or `origin` when several exist.
-- `REPO_ROOT` (main checkout) and `WT_DIR`:
-  ```bash
-  COMMON=$(git rev-parse --path-format=absolute --git-common-dir)
-  REPO_ROOT=$(dirname "$COMMON")
-  WT_DIR="$REPO_ROOT/.worktrees"
-  ```
+- `REPO_ROOT` (main checkout): `REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")`; `WT_DIR="$REPO_ROOT/.worktrees"`.
 - `BASE` / `BRANCH`: per PR, from the PR itself (step 1).
-
-Human-readable git output may be rewritten by shell hooks; don't parse it. Decide from `git rev-parse`, `git for-each-ref`, exit codes, and `$(git status --porcelain)` tests.
 
 ## Delegation
 
-Code fixes go to `supera-engineer`; the dispatch form, the agent id, the deadline, the receipt checks, the empty-diff rule and the trivial-fix boundary follow `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md`. Right after each dispatch, launch the deadline with Bash `run_in_background` — its `ENGINEER_DEADLINE` notification is not an event, so the passthrough carries `--tick <TICK>` unchanged:
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/deadline.sh" 3600 "/pr-watch <N>[:flags] [<M>[:flags] ...] --tick <TICK> [--non-interactive]"
-```
+Code fixes go to `supera-engineer`; the dispatch form, the agent id, the deadline, the receipt checks, the empty-diff rule and the trivial-fix boundary follow `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md`. Right after each dispatch, launch the deadline with Bash `run_in_background`: `"${CLAUDE_PLUGIN_ROOT}/scripts/deadline.sh" 3600 "/pr-watch <N>[:flags] [<M>[:flags] ...] --tick <TICK> [--non-interactive]"` — its `ENGINEER_DEADLINE` notification is not an event, so the passthrough carries `--tick <TICK>` unchanged.
 
 After every fix, verify there are changes per the guideline (on an empty diff, "stop" means block; a re-delegation counts toward the 3-attempt max). With changes: commit, then `git push $REMOTE $BRANCH`. Receipt still `fail` after 3 attempts on the same failure → block.
 
-**Block** = surface the reason to the user (in `NONINTERACTIVE`, post a comment — see below) and drop that PR from the watch list; the other PRs keep being watched.
+**Block** = surface the reason to the user (in `NONINTERACTIVE`: `gh pr comment $PR --body "Blocked (non-interactive): <reason>"`) and drop that PR from the watch list; the other PRs keep being watched.
 
 ## 1 — Resolve the PRs
 
 Parse `$ARGUMENTS`:
-- One or more PR tokens, `<N>` or `<N>:<flags>` → the watch list.
-- `--non-interactive` → `NONINTERACTIVE=true` (headless, no prompts).
+- One or more PR tokens, `<N>` or `<N>:<flags>` → the watch list. None → the current branch's PR, `gh pr view --json number -q .number`; neither → ask the user (in `NONINTERACTIVE`, exit — nothing to act on).
+- `--non-interactive` → `NONINTERACTIVE=true`: headless, never prompt — every announcement below is posted as a PR comment instead; fixes, rebases and pushes proceed as normal.
 - `--tick <n>` → `TICK=n` (event counter — poller notifications and fallback wakeups; default `0` when absent).
-- No PR token → detect from current branch: `gh pr view --json number -q .number`.
-- Neither works → ask the user (in `NONINTERACTIVE` mode, exit — nothing to act on).
 
-If this session already has a pending pr-watch wakeup (a `ScheduleWakeup` whose prompt hasn't fired yet) or a live poller (**Waiting**), merge its PR tokens and flags into the list — one loop watches every PR; the next `ScheduleWakeup` replaces the pending one, a live poller is re-used.
+If this session already has a pending pr-watch wakeup or a live poller (**Waiting**), merge its PR tokens and flags into the list — one loop watches every PR; the next `ScheduleWakeup` replaces the pending one, a live poller is re-used.
 
-Per-PR flags (comma-separated after `:`) carry state across wakeups — no state files:
+Per-PR flags (comma-separated after `:`) carry state across wakeups — no state files. Example: `/pr-watch 93:waits=94 94 --tick 4`.
 
 | Flag | Meaning |
 |---|---|
@@ -52,99 +40,56 @@ Per-PR flags (comma-separated after `:`) carry state across wakeups — no state
 | `runners` | runners-offline announcement already made (step 2) |
 | `ready=<epoch>` | ready announced at that time (`date +%s`), awaiting merge (step 5) |
 
-Example: `/pr-watch 93:waits=94 94 --tick 4`.
-
-**Tick:** for each PR in the list, ensure its worktree (below), then run steps 2–6. Each PR ends with a wait from **Waiting** (a background poller, or a `ScheduleWakeup` delay for `UNKNOWN` and in the fallback), updated flags, or *drop* (merged and cleaned up, closed, blocked, or a poller timeout). Then:
+**Tick:** for each PR in the list, ensure its worktree (below), then run steps 2–6. Each PR ends with a wait from **Waiting**, updated flags, or *drop* (merged and cleaned up, closed, blocked, or a poller timeout). Then:
 - List empty → `cd "$REPO_ROOT"` and exit without launching or scheduling anything.
 - Every remaining PR has a live poller → end the turn; the next poller notification is the next tick.
-- Otherwise schedule **one** wakeup with the shortest delay any PR without a poller needs, carrying every remaining PR with its flags:
-  ```
-  ScheduleWakeup(delaySeconds=<shortest>, reason="<short status per PR>", prompt="/pr-watch <N>[:flags] [<M>[:flags] ...] --tick <TICK+1> [--non-interactive]")
-  ```
+- Otherwise (an `UNKNOWN` wait, or the fallback) schedule **one** wakeup with the shortest delay any PR without a poller needs, carrying every remaining PR with its flags: `ScheduleWakeup(delaySeconds=<shortest>, reason="<short status per PR>", prompt="/pr-watch <N>[:flags] [<M>[:flags] ...] --tick <TICK+1> [--non-interactive]")`.
 
-**Stop condition:** `MAX_EVENTS = 30`. Every poller notification and every fallback wakeup is an event; `--tick` carries the count. If `TICK >= MAX_EVENTS`, stop watching — launch and schedule nothing. Announce: *"pr-watch stopped after $MAX_EVENTS events — <PR #N: current state, one per PR>. Re-run `/pr-watch <N> [<M> ...]` to resume watching."* (in `NONINTERACTIVE` mode, post that as a comment on each PR).
+**Stop condition:** `MAX_EVENTS = 30`. Every poller notification and every fallback wakeup is an event; `--tick` carries the count. If `TICK >= MAX_EVENTS`, stop watching — launch and schedule nothing. Announce: *"pr-watch stopped after $MAX_EVENTS events — <PR #N: current state, one per PR>. Re-run `/pr-watch <N> [<M> ...]` to resume watching."* (in `NONINTERACTIVE`, post that as a comment on each PR).
 
-**Ensure worktree** (per PR):
-```bash
-PR=<number>
-BRANCH=$(gh pr view $PR --json headRefName -q .headRefName)
-BASE=$(gh pr view $PR --json baseRefName -q .baseRefName)
-```
-Skip the rest when `gh pr view $PR --json state -q .state` is `MERGED` or `CLOSED` — go straight to step 2.
-```bash
-WT=$("${CLAUDE_SKILL_DIR}/scripts/ensure-worktree.sh" "$WT_DIR" "$REMOTE" "$BRANCH") && cd "$WT" && pwd
-```
-Args: `WT_DIR REMOTE BRANCH`. Stays in the current linked worktree when it is on `BRANCH`; otherwise uses `$WT_DIR/$BRANCH`, fetching `BRANCH` and adding the worktree when the directory is missing. Prints that checkout's root, or prints `WRONG_CHECKOUT` (stderr) and exits 1 when it isn't on `BRANCH`.
-`WRONG_CHECKOUT` → block.
+**Ensure worktree** (per PR): `BRANCH=$(gh pr view $PR --json headRefName -q .headRefName)` and `BASE=$(gh pr view $PR --json baseRefName -q .baseRefName)`. Skip the rest when `gh pr view $PR --json state -q .state` is `MERGED` or `CLOSED` — go straight to step 2. Otherwise `WT=$("${CLAUDE_SKILL_DIR}/scripts/ensure-worktree.sh" "$WT_DIR" "$REMOTE" "$BRANCH") && cd "$WT" && pwd`. Args: `WT_DIR REMOTE BRANCH`. Stays in the current linked worktree when it is on `BRANCH`; otherwise uses `$WT_DIR/$BRANCH`, fetching `BRANCH` and adding the worktree when the directory is missing. Prints that checkout's root, or prints `WRONG_CHECKOUT` (stderr) and exits 1 when it isn't on `BRANCH`. `WRONG_CHECKOUT` → block.
 
 ## Waiting
 
-Every wait is one `wait-for.sh` poller per PR, launched with Bash `run_in_background` from the worktree root:
+Every wait is one `wait-for.sh` poller per PR, launched with Bash `run_in_background` from the directory in the table's *From* column: `checks` and `queue` run in the worktree (`checks` reads the PR head's `.github/workflows`); `merge` and `change` run from the main checkout — `cd "$REPO_ROOT"` first — so they outlive the worktree when the user merges before they wake.
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/wait-for.sh" <mode> "$PR" <timeout> <poll> "/pr-watch <N>[:flags] [<M>[:flags] ...] --tick <TICK+1> [--non-interactive]"
 ```
 Args: `MODE PR TIMEOUT_SEC [POLL_SEC] [PASSTHROUGH]`. Polls `gh` every `POLL_SEC` until the state change of its mode and prints one final line, `WAIT <mode> <PR> done|timeout|error[:<reason>] <passthrough>` — exit 0 on `done`, 2 on `timeout`, 1 on `error` (`gh` failed twice in a row). `done` reasons: `checks` → `finished|failed|no-ci|no-checks` (`no-ci`: no workflow triggers on `pull_request`; `no-checks`: none appeared within 10 min of polling), `queue` → `started`, `merge` → `merged|closed`, `change` → `updated`. `checks` runs `gh pr checks --watch --fail-fast` once checks have appeared. The passthrough is this loop's own re-invocation, so every wake is self-describing — no state file.
 
-| Awaiting | Mode | Timeout | Poll | Fallback delay |
+| Awaiting | Mode | From | Timeout | Poll |
 |---|---|---|---|---|
-| CI running, just pushed, after a fix or a re-run | `checks` | 28800 | 60 | 240 s just pushed, 540 s while CI runs |
-| Queued on offline runners (step 2) | `queue` | 14400 | 300 | 3600 s |
-| Review — `REVIEW_REQUIRED`, `CHANGES_REQUESTED` (step 5) | `change` | 28800 | 300 | 2400 s |
-| Green, awaiting merge — `ready=` (step 5) | `merge` | `READY_HOURS` × 3600, minus the time since `ready=` | 300 | 3600 s |
-| `waits=<M>` (step 2) | `merge` on #M — re-use #M's own poller when it is in the list | 28800 | 300 | 3600 s |
-| Mergeability `UNKNOWN` (step 4) | `ScheduleWakeup` 60 s, always | — | — | 60 s |
+| CI running, just pushed, after a fix or a re-run | `checks` | worktree root | 28800 | 60 |
+| Queued on offline runners (step 2) | `queue` | worktree root | 14400 | 300 |
+| Review — `REVIEW_REQUIRED`, `CHANGES_REQUESTED` (step 5) | `change` | `REPO_ROOT` | 28800 | 300 |
+| Green, awaiting merge — `ready=` (step 5) | `merge` | `REPO_ROOT` | `READY_HOURS` × 3600, minus the time since `ready=` | 300 |
+| `waits=<M>` (step 2) | `merge` on #M — re-use #M's own poller when it is in the list | `REPO_ROOT` | 28800 | 300 |
+| Mergeability `UNKNOWN` (step 4) | `ScheduleWakeup` 60 s, always — the one wait without a poller | — | — | — |
 
 - **One poller per PR.** A tick re-uses the poller still running for that PR instead of launching another, and never schedules a `ScheduleWakeup` while one is alive. The poller's completion notification is the next tick: run its passthrough line.
 - **`done`** → tick that PR now.
 - **`timeout`** → never relaunch: announce the cap and drop the PR, whatever the mode — *"PR #<N> is still <awaiting> after <timeout in h> h — pr-watch stopped. Re-run `/pr-watch <N>` to resume watching."*, with step 5's wording for a ready PR (in `NONINTERACTIVE`, post it as a PR comment).
-- **`error`** → relaunch once, same mode and timeout; a second `error` → block, quoting the reason.
-- **Fallback.** Bash `run_in_background` not in this session's tool list → `ScheduleWakeup` with the last column's delay, one wakeup for the whole list (step 1).
+- **`error`** → first read the PR state from `REPO_ROOT`: `gh pr view $PR --json state -q .state`. `MERGED` → clean up (step 6 — idempotent, safe when the worktree is already gone) and drop. `CLOSED` → announce abandoned, drop. Only an `OPEN` PR gets one relaunch, same mode and timeout; a second `error` on it → block, quoting the reason. Never relaunch for a merged or closed PR.
+- **Fallback.** Bash `run_in_background` not in this session's tool list → one `ScheduleWakeup` for the whole list (step 1): 600 s while any PR awaits `checks`, else 3600 s.
 
 ## 2 — Check CI
 
-```bash
-"${CLAUDE_SKILL_DIR}/scripts/pr-state.sh" "$PR"
-```
-Run from the worktree root. Args: `PR`. One call gathers this tick's inputs and prints `key=value` lines, in this order: `state`, `headSha`, `mergeStateStatus`, `mergeable`, `reviewDecision`, `checksTotal`, `checksSuccess`, `checksFailure`, `checksPending`, `checksSkipped`, `failing` (`name:runId`, comma-separated — an empty run id is an external status), `queuedOver10m` (workflows queued over 10 min), `queuedSelfHosted` (`true` when a `runs-on` of those workflows in `.github/workflows/` is not GitHub-hosted `ubuntu-*` / `windows-*` / `macos-*`), `unresolvedThreads` (root review comments), `hasPrCi` (a workflow triggers on `pull_request`/`pull_request_target`), `lastActivityAgeSec` (since the PR was created or its head last committed, whichever is later). Exit 1 with `pr-state: gh failed: <subcommand>` on stderr → run it once more; failing again → block with that message.
+Run `"${CLAUDE_SKILL_DIR}/scripts/pr-state.sh" "$PR"` from the worktree root. Args: `PR`. One call gathers this tick's inputs and prints `key=value` lines, in this order: `state`, `headSha`, `mergeStateStatus`, `mergeable`, `reviewDecision`, `checksTotal`, `checksSuccess`, `checksFailure`, `checksPending`, `checksSkipped`, `failing` (`name:runId`, comma-separated — an empty run id is an external status), `queuedOver10m` (workflows queued over 10 min), `queuedSelfHosted` (`true` when a `runs-on` of those workflows in `.github/workflows/` is not GitHub-hosted `ubuntu-*` / `windows-*` / `macos-*`), `unresolvedThreads` (root review comments), `hasPrCi` (a workflow triggers on `pull_request`/`pull_request_target`), `lastActivityAgeSec` (since the PR was created or its head last committed, whichever is later). Exit 1 with `pr-state: gh failed: <subcommand>` on stderr → run it once more; failing again → block with that message.
 
-Parse `state`:
-- **`MERGED`** → clean up (step 6), drop.
-- **`CLOSED`** (not merged) → announce abandoned, drop.
+Parse `state`: **`MERGED`** → clean up (step 6), drop. **`CLOSED`** (not merged) → announce abandoned, drop.
 
-**`waits=<M>` set** → check only the fix PR: `gh pr view <M> --json state -q .state`:
-- `MERGED` → rebase onto base (step 4, `BEHIND`), remove `waits`, wait `checks`.
-- `CLOSED` → remove `waits`, block (the fix PR was closed unmerged).
-- `OPEN` → skip the rest of this PR's tick; it waits on #M — `merge` on #M (**Waiting**).
+**`waits=<M>` set** → check only the fix PR, `gh pr view <M> --json state -q .state`: `MERGED` → rebase onto base (step 4, `BEHIND`), remove `waits`, wait `checks`; `CLOSED` → remove `waits`, block (the fix PR was closed unmerged); `OPEN` → skip the rest of this PR's tick, it waits `merge` on #M (**Waiting**).
 
-### No checks reported
-`checksTotal` is `0`. `hasPrCi=false`, or `lastActivityAgeSec` over 600 (PR created / head committed over 10 min ago and still no checks) → CI is **none**: proceed to step 3 as if passed. Otherwise wait `checks` — its settle phase ends `done:no-checks` after 10 min, and the next tick lands here with `lastActivityAgeSec` over 600.
+Otherwise, from the counts:
+- **No checks** (`checksTotal` is `0`): `hasPrCi=false`, or `lastActivityAgeSec` over 600 → CI is **none**, proceed to step 3 as if passed. Otherwise wait `checks`.
+- **Running or queued** (`checksPending` above `0`): `queuedOver10m` non-empty and `queuedSelfHosted=true` → **runners unavailable**. Without the `runners` flag: tell the user once that the runners look offline (in `NONINTERACTIVE`, one PR comment) and add `runners`. Wait `queue`; don't repeat the announcement. Remove `runners` once jobs start. Otherwise wait `checks`.
+- **Passed** (`checksFailure` and `checksPending` both `0`): proceed to step 3.
+- **Failed** (`checksFailure` above `0`): for each `name:runId` in `failing`, `gh run view $RUN_ID --log-failed`; an empty run id is an external status → classify from its `detailsUrl` (`gh pr view $PR --json statusCheckRollup`). Then:
 
-### CI running or queued
-`checksPending` is above `0`. `queuedOver10m` non-empty and `queuedSelfHosted=true` → **runners unavailable**. Without the `runners` flag: tell the user once that the runners look offline (in `NONINTERACTIVE`, one PR comment) and add `runners`. Wait `queue`; don't repeat the announcement. Remove `runners` once jobs start.
+**Not run locally?** Ship records in the PR body the layers the engineer did not run before the commit: `"${CLAUDE_SKILL_DIR}/scripts/not-run-lanes.sh" "$PR"`. Args: `PR`. Prints the lanes of the last `<!-- supera: not_run=... -->` marker in the PR body, one per line (`e2e`, `integration`, …), nothing when there is none. Exit 1 with `not-run-lanes: gh failed: pr view` on stderr → run it once more; failing again → block with that message. A failing job whose name or workflow matches a listed lane is **caused by the PR**: delegate to `supera-engineer` with the log excerpt — never classify it as pre-existing, and skip the base comparison below for it.
 
-Otherwise wait `checks`.
+**Pre-existing or unrelated?** Compare the remaining failures with the base branch's latest run of the same workflow — `gh run list --branch "$BASE" --workflow "$WORKFLOW" --limit 1 --json conclusion,databaseId`, then `gh run view $BASE_RUN_ID --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name'`. No base run → compare the failing file/package with `gh pr diff $PR --name-only`.
 
-### CI failed
-`checksFailure` is above `0`. For each `name:runId` in `failing`:
-```bash
-gh run view $RUN_ID --log-failed
-```
-An empty run id is an external status → classify from its `detailsUrl` (`gh pr view $PR --json statusCheckRollup`).
-
-**Not run locally?** Ship records in the PR body the layers the engineer did not run before the commit:
-```bash
-"${CLAUDE_SKILL_DIR}/scripts/not-run-lanes.sh" "$PR"
-```
-Args: `PR`. Prints the lanes of the last `<!-- supera: not_run=... -->` marker in the PR body, one per line (`e2e`, `integration`, …), nothing when there is none. Exit 1 with `not-run-lanes: gh failed: pr view` on stderr → run it once more; failing again → block with that message. A failing job whose name or workflow matches a listed lane is **caused by the PR**: delegate to `supera-engineer` with the log excerpt — never classify it as pre-existing, and skip the base comparison below for it.
-
-**Pre-existing or unrelated?** Compare the remaining failures with the base branch's latest run of the same workflow:
-```bash
-gh run list --branch "$BASE" --workflow "$WORKFLOW" --limit 1 --json conclusion,databaseId
-gh run view $BASE_RUN_ID --json jobs --jq '.jobs[] | select(.conclusion == "failure") | .name'
-```
-No base run → compare the failing file/package with `gh pr diff $PR --name-only`.
-
-Classify:
 | Failure | Action |
 |---|---|
 | Build / typecheck / test / lint caused by the PR | Delegate to `supera-engineer` with the log excerpt — it detects the repo's own commands (trivial lint/format → fix directly). |
@@ -161,68 +106,23 @@ Classify:
 
 Fixes follow **Delegation** (empty-diff check, commit, push); after a push or re-run, wait `checks`.
 
-### CI passed
-`checksFailure` and `checksPending` are both `0` → proceed to step 3.
-
 ## 3 — Review comments
 
-`unresolvedThreads` (step 2) above `0` → fetch the threads:
-```bash
-# Fetch PR review comments via API (thread-level resolution)
-gh api "repos/{owner}/{repo}/pulls/$PR/comments" --jq '.[] | select(.in_reply_to_id == null) | {id: .id, path: .path, line: .line, body: .body}' 2>/dev/null || echo "NO_COMMENTS"
-```
-
-Also check the PR's top-level review state:
-```bash
-gh pr view $PR --json reviews --jq '[.reviews[] | select(.state != "APPROVED") | {author: .author.login, state: .state, body: .body}]'
-```
-
-For each unresolved thread:
-- **Clear code request** (rename, extract, null check, add test) → per **Delegation** (trivial → fix directly, else `supera-engineer`; empty-diff check; commit + push), then reply:
-```bash
-SHA=$(git rev-parse HEAD)
-gh pr review $PR --comment --body "Addressed in $SHA: <summary>"
-```
+`unresolvedThreads` (step 2) above `0` → fetch the root threads, `gh api "repos/{owner}/{repo}/pulls/$PR/comments" --jq '.[] | select(.in_reply_to_id == null) | {id: .id, path: .path, line: .line, body: .body}'`, and the non-approving reviews, `gh pr view $PR --json reviews --jq '[.reviews[] | select(.state != "APPROVED") | {author: .author.login, state: .state, body: .body}]'`. For each unresolved thread:
+- **Clear code request** (rename, extract, null check, add test) → per **Delegation** (trivial → fix directly, else `supera-engineer`; empty-diff check; commit + push), then reply `gh pr review $PR --comment --body "Addressed in $(git rev-parse HEAD): <summary>"`. After fixes → wait `checks`.
 - **Question / design discussion** → block.
-
-After fixes → wait `checks`.
 
 ## 4 — Sync with base
 
 From `mergeStateStatus` and `mergeable` (step 2):
-
-- `mergeStateStatus` values: `CLEAN` (no conflicts), `DIRTY` (conflicts), `UNKNOWN`, `BLOCKED`, `BEHIND`, `UNSTABLE`, `HAS_HOOKS`
-- `mergeable` values: `MERGEABLE`, `CONFLICTING`, `UNKNOWN` (older gh versions may only have this field)
-
-- **`DIRTY` or `CONFLICTING`** → rebase onto base, resolve conflicts (bare conflict markers → fix directly; logic → `supera-engineer`), push, wait `checks`:
-  ```bash
-  git fetch $REMOTE $BASE
-  git rebase $REMOTE/$BASE
-  # if conflicts: resolve per Delegation, then git add + git rebase --continue
-  git push --force-with-lease $REMOTE $BRANCH
-  ```
-- **`BEHIND`** → branch is behind base. Rebase, push, wait `checks`:
-  ```bash
-  git fetch $REMOTE $BASE
-  git rebase $REMOTE/$BASE
-  git push --force-with-lease $REMOTE $BRANCH
-  ```
-- **`UNKNOWN`** → GitHub is still computing mergeability; it normally resolves in seconds. Bounded retry via the PR's `unknown=<n>` flag (absent = `0`):
-  - `n >= 3` → stop retrying — block. Status stuck at `UNKNOWN` this long means GitHub can't compute it — a human needs to look.
-  - Otherwise set `unknown=<n+1>` and wait 60 s — `ScheduleWakeup`, the one wait that never uses a poller (**Waiting**).
-  Every other path removes `unknown`, so the counter resets once the status resolves.
+- **`DIRTY` or `CONFLICTING`** → rebase onto base, resolve conflicts (bare conflict markers → fix directly; logic → `supera-engineer`; then `git add` + `git rebase --continue`), push, wait `checks`.
+- **`BEHIND`** → rebase onto base, push, wait `checks`: `git fetch $REMOTE $BASE && git rebase $REMOTE/$BASE && git push --force-with-lease $REMOTE $BRANCH`.
+- **`UNKNOWN`** → GitHub is still computing mergeability; bounded retry via the PR's `unknown=<n>` flag (absent = `0`). `n >= 3` → block (stuck this long means GitHub can't compute it — a human needs to look). Otherwise set `unknown=<n+1>` and wait 60 s (**Waiting**). Every other path removes `unknown`.
 - **`BLOCKED`** → `reviewDecision` is `REVIEW_REQUIRED` or `CHANGES_REQUESTED` → continue to step 5 (review wait). Otherwise block.
 
 ## 5 — Done check
 
-Ready when:
-- Every CI check is `SUCCESS` or `SKIPPED` (or CI is none, step 2)
-- Zero unresolved review threads
-- `mergeStateStatus` is `CLEAN` (or `mergeable` is `MERGEABLE`)
-- `reviewDecision` is `APPROVED` (or no review required: empty/null string)
-  - If `reviewDecision` is `REVIEW_REQUIRED` or `CHANGES_REQUESTED` → wait `change`.
-
-A fix, rebase, failing check, or new review while `ready` is set → remove `ready`; it is announced again once ready.
+Ready when every CI check is `SUCCESS` or `SKIPPED` (or CI is none, step 2), `unresolvedThreads` is `0`, `mergeStateStatus` is `CLEAN` (or `mergeable` is `MERGEABLE`), and `reviewDecision` is `APPROVED` or empty (no review required) — `REVIEW_REQUIRED` or `CHANGES_REQUESTED` → wait `change`. A fix, rebase, failing check, or new review while `ready` is set → remove `ready`; it is announced again once ready.
 
 **Ready ≠ exit.** Keep watching until the PR is merged or closed (step 2), with `READY_HOURS = 8`:
 - No `ready` flag → announce once: *"PR #<N> is green and all threads resolved — ready to merge. I'll keep watching and clean up after you merge it."* (in `NONINTERACTIVE`, post it as a PR comment). Add `ready=$(date +%s)`, wait `merge`.
@@ -233,25 +133,9 @@ A fix, rebase, failing check, or new review while `ready` is set → remove `rea
 
 ## 6 — Clean up
 
-Runs only when the PR is observed as `MERGED` (step 2). Starts and ends at the repo root:
-```bash
-cd "$REPO_ROOT" && "${CLAUDE_SKILL_DIR}/scripts/cleanup.sh" "$REMOTE" "$BASE" "$BRANCH"
-```
-Args: `REMOTE BASE BRANCH`. Prunes, removes exactly `BRANCH`'s worktree (never the main checkout), deletes `BRANCH` with `-D` (squash merges leave it unmerged locally — safe because the PR is MERGED) and on `REMOTE` when it is still there, then fast-forwards local `BASE` only when the main checkout is on it and clean — never resets or forces. Idempotent; refuses `BRANCH` = `BASE`. Non-zero exit → surface git's message.
+Runs only when the PR is observed as `MERGED` (step 2, or an `error` wake). Starts and ends at the repo root: `cd "$REPO_ROOT" && "${CLAUDE_SKILL_DIR}/scripts/cleanup.sh" "$REMOTE" "$BASE" "$BRANCH"`. Args: `REMOTE BASE BRANCH`. Prunes, removes exactly `BRANCH`'s worktree (never the main checkout), deletes `BRANCH` with `-D` (squash merges leave it unmerged locally — safe because the PR is MERGED) and on `REMOTE` when it is still there, then fast-forwards local `BASE` only when the main checkout is on it and clean — never resets or forces. Idempotent; refuses `BRANCH` = `BASE`. Non-zero exit → surface git's message.
 
-Then, for every watched PR with `waits=<N>`: ensure its worktree (step 1), rebase (step 4, `BEHIND`), remove that flag. `cd "$REPO_ROOT"` again.
-
-Announce what was done: *"PR #<N> merged. Worktree removed, branch `$BRANCH` deleted locally and on `$REMOTE`, `$BASE` fast-forwarded."*
-
-## Non-interactive mode (`--non-interactive`)
-
-Headless CI runs. Never prompt. At every block:
-- Instead of asking, post a block comment and drop the PR:
-  ```bash
-  gh pr comment $PR --body "Blocked (non-interactive): <reason>"
-  ```
-- CI failures, clear code requests, merge conflicts still delegate to engineer and push as normal.
-- A clean, green PR posts one ready comment and keeps being watched until merged, closed, or `READY_HOURS` — merging stays the user's decision.
+Then, for every watched PR with `waits=<N>`: ensure its worktree (step 1), rebase (step 4, `BEHIND`), remove that flag. `cd "$REPO_ROOT"` again. Announce what was done: *"PR #<N> merged. Worktree removed, branch `$BRANCH` deleted locally and on `$REMOTE`, `$BASE` fast-forwarded."*
 
 ## Rules
 

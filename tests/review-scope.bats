@@ -58,6 +58,70 @@ lines() {
   [ -z "$stderr" ]
 }
 
+@test "REVIEW 28 for a .md plus a code file — never SKIP:docs-only" {
+  lines README.md 25
+  lines a.txt 2
+
+  run --separate-stderr scope
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "REVIEW 28" ]
+  [ -z "$stderr" ]
+}
+
+@test "SKIP:small 8 for a small .md plus code change" {
+  lines README.md 5
+  lines a.txt 2
+
+  run --separate-stderr scope
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "SKIP:small 8" ]
+  [ -z "$stderr" ]
+}
+
+@test "SKIP:small 20 at the boundary" {
+  lines a.txt 19
+
+  run --separate-stderr scope
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "SKIP:small 20" ]
+  [ -z "$stderr" ]
+}
+
+@test "REVIEW 21 just over the boundary" {
+  lines a.txt 20
+
+  run --separate-stderr scope
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "REVIEW 21" ]
+  [ -z "$stderr" ]
+}
+
+@test "SKIP:small 14 sums added and deleted lines of a tracked file" {
+  commit_file "$REPO" b.txt "$(seq 1 10)"
+  git -C "$REPO" push -q origin main
+  lines b.txt 4
+
+  run --separate-stderr scope
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "SKIP:small 14" ]
+  [ -z "$stderr" ]
+}
+
+@test "SKIP:small 1 for emptying a tracked file" {
+  : >"$REPO/a.txt"
+
+  run --separate-stderr scope
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "SKIP:small 1" ]
+  [ -z "$stderr" ]
+}
+
 @test ".supera/ is ignored" {
   lines .supera/plan.md 50
   lines a.txt 5

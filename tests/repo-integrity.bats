@@ -57,6 +57,13 @@ check_refs() {
   [ "$status" -eq 1 ]
 }
 
+@test "pr-watch SKILL.md stays at or under 150 lines" {
+  local count
+  count=$(wc -l < "$ROOT/skills/pr-watch/SKILL.md" | tr -d " ")
+
+  [ "$count" -le 150 ] || { echo "skills/pr-watch/SKILL.md has $count lines" >&2; return 1; }
+}
+
 @test "every bundled script is executable" {
   local script
   for script in "$ROOT"/scripts/*.sh "$ROOT"/skills/*/scripts/*.sh; do

@@ -1,17 +1,17 @@
 # Delegation
 
-Canonical rules for every supera orchestrator that dispatches `supera-engineer` — `/ship` for the change, `/pr-watch` for CI and review fixes. Referenced, not restated: if you delegate, follow this.
+Canonical rules for every supera orchestrator that dispatches a supera agent — `supera-engineer` (`/ship` for the change, `/pr-watch` for CI and review fixes) and `supera-reviewer` (`/ship`'s review gate). Referenced, not restated: if you delegate, follow this.
 
 ## Dispatch
 
-- Dispatch with `subagent_type: "supera:supera-engineer"` only.
-- **Never pass `isolation: "worktree"`.** The skill already owns the worktree — isolation creates a separate one where the changes are invisible to the commit step.
-- **Never pass `name:`.** A named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Unnamed, the engineer is a plain subagent.
-- The Agent tool returns at once; its result carries the **agent id**. Keep it for the deadline below — it is internal metadata, never shown to the user. The receipt is the engineer's final message, delivered as a task notification when it finishes; wait for it.
+- Dispatch with `subagent_type: "supera:supera-engineer"` or `subagent_type: "supera:supera-reviewer"` — the two supera agents, same form for both.
+- **Never pass `isolation: "worktree"`.** The skill already owns the worktree — isolation creates a separate one where the engineer's changes are invisible to the commit step and to the reviewer.
+- **Never pass `name:`.** A named Agent call is launched as a teammate, which under `teammateMode: "tmux"` (or `"auto"` in a tmux or iTerm2 terminal) opens a second pane and splits the user's screen. Unnamed, the agent is a plain subagent.
+- The Agent tool returns at once; its result carries the **agent id** — internal metadata, never shown to the user; keep the engineer's for the deadline below. The agent's final message — the engineer's receipt, the reviewer's findings — arrives as a task notification when it finishes; wait for it.
 
 ## Deadline
 
-Right after the dispatch, launch the deadline with Bash `run_in_background`:
+Right after an engineer dispatch, launch the deadline with Bash `run_in_background`:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/deadline.sh" 3600 "<re-invocation>"

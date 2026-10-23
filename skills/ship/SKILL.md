@@ -27,6 +27,8 @@ No config file — everything is derived from the repo itself:
 
 `BREAKING=true` when `$ARGUMENTS` contains `--breaking` or the task explicitly says the change is breaking; otherwise `false`. `TASK` is `$ARGUMENTS` with `--breaking` removed — use `TASK` wherever the task description is needed below.
 
+When `TASK` describes work that changes no repo file — running a command once, downloading or inspecting something, deploying, reading logs — announce *"This task changes no repo files — ship is not the tool; do it directly."* and stop here: no worktree, no engineer. A task that is ambiguous proceeds.
+
 Derive a branch slug from `TASK`: lowercase, kebab-case, ≤50 chars, prefixed by type with a dash (`feat-`, `fix-`, `docs-`, `refactor-`, `chore-`). Example: `"add payment retry"` → `feat-add-payment-retry`.
 
 ## 2 — Detect context
