@@ -1,3 +1,9 @@
+## v2.5.0 (2026-10-23)
+
+### Features
+
+* feat: add engineer deadline and a single delegation guideline (#88) (bf032745cee5b163ee8548e4826dfe403f821bc9)
+
 ## v2.4.0 (2026-10-22)
 
 ### Features
