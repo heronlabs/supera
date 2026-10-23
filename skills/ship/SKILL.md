@@ -2,7 +2,7 @@
 name: ship
 description: Implement a task end-to-end — create worktree, delegate to supera-engineer (code + tests), self-verify, commit, push, open PR, hand off to pr-watch for CI monitoring. Idempotent — re-run in a dirty worktree continues where it left off.
 argument-hint: "<task description> [--breaking]"
-allowed-tools: Bash, Read, Edit, Write, Glob, Grep, Agent
+allowed-tools: Bash, Read, Edit, Write, Glob, Grep, Agent, SendMessage
 ---
 
 Implement a task in an isolated git worktree. Delegate all code + tests to `supera-engineer`. On verification pass: commit, push, open PR, hand off to `pr-watch` for CI monitoring. On verification fail after 3 loops: leave changes for manual review.
@@ -72,38 +72,26 @@ fi
 
 Announce: *"Delegating to supera-engineer in worktree `$WT_DIR/$SLUG`."*
 
-Dispatch `supera-engineer` with: the task description, the worktree path, and the base ref `$REMOTE/$BASE` — the engineer reads existing code and versions from it, never from the local base branch. Use `subagent_type: "supera:supera-engineer"` only — **no `isolation: "worktree"`** (ship owns the worktree) and **no `name:`** (it splits the user's screen). The receipt arrives as the Agent tool's result. The engineer writes `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt.
+Dispatch `supera-engineer` with: the task description, the worktree path, and the base ref `$REMOTE/$BASE` — the engineer reads existing code and versions from it, never from the local base branch. The dispatch form, the agent id, the deadline and the receipt checks follow `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md`. Right after the dispatch, launch the deadline with Bash `run_in_background`:
 
-Wait for its JSON receipt. Write it to `.supera/receipt.json` in the worktree, then check its `not_run` lanes:
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/deadline.sh" 3600 "/ship <TASK> [--breaking]"
+```
+
+The engineer writes `.supera/plan.md`, implements code + tests, self-verifies, and returns a receipt. Wait for its JSON receipt. Write it to `.supera/receipt.json` in the worktree, then check its `not_run` lanes:
 
 ```bash
 MARKER=$("${CLAUDE_SKILL_DIR}/scripts/not-run-marker.sh" .supera/receipt.json)
 ```
-Args: the receipt file. Prints `<!-- supera: not_run=<lane>[,<lane>] -->` — the verification keys valued `not_run`, sorted — or nothing when there is none; `MARKER` is that line (step 7). Exits 3 with `not_run on <key> is not accepted: run it or report fail` on stderr when `build`, `lint` or `unit` is `not_run`; exits 1 when the file is not a JSON receipt (re-save it from the Agent result).
+Args: the receipt file. Prints `<!-- supera: not_run=<lane>[,<lane>] -->` — the verification keys valued `not_run`, sorted — or nothing when there is none; `MARKER` is that line (step 7). Exits 3 with `not_run on <key> is not accepted: run it or report fail` on stderr when `build`, `lint` or `unit` is `not_run`; exits 1 when the file is not a JSON receipt (re-save it from the engineer's receipt message).
 
 Parse the receipt:
 - **Every gate `pass` or `skipped`, or `not_run` accepted by the script (`integration`, `e2e`, other long layers)** → done. Surface the summary, the files changed and each `not_run` gate with its reason from `receipt.notes`.
-- **Any `fail`, or the script exited 3** → treat exactly alike: if trivial (lint/format, typos, conflict markers, mechanical few-line fixes), fix it directly. Anything touching logic or tests goes back to the engineer with the failure output — the stderr message, for exit 3 (max 3 loops). If still failing after 3, surface the failure.
+- **Any `fail`, or the script exited 3** → treat exactly alike: if trivial per the delegation guideline, fix it directly. Anything else goes back to the engineer with the failure output — the stderr message, for exit 3 (max 3 loops). If still failing after 3, surface the failure.
 
 ### 4a — Verify engineer changes
 
-**Before committing, independently verify the engineer's changes** with the same command it uses for `filesChanged` (includes untracked files, excludes `.supera/`), plus the plan's file list:
-
-```bash
-CHANGED=$("${CLAUDE_PLUGIN_ROOT}/scripts/changed-files.sh")
-PLANNED=$(sed -n '/^## Files/,/^## /p' .supera/plan.md 2>/dev/null | grep '^- ' | sed 's/^- *//; s/`//g; s/[[:space:]]*$//')
-EXTRA=$(comm -23 <(printf '%s\n' "$CHANGED" | sort) <(printf '%s\n' "$PLANNED" | sort))
-```
-
-If `CHANGED` is empty, the engineer made zero changes. **Check `receipt.notes` before delegating back** — never enter a delegation loop on an empty diff:
-
-- **Notes legitimately explain the empty diff** (task already implemented, nothing to change, blocked on missing info) → do NOT re-delegate. Surface the notes to the user and stop.
-- **Notes are empty or claim work was done** → the engineer idled. Treat as verification failure and re-delegate **once**, with the explicit instruction to make changes (counts toward the 3-loop max). If `CHANGED` is empty again, stop delegating — fix directly if trivial, otherwise surface the failure.
-
-Either way: do NOT proceed to commit with no changes.
-
-- **Receipt** — `receipt.filesChanged` must match `CHANGED`. Any mismatch means the engineer worked in a different context — flag it.
-- **Scope** — `EXTRA` lists changed files missing from the plan's `## Files`. Surface any not justified in `receipt.notes` and send them back to the engineer to revert or justify (counts toward the 3-loop max).
+**Before committing, independently verify the engineer's changes** per `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md` — the changed files against `receipt.filesChanged` and the plan's `## Files`, and the empty-diff rule; every re-delegation or revert request it calls for counts toward the 3-loop max.
 
 ## 5 — Commit
 
@@ -133,7 +121,7 @@ git commit -m "$TYPE$BANG: $SUMMARY"
 # Run AUDIT_CMD if detected
 ```
 
-If build or lint fails: surface the failure. Don't push broken code — fix trivial issues directly (lint/format, typos, conflict markers), otherwise delegate back to engineer; amend the commit and re-run pre-flight.
+If build or lint fails: surface the failure. Don't push broken code — fix trivial issues directly (per the delegation guideline), otherwise delegate back to engineer; amend the commit and re-run pre-flight.
 
 If the audit fails, check whether this PR changed dependencies:
 
@@ -219,5 +207,5 @@ Invoke the `pr-watch` skill with `$PR`.
 - **Idempotent** — re-run in a dirty worktree picks up where engineer left off. No state tracking needed.
 - Never commit to base directly. Commits only on the feature branch in the worktree.
 - Commit hygiene follows `${CLAUDE_PLUGIN_ROOT}/guidelines/commit-conventions.md`.
-- The orchestrator fixes only trivial issues directly (lint/format, typos, conflict markers); all other code goes through `supera-engineer`.
+- Delegation — dispatch form, deadline, receipt checks, and the trivial-fix boundary — follows `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md`.
 - Only commit/push/PR when every verification gate is `pass`, `skipped`, or a `not_run` the marker script accepts (step 4). An audit advisory that already exists on base doesn't block (step 6).
