@@ -93,9 +93,26 @@ Parse the receipt:
 
 **Before committing, independently verify the engineer's changes** per `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md` — the changed files against `receipt.filesChanged` and the plan's `## Files`, and the empty-diff rule; every re-delegation or revert request it calls for counts toward the 3-loop max.
 
+### 4b — Review
+
+After 4a passes, size the change:
+
+```bash
+"${CLAUDE_SKILL_DIR}/scripts/review-scope.sh" "$REMOTE/$BASE"
+```
+Args: `REMOTE/BASE`. Counts the changed lines against it — `git diff --numstat` added plus deleted, plus every line of each untracked file, `.supera/` left out. Prints `SKIP:docs-only` when every changed path ends in `.md`, `SKIP:small <n>` when `n` is 20 or fewer, else `REVIEW <n>`. Exits 1 only outside a git worktree.
+
+- **`SKIP:*`** → record the reason for step 7's Evidence and continue to step 5.
+- **`REVIEW`** → dispatch `supera-reviewer` with `subagent_type: "supera:supera-reviewer"` — dispatch form per `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md` — passing `TASK`, the path to `.supera/plan.md` and the base ref `$REMOTE/$BASE`. It reads the diff against the base ref and the untracked files only, and returns `{"findings": [...]}` per `${CLAUDE_PLUGIN_ROOT}/schema/review.schema.json`: each finding has `severity` (`blocker`, `important`, `minor`), `file`, `line`, `problem`, `fix`. Then:
+  - **No `blocker` or `important`** → continue to step 5; `minor` findings go to Evidence.
+  - **Any `blocker` or `important`** → one loop back to the engineer with those findings verbatim (counts toward the 3-loop max); the engineer fixes each or rebuts it in `receipt.notes`. Its receipt re-enters step 4 (marker, gates) and 4a (changed files, plan). Then dispatch the reviewer once more with the previous findings JSON and `receipt.notes` verbatim — it re-checks only those findings, may withdraw any, and returns the ones still open. No further review loop:
+    - a `blocker` still open → stop like a failed gate after 3 loops: surface the open findings, commit nothing, leave the changes for manual review;
+    - an `important` still open → continue to step 5, listed as open under Evidence;
+    - `minor` → Evidence.
+
 ## 5 — Commit
 
-If any verification gate is `fail` after 3 loops, stop — surface the failure, leave changes for manual review.
+If any verification gate is `fail` after 3 loops, or a review `blocker` is still open (step 4b), stop — surface the failure, leave changes for manual review.
 
 All verification passes:
 ```bash
@@ -164,7 +181,7 @@ fi
 | **Motivation** | Replace the comment prompt with the task description (`TASK`) — it is the user's "why". Keep any issue reference it contains. |
 | **Approach** | Bullet list of `receipt.filesChanged` with a one-line note per file from the engineer's plan. |
 | **Checklist** | Fill checkboxes from `receipt.verification`: `pass` → `[x]`, `fail` or `not_run` → `[ ]`, `skipped` → remove that row. Tick "Breaking change documented" when `BREAKING=true`. |
-| **Evidence** | Replace the comment prompt with the verification actually run: each `receipt.verification` gate and result — a `not_run` gate as "not run locally: <its reason from `receipt.notes`>" — then each step 6 pre-flight command and result (including any surfaced pre-existing audit advisory). |
+| **Evidence** | Replace the comment prompt with the verification actually run: each `receipt.verification` gate and result — a `not_run` gate as "not run locally: <its reason from `receipt.notes`>" — then each step 6 pre-flight command and result (including any surfaced pre-existing audit advisory), then the step 4b review on one line — `Review: skipped (<reason>)`, or `Review: <n> findings, open important: <file:line — problem, …>, minor: <…>`. |
 | **Risk assessment** | Leave with its comment prompt. |
 | **Post-merge** | Leave with its comment prompt. |
 
@@ -208,4 +225,4 @@ Invoke the `pr-watch` skill with `$PR`.
 - Never commit to base directly. Commits only on the feature branch in the worktree.
 - Commit hygiene follows `${CLAUDE_PLUGIN_ROOT}/guidelines/commit-conventions.md`.
 - Delegation — dispatch form, deadline, receipt checks, and the trivial-fix boundary — follows `${CLAUDE_PLUGIN_ROOT}/guidelines/delegation.md`.
-- Only commit/push/PR when every verification gate is `pass`, `skipped`, or a `not_run` the marker script accepts (step 4). An audit advisory that already exists on base doesn't block (step 6).
+- Only commit/push/PR when every verification gate is `pass`, `skipped`, or a `not_run` the marker script accepts (step 4), and no review `blocker` is open (step 4b). An audit advisory that already exists on base doesn't block (step 6).
