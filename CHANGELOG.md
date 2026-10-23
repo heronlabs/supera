@@ -1,3 +1,9 @@
+## v2.6.0 (2026-10-23)
+
+### Features
+
+* feat: review the engineer's diff before ship commits (#89) (a618cebd1cc4351ee094e5bab460268ff32bc213)
+
 ## v2.5.0 (2026-10-23)
 
 ### Features
