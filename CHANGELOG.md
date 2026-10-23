@@ -1,3 +1,9 @@
+## v2.7.0 (2026-10-23)
+
+### Features
+
+* feat: trim pr-watch skill and refuse non-PR ship tasks (#90) (d48c4c8e954284f246664bf1bc684f16a35cd306)
+
 ## v2.6.0 (2026-10-23)
 
 ### Features
