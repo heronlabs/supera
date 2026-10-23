@@ -1,0 +1,48 @@
+{
+  "$id": "urn:supera:review",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Handoff from supera-reviewer to the orchestrator. One review per dispatch; an empty findings list means nothing to report.",
+  "properties": {
+    "findings": {
+      "description": "Defects found in the change, one entry per defect. Empty when the change is clean.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "description": "Path of the changed or untracked file, relative to the worktree root.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "fix": {
+            "description": "One sentence: what to change.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "line": {
+            "description": "1-based line in the file's current content; for something absent, the line where the fix belongs.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "problem": {
+            "description": "One sentence: what is wrong.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "severity": {
+            "description": "blocker: wrong behaviour or data loss on a stated requirement. important: likely bug or missing test on a changed path. minor: everything else.",
+            "enum": ["blocker", "important", "minor"],
+            "type": "string"
+          }
+        },
+        "required": ["severity", "file", "line", "problem", "fix"],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array"
+    }
+  },
+  "required": ["findings"],
+  "title": "supera-reviewer review",
+  "type": "object"
+}
